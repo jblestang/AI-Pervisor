@@ -11,3 +11,6 @@ workspace = true
 
 [dependencies]
 hv-types = { workspace = true }
+
+[dev-dependencies]
+hv-loader = { workspace = true }

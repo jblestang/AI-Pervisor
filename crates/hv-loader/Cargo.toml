@@ -1,0 +1,18 @@
+[package]
+name = "hv-loader"
+description = "UEFI loader handoff builder for the static hypervisor boot path"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+hv-boot-abi = { workspace = true }
+hv-platform-model = { workspace = true }
+hv-types = { workspace = true }
+
+[dev-dependencies]
+hv-boot-abi = { workspace = true }

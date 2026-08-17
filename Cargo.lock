@@ -246,6 +246,7 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 name = "hv-boot-abi"
 version = "0.1.0"
 dependencies = [
+ "hv-loader",
  "hv-types",
 ]
 
@@ -281,9 +282,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "hv-hypervisor"
+version = "0.1.0"
+dependencies = [
+ "hv-boot-abi",
+ "hv-config-model",
+ "hv-loader",
+ "hv-platform-model",
+ "hv-types",
+]
+
+[[package]]
+name = "hv-loader"
+version = "0.1.0"
+dependencies = [
+ "hv-boot-abi",
+ "hv-platform-model",
+ "hv-types",
+]
+
+[[package]]
 name = "hv-platform-model"
 version = "0.1.0"
 dependencies = [
+ "hv-boot-abi",
  "hv-config-model",
  "hv-types",
  "proptest",

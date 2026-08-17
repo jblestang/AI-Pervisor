@@ -6,6 +6,8 @@ members = [
     "crates/hv-platform-model",
     "crates/hv-boot-abi",
     "crates/hv-guest-abi",
+    "crates/hv-loader",
+    "crates/hv-hypervisor",
     "tools/hv-config",
     "xtask",
 ]
@@ -21,6 +23,8 @@ hv-types = { path = "crates/hv-types" }
 hv-config-model = { path = "crates/hv-config-model" }
 hv-platform-model = { path = "crates/hv-platform-model" }
 hv-boot-abi = { path = "crates/hv-boot-abi" }
+hv-loader = { path = "crates/hv-loader" }
+hv-hypervisor = { path = "crates/hv-hypervisor" }
 hv-guest-abi = { path = "crates/hv-guest-abi" }
 serde = { version = "1.0.217", features = ["derive"] }
 serde_json = "1.0.138"

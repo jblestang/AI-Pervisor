@@ -9,6 +9,8 @@ pub enum PlatformErrorKind {
     Planning,
     /// JSON or fixture parse failure.
     Parse,
+    /// Runtime observation from firmware inputs failed.
+    Observation,
 }
 
 /// Structured platform error.
@@ -44,6 +46,7 @@ impl std::fmt::Display for PlatformErrorKind {
             Self::Validation => write!(f, "platform validation error"),
             Self::Planning => write!(f, "platform planning error"),
             Self::Parse => write!(f, "platform parse error"),
+            Self::Observation => write!(f, "platform observation error"),
         }
     }
 }
