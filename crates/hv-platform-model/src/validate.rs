@@ -1,5 +1,7 @@
 //! Fail-closed comparison between compile-time requirements and observed platform.
 
+use alloc::vec::Vec;
+
 use hv_config_model::{FeatureRequirement, PlatformRequirements, SmtPolicy};
 
 use crate::error::{PlatformError, PlatformErrorKind, PlatformWarning};

@@ -7,7 +7,7 @@
 extern crate alloc;
 
 use hv_boot_abi::HypervisorTransferHeader;
-use hv_hypervisor_efi::verify_hypervisor_transfer;
+use hv_hypervisor_efi::boot_hypervisor_from_transfer;
 use uefi::prelude::*;
 use uefi::system::with_config_table;
 use uefi::table::cfg::ConfigTableEntry;
@@ -32,8 +32,12 @@ fn efi_main() -> Status {
 
 fn run_hypervisor() -> Result<(), &'static str> {
     let transfer = locate_transfer_blob()?;
-    verify_hypervisor_transfer(transfer, &CONFIG_DIGEST, &REQUIREMENTS_SNAPSHOT)
-        .map_err(|_| "hypervisor transfer verification failed")?;
+    boot_hypervisor_from_transfer(transfer, &CONFIG_DIGEST, &REQUIREMENTS_SNAPSHOT)
+        .map_err(|err| {
+            log::error!("hypervisor boot failed: {err}");
+            "hypervisor boot and VMX init failed"
+        })?;
+    log::info!("hypervisor Gate B boot succeeded");
     Ok(())
 }
 
@@ -55,12 +59,16 @@ fn transfer_from_config_table(entries: &[ConfigTableEntry]) -> Option<&'static [
         if header.magic != hv_boot_abi::TRANSFER_MAGIC {
             return None;
         }
+        let published_alloc_size = header.published_alloc_size as usize;
         let total_size = header.total_size as usize;
-        if total_size < core::mem::size_of::<HypervisorTransferHeader>() {
+        if published_alloc_size < total_size {
+            return None;
+        }
+        if published_alloc_size < core::mem::size_of::<HypervisorTransferHeader>() {
             return None;
         }
         return Some(unsafe {
-            core::slice::from_raw_parts(entry.address.cast::<u8>(), total_size)
+            core::slice::from_raw_parts(entry.address.cast::<u8>(), published_alloc_size)
         });
     }
     None

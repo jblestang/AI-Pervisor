@@ -1,7 +1,9 @@
-//! Platform validation and planning errors.
+//! Structured platform validation and planning errors.
+
+use alloc::string::String;
 
 /// Kind of platform error.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlatformErrorKind {
     /// Observed platform does not satisfy requirements.
     Validation,
@@ -32,16 +34,16 @@ impl PlatformError {
     }
 }
 
-impl std::fmt::Display for PlatformError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for PlatformError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}: {}", self.kind, self.message)
     }
 }
 
-impl std::error::Error for PlatformError {}
+impl core::error::Error for PlatformError {}
 
-impl std::fmt::Display for PlatformErrorKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for PlatformErrorKind {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::Validation => write!(f, "platform validation error"),
             Self::Planning => write!(f, "platform planning error"),
@@ -67,8 +69,8 @@ impl PlatformWarning {
     }
 }
 
-impl std::fmt::Display for PlatformWarning {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for PlatformWarning {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "warning: {}", self.message)
     }
 }

@@ -7,7 +7,7 @@ use hv_types::PciBdf;
 use crate::error::{BootError, BootErrorKind};
 
 /// Transfer ABI version number.
-pub const TRANSFER_ABI_VERSION: u32 = 1;
+pub const TRANSFER_ABI_VERSION: u32 = 2;
 
 /// Magic bytes for [`HypervisorTransferHeader`].
 pub const TRANSFER_MAGIC: [u8; 8] = *b"HVTFR\0\0\0";
@@ -53,6 +53,8 @@ pub struct HypervisorTransferHeader {
     pub observation_offset: u32,
     /// Observation payload size in bytes.
     pub observation_size: u32,
+    /// Runtime allocation size published by the loader (must be >= [`Self::total_size`]).
+    pub published_alloc_size: u32,
 }
 
 /// Fixed observation payload prefix before variable tail bytes.
@@ -144,9 +146,7 @@ impl<'a> HypervisorTransferView<'a> {
         if header.version != TRANSFER_ABI_VERSION {
             return Err(transfer_error("unsupported transfer version"));
         }
-        if header.total_size as usize != bytes.len() {
-            return Err(transfer_error("transfer total size mismatch"));
-        }
+        validate_transfer_bounds(&header, bytes.len())?;
         validate_canonical_layout(&header)?;
         let boot_info = slice_at(bytes, header.boot_info_offset, header.boot_info_size)?;
         let observation = slice_at(bytes, header.observation_offset, header.observation_size)?;
@@ -220,14 +220,16 @@ pub fn build_hypervisor_transfer_blob(
         .checked_add(observation_size as usize)
         .ok_or(transfer_error("transfer total size overflow"))?;
 
+    let total_size_u32 = u32_from_len(total_size)?;
     let header = HypervisorTransferHeader {
         magic: TRANSFER_MAGIC,
         version: TRANSFER_ABI_VERSION,
-        total_size: u32_from_len(total_size)?,
+        total_size: total_size_u32,
         boot_info_offset,
         boot_info_size,
         observation_offset,
         observation_size,
+        published_alloc_size: total_size_u32,
     };
 
     let mut blob = alloc::vec::Vec::with_capacity(total_size);
@@ -366,6 +368,46 @@ fn encode_observation_transfer(
     Ok(bytes)
 }
 
+/// Writes `published_alloc_size` into a transfer blob header.
+pub fn patch_published_alloc_size(
+    transfer: &mut [u8],
+    published_alloc_size: u32,
+) -> Result<(), BootError> {
+    if transfer.len() < size_of::<HypervisorTransferHeader>() {
+        return Err(transfer_error("transfer blob shorter than header"));
+    }
+    let header = read_transfer_header(transfer)?;
+    if published_alloc_size < header.total_size {
+        return Err(transfer_error(
+            "published allocation smaller than transfer total size",
+        ));
+    }
+    let offset = size_of::<HypervisorTransferHeader>() - size_of::<u32>();
+    let slot = transfer
+        .get_mut(offset..offset + size_of::<u32>())
+        .ok_or(transfer_error("published allocation offset unavailable"))?;
+    slot.copy_from_slice(&published_alloc_size.to_le_bytes());
+    Ok(())
+}
+
+/// Validates transfer size fields against the available byte slice.
+pub fn validate_transfer_bounds(header: &HypervisorTransferHeader, slice_len: usize) -> Result<(), BootError> {
+    if header.published_alloc_size < header.total_size {
+        return Err(transfer_error(
+            "transfer published allocation smaller than total size",
+        ));
+    }
+    if header.total_size as usize > slice_len {
+        return Err(transfer_error("transfer total size exceeds slice"));
+    }
+    if header.published_alloc_size as usize > slice_len {
+        return Err(transfer_error(
+            "transfer published allocation exceeds slice",
+        ));
+    }
+    Ok(())
+}
+
 fn validate_canonical_layout(header: &HypervisorTransferHeader) -> Result<(), BootError> {
     let header_size = size_of::<HypervisorTransferHeader>();
     if header.boot_info_offset as usize != header_size {
@@ -410,6 +452,7 @@ fn read_transfer_header(bytes: &[u8]) -> Result<HypervisorTransferHeader, BootEr
         boot_info_size: read_u32(header_bytes, &mut offset)?,
         observation_offset: read_u32(header_bytes, &mut offset)?,
         observation_size: read_u32(header_bytes, &mut offset)?,
+        published_alloc_size: read_u32(header_bytes, &mut offset)?,
     })
 }
 
@@ -421,6 +464,7 @@ fn write_transfer_header(out: &mut alloc::vec::Vec<u8>, header: &HypervisorTrans
     write_u32(out, header.boot_info_size);
     write_u32(out, header.observation_offset);
     write_u32(out, header.observation_size);
+    write_u32(out, header.published_alloc_size);
 }
 
 fn read_observation_header(bytes: &[u8]) -> Result<ObservationTransferHeader, BootError> {
@@ -715,7 +759,7 @@ mod tests {
     fn transfer_header_and_observation_header_layouts_are_stable() {
         use core::mem::{align_of, size_of};
 
-        assert_eq!(size_of::<HypervisorTransferHeader>(), 32);
+        assert_eq!(size_of::<HypervisorTransferHeader>(), 36);
         assert_eq!(align_of::<HypervisorTransferHeader>(), 4);
         assert_eq!(size_of::<ObservationTransferHeader>(), 48);
     }
@@ -742,7 +786,7 @@ mod tests {
         )
         .expect("build");
         let header_size = core::mem::size_of::<HypervisorTransferHeader>();
-        assert_eq!(header_size, 32);
+        assert_eq!(header_size, 36);
         let mut non_canonical = blob.clone();
         non_canonical[16..20].copy_from_slice(&64u32.to_le_bytes());
         assert!(HypervisorTransferView::parse(&non_canonical).is_err());
@@ -780,5 +824,58 @@ mod tests {
     fn transfer_constants_match_expected_guid_bytes() {
         assert_eq!(TRANSFER_MAGIC, *b"HVTFR\0\0\0");
         assert_eq!(HV_TRANSFER_TABLE_GUID.as_bytes()[0], 0x75);
+    }
+
+    #[test]
+    fn transfer_parse_accepts_padded_published_allocation() {
+        let blob = build_hypervisor_transfer_blob(
+            &[0xAA; 8],
+            &ObservationTransferParts {
+                cpuid: CpuidTransferSnapshot {
+                    leaf1_ecx: 0,
+                    leaf1_edx: 0,
+                    leaf1_ebx: 0,
+                    leaf80000007_edx: None,
+                    leaf80000008_ecx: None,
+                    leaf480_ecx: None,
+                    leaf480_ebx: None,
+                },
+                memory_map: &[],
+                memory_descriptor_size: 48,
+                acpi_tables: &[],
+                pci_devices: &[],
+            },
+        )
+        .expect("build");
+        let mut padded = blob.clone();
+        let padded_len = padded.len() + 64;
+        padded.resize(padded_len, 0);
+        patch_published_alloc_size(&mut padded, padded_len as u32).expect("patch");
+        HypervisorTransferView::parse(&padded).expect("parse padded transfer");
+    }
+
+    #[test]
+    fn patch_published_alloc_size_rejects_smaller_allocation() {
+        let mut blob = build_hypervisor_transfer_blob(
+            &[0xAA; 8],
+            &ObservationTransferParts {
+                cpuid: CpuidTransferSnapshot {
+                    leaf1_ecx: 0,
+                    leaf1_edx: 0,
+                    leaf1_ebx: 0,
+                    leaf80000007_edx: None,
+                    leaf80000008_ecx: None,
+                    leaf480_ecx: None,
+                    leaf480_ebx: None,
+                },
+                memory_map: &[],
+                memory_descriptor_size: 48,
+                acpi_tables: &[],
+                pci_devices: &[],
+            },
+        )
+        .expect("build");
+        let total = blob.len() as u32;
+        assert!(patch_published_alloc_size(&mut blob, total - 1).is_err());
     }
 }

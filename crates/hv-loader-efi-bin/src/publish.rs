@@ -6,7 +6,7 @@ use core::ptr;
 
 use alloc::vec;
 use alloc::vec::Vec;
-use hv_boot_abi::HypervisorTransferHeader;
+use hv_boot_abi::{patch_published_alloc_size, HypervisorTransferHeader};
 use uefi::boot::{self, AllocateType};
 use uefi::cstr16;
 use uefi::mem::memory_map::MemoryType;
@@ -33,6 +33,11 @@ pub fn publish_hypervisor_transfer(transfer: &[u8]) -> Result<(), &'static str> 
 
     let destination = pages.as_ptr();
     copy_transfer_bytes(destination, transfer)?;
+
+    let published_alloc_size = (page_count * uefi::table::boot::PAGE_SIZE) as u32;
+    let bound_slice = unsafe { core::slice::from_raw_parts_mut(destination, published_alloc_size as usize) };
+    patch_published_alloc_size(bound_slice, published_alloc_size)
+        .map_err(|_| "failed to patch published allocation size")?;
 
     let table_ptr = destination.cast::<c_void>();
     unsafe {

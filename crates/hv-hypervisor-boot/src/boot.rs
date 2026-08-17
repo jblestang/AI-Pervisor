@@ -1,5 +1,7 @@
 //! Hypervisor boot-path validation orchestration.
 
+use alloc::vec::Vec;
+
 use hv_boot_abi::{validate_rsdp_section, BootInfoView};
 use hv_config_model::PlatformRequirements;
 use hv_platform_model::{
@@ -34,7 +36,7 @@ pub fn boot_check(
 
     let observed = observe_platform(observation)?;
     let (validated, warnings) = validate_platform(requirements, &observed)
-        .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.to_string()))?;
+        .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
     Ok((validated, warnings))
 }
 

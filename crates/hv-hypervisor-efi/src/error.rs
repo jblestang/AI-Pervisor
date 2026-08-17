@@ -1,5 +1,6 @@
 //! Hypervisor UEFI entry errors.
 
+use alloc::string::String;
 use core::fmt;
 
 /// Kind of hypervisor UEFI verification error.
@@ -13,6 +14,8 @@ pub enum HypervisorEfiErrorKind {
     Observation,
     /// Embedded requirements snapshot mismatch.
     Requirements,
+    /// Platform validation or VMX init failed.
+    Platform,
 }
 
 /// Structured hypervisor UEFI verification error.
@@ -21,13 +24,16 @@ pub struct HypervisorEfiError {
     /// Error category.
     pub kind: HypervisorEfiErrorKind,
     /// Human-readable message.
-    pub message: &'static str,
+    pub message: String,
 }
 
 impl HypervisorEfiError {
     /// Creates a new hypervisor EFI error.
-    pub const fn new(kind: HypervisorEfiErrorKind, message: &'static str) -> Self {
-        Self { kind, message }
+    pub fn new(kind: HypervisorEfiErrorKind, message: impl Into<String>) -> Self {
+        Self {
+            kind,
+            message: message.into(),
+        }
     }
 }
 
@@ -40,5 +46,18 @@ impl fmt::Display for HypervisorEfiError {
 impl From<hv_boot_abi::BootError> for HypervisorEfiError {
     fn from(err: hv_boot_abi::BootError) -> Self {
         Self::new(HypervisorEfiErrorKind::Transfer, err.message)
+    }
+}
+
+impl From<hv_hypervisor_boot::BootCheckError> for HypervisorEfiError {
+    fn from(err: hv_hypervisor_boot::BootCheckError) -> Self {
+        let kind = match err.kind {
+            hv_hypervisor_boot::BootCheckErrorKind::BootAbi => HypervisorEfiErrorKind::BootInfo,
+            hv_hypervisor_boot::BootCheckErrorKind::Observation => {
+                HypervisorEfiErrorKind::Observation
+            }
+            hv_hypervisor_boot::BootCheckErrorKind::Platform => HypervisorEfiErrorKind::Platform,
+        };
+        Self::new(kind, err.message)
     }
 }

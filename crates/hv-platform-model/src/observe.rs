@@ -1,5 +1,7 @@
 //! CPUID snapshot interpretation for runtime platform observation.
 
+use alloc::string::String;
+
 use hv_boot_abi::{
     UefiMemoryDescriptor, DMAR_FLAGS_OFFSET, DMAR_FLAG_INTR_REMAP, DMAR_MIN_LENGTH, DMAR_SIGNATURE,
     EFI_MEMORY_CONVENTIONAL, UEFI_MEMORY_DESCRIPTOR_MIN_SIZE, UEFI_PAGE_SIZE,

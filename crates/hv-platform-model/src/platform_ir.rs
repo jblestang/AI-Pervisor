@@ -1,5 +1,8 @@
 //! Static platform intermediate representation with resolved host addresses.
 
+use alloc::string::String;
+use alloc::vec::Vec;
+
 use serde::{Deserialize, Serialize};
 
 use hv_types::{ByteSize, HostPhysAddr, IpcChannelId, PciBdf, VmId};

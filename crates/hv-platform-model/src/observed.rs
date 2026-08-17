@@ -1,5 +1,8 @@
 //! Observed platform snapshot populated at boot from CPUID, ACPI, and firmware data.
 
+use alloc::string::String;
+use alloc::vec::Vec;
+
 use serde::{Deserialize, Serialize};
 
 use hv_config_model::{ArchRequirement, SUPPORTED_ARCH};
@@ -55,6 +58,7 @@ impl ObservedPlatform {
 }
 
 /// Parses an observed platform snapshot from JSON text.
+#[cfg(feature = "std")]
 pub fn parse_observed_platform_json(
     contents: &str,
 ) -> Result<ObservedPlatform, crate::error::PlatformError> {
@@ -66,7 +70,7 @@ pub fn parse_observed_platform_json(
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 #[allow(clippy::expect_used)]
 mod tests {
     use super::*;

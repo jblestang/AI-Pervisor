@@ -9,6 +9,9 @@ pub const DEFAULT_FUZZ_RUNS: u32 = 512;
 /// Default configuration path for EFI loader builds.
 pub const DEFAULT_EFI_CONFIG_PATH: &str = "configs/qemu.yaml";
 
+/// Configuration path for OVMF smoke boot (TCG-friendly requirements).
+pub const DEFAULT_OVMF_SMOKE_CONFIG_PATH: &str = "configs/ovmf-smoke.yaml";
+
 /// Default output path for the built UEFI loader image.
 pub const DEFAULT_EFI_OUTPUT_PATH: &str = "build/hv-loader.efi";
 

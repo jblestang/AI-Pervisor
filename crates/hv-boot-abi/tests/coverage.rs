@@ -3,8 +3,8 @@
 #![allow(clippy::expect_used, clippy::indexing_slicing)]
 
 use hv_boot_abi::{
-    descriptor_kind, validate_rsdp_section, AcpiRsdp, BootErrorKind, BootInfoView,
-    BOOT_ABI_VERSION, BOOT_INFO_MAGIC,
+    descriptor_kind, validate_rsdp_section, validate_transfer_bounds, AcpiRsdp, BootErrorKind,
+    BootInfoView, HypervisorTransferHeader, BOOT_ABI_VERSION, BOOT_INFO_MAGIC, TRANSFER_MAGIC,
 };
 use hv_loader::{build_boot_info_blob, BootInfoSection};
 use hv_types::SHA256_DIGEST_BYTES;
@@ -92,6 +92,33 @@ fn parse_rejects_descriptor_section_beyond_declared_size() {
     oversized[12..16].copy_from_slice(&56u32.to_le_bytes());
     let err = BootInfoView::parse(&oversized).expect_err("must fail");
     assert_eq!(err.kind, BootErrorKind::Bounds);
+}
+
+#[test]
+fn validate_transfer_bounds_rejects_inconsistent_sizes() {
+    let header = HypervisorTransferHeader {
+        magic: TRANSFER_MAGIC,
+        version: hv_boot_abi::TRANSFER_ABI_VERSION,
+        total_size: 128,
+        boot_info_offset: 0,
+        boot_info_size: 0,
+        observation_offset: 0,
+        observation_size: 0,
+        published_alloc_size: 64,
+    };
+    assert!(validate_transfer_bounds(&header, 256).is_err());
+    let header = HypervisorTransferHeader {
+        total_size: 512,
+        published_alloc_size: 512,
+        ..header
+    };
+    assert!(validate_transfer_bounds(&header, 256).is_err());
+    let header = HypervisorTransferHeader {
+        total_size: 64,
+        published_alloc_size: 512,
+        ..header
+    };
+    assert!(validate_transfer_bounds(&header, 256).is_err());
 }
 
 fn encode_header_only_blob(digest: [u8; SHA256_DIGEST_BYTES]) -> [u8; 56] {

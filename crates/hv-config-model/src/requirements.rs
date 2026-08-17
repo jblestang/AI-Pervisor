@@ -1,5 +1,9 @@
 //! Platform requirement extraction from normalized configuration.
 
+use alloc::string::String;
+use alloc::vec::Vec;
+
+#[cfg(feature = "std")]
 use crate::normalize::{NormalizedConfig, NormalizedFeatureLevel, NormalizedSmtPolicy};
 use hv_types::{ByteSize, PciBdf, VmId};
 
@@ -101,6 +105,7 @@ impl ArchRequirement {
 }
 
 /// Builds platform requirements from a normalized configuration.
+#[cfg(feature = "std")]
 pub fn platform_requirements(config: &NormalizedConfig) -> PlatformRequirements {
     let mut expected_pci_devices = Vec::new();
     for partition in &config.partitions {
@@ -143,6 +148,7 @@ pub fn platform_requirements(config: &NormalizedConfig) -> PlatformRequirements 
     }
 }
 
+#[cfg(feature = "std")]
 const fn convert_feature(level: NormalizedFeatureLevel) -> FeatureRequirement {
     match level {
         NormalizedFeatureLevel::Required => FeatureRequirement::Required,
@@ -152,6 +158,7 @@ const fn convert_feature(level: NormalizedFeatureLevel) -> FeatureRequirement {
     }
 }
 
+#[cfg(feature = "std")]
 const fn convert_smt(policy: NormalizedSmtPolicy) -> SmtPolicy {
     match policy {
         NormalizedSmtPolicy::Disabled => SmtPolicy::Disabled,
@@ -161,7 +168,7 @@ const fn convert_smt(policy: NormalizedSmtPolicy) -> SmtPolicy {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 #[allow(clippy::expect_used)]
 mod tests {
     use super::*;

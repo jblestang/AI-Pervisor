@@ -9,17 +9,18 @@
 #![deny(clippy::unimplemented)]
 #![deny(clippy::indexing_slicing)]
 
+extern crate alloc;
+
 mod error;
 
-use hv_boot_abi::{
-    decode_observation_transfer, BootInfoView, HypervisorTransferView, RequirementsSnapshot,
-};
+use hv_boot_abi::RequirementsSnapshot;
+use hv_hypervisor_boot::boot_from_transfer_and_init_vmx;
 use hv_types::SHA256_DIGEST_BYTES;
 
 pub use error::{HypervisorEfiError, HypervisorEfiErrorKind};
 
-/// Verifies a loader transfer blob against embedded digest and requirements metadata.
-pub fn verify_hypervisor_transfer(
+/// Runs full Gate B boot validation and mock-backed VMX init from a transfer blob.
+pub fn boot_hypervisor_from_transfer(
     transfer: &[u8],
     expected_config_digest: &[u8; SHA256_DIGEST_BYTES],
     requirements: &RequirementsSnapshot,
@@ -30,16 +31,9 @@ pub fn verify_hypervisor_transfer(
             "requirements snapshot digest mismatch",
         ));
     }
-
-    let view = HypervisorTransferView::parse(transfer).map_err(HypervisorEfiError::from)?;
-    let boot_info = BootInfoView::parse(view.boot_info())
-        .map_err(|err| HypervisorEfiError::new(HypervisorEfiErrorKind::BootInfo, err.message))?;
-    boot_info
-        .verify_config_digest(expected_config_digest)
-        .map_err(|err| HypervisorEfiError::new(HypervisorEfiErrorKind::BootInfo, err.message))?;
-    decode_observation_transfer(view.observation())
-        .map_err(|err| HypervisorEfiError::new(HypervisorEfiErrorKind::Observation, err.message))?;
-    Ok(())
+    boot_from_transfer_and_init_vmx(transfer, requirements)
+        .map(|_| ())
+        .map_err(HypervisorEfiError::from)
 }
 
 #[cfg(test)]
@@ -47,7 +41,7 @@ pub fn verify_hypervisor_transfer(
 mod tests {
     use super::*;
     use hv_config_model::compile_config_from_str;
-    use hv_hypervisor::requirements_snapshot_from_platform;
+    use hv_hypervisor_boot::requirements_snapshot_from_platform;
     use hv_loader::{
         build_hypervisor_transfer, build_loader_handoff, encode_qemu_reference_firmware,
         LoaderHandoffInput,
@@ -57,15 +51,21 @@ mod tests {
         CPUID_480_EBX_PREEMPTION_TIMER_BIT, CPUID_480_ECX_EPT_BIT, CPUID_480_ECX_VPID_BIT,
         CPUID_80000007_EDX_INVARIANT_TSC_BIT,
     };
+    use hv_platform_model::plan_static_platform_ir;
     use hv_types::{PciBdf, PciBus, PciDevice, PciFunction, PciSegment};
 
     #[test]
-    fn verify_hypervisor_transfer_accepts_reference_handoff() {
+    fn boot_hypervisor_from_transfer_accepts_reference_handoff() {
         let yaml = include_str!("../../../configs/qemu.yaml");
         let compiled = compile_config_from_str(yaml).expect("compile");
-        let snapshot =
-            requirements_snapshot_from_platform(&compiled.requirements, compiled.digest.bytes)
-                .expect("snapshot");
+        let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
+        let snapshot = requirements_snapshot_from_platform(
+            &compiled.requirements,
+            compiled.digest.bytes,
+            layout.hypervisor_reserve.host_phys.raw(),
+            layout.hypervisor_reserve.size.bytes(),
+        )
+        .expect("snapshot");
         let firmware = encode_qemu_reference_firmware();
         let handoff = build_loader_handoff(
             &LoaderHandoffInput::with_default_descriptor_size(
@@ -110,43 +110,67 @@ mod tests {
         )
         .expect("handoff");
         let transfer = build_hypervisor_transfer(&handoff).expect("transfer");
-        verify_hypervisor_transfer(&transfer, &compiled.digest.bytes, &snapshot).expect("verify");
+        boot_hypervisor_from_transfer(&transfer, &compiled.digest.bytes, &snapshot)
+            .expect("boot");
     }
 
     #[test]
-    fn verify_hypervisor_transfer_rejects_digest_mismatch() {
+    fn boot_hypervisor_from_transfer_rejects_digest_mismatch() {
         let yaml = include_str!("../../../configs/qemu.yaml");
         let compiled = compile_config_from_str(yaml).expect("compile");
-        let mut snapshot =
-            requirements_snapshot_from_platform(&compiled.requirements, compiled.digest.bytes)
-                .expect("snapshot");
+        let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
+        let mut snapshot = requirements_snapshot_from_platform(
+            &compiled.requirements,
+            compiled.digest.bytes,
+            layout.hypervisor_reserve.host_phys.raw(),
+            layout.hypervisor_reserve.size.bytes(),
+        )
+        .expect("snapshot");
         snapshot.config_digest[0] ^= 0xFF;
-        let transfer = [0u8; 64];
-        let err = verify_hypervisor_transfer(&transfer, &compiled.digest.bytes, &snapshot)
+        let err = boot_hypervisor_from_transfer(&[0u8; 64], &compiled.digest.bytes, &snapshot)
             .expect_err("must fail");
         assert_eq!(err.kind, HypervisorEfiErrorKind::Requirements);
     }
 
     #[test]
-    fn verify_hypervisor_transfer_rejects_invalid_blob() {
+    fn boot_hypervisor_from_transfer_rejects_invalid_blob() {
         let yaml = include_str!("../../../configs/qemu.yaml");
         let compiled = compile_config_from_str(yaml).expect("compile");
-        let snapshot =
-            requirements_snapshot_from_platform(&compiled.requirements, compiled.digest.bytes)
-                .expect("snapshot");
-        let err = verify_hypervisor_transfer(&[0xAA; 16], &compiled.digest.bytes, &snapshot)
+        let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
+        let snapshot = requirements_snapshot_from_platform(
+            &compiled.requirements,
+            compiled.digest.bytes,
+            layout.hypervisor_reserve.host_phys.raw(),
+            layout.hypervisor_reserve.size.bytes(),
+        )
+        .expect("snapshot");
+        let err = boot_hypervisor_from_transfer(&[0xAA; 16], &compiled.digest.bytes, &snapshot)
             .expect_err("must fail");
-        assert_eq!(err.kind, HypervisorEfiErrorKind::Transfer);
+        assert_eq!(err.kind, HypervisorEfiErrorKind::BootInfo);
     }
 
     #[test]
-    fn hypervisor_efi_error_display_and_boot_error_conversion() {
-        let err = HypervisorEfiError::new(HypervisorEfiErrorKind::BootInfo, "bad boot info");
-        assert!(err.to_string().contains("bad boot info"));
-        let converted = HypervisorEfiError::from(hv_boot_abi::BootError::new(
-            hv_boot_abi::BootErrorKind::Bounds,
-            "bad bounds",
-        ));
-        assert_eq!(converted.kind, HypervisorEfiErrorKind::Transfer);
+    fn hypervisor_efi_error_from_boot_check_maps_all_kinds() {
+        use hv_hypervisor_boot::{BootCheckError, BootCheckErrorKind};
+        let boot_abi: HypervisorEfiError =
+            BootCheckError::new(BootCheckErrorKind::BootAbi, "boot").into();
+        assert_eq!(boot_abi.kind, HypervisorEfiErrorKind::BootInfo);
+        let observation: HypervisorEfiError =
+            BootCheckError::new(BootCheckErrorKind::Observation, "obs").into();
+        assert_eq!(observation.kind, HypervisorEfiErrorKind::Observation);
+        let platform: HypervisorEfiError =
+            BootCheckError::new(BootCheckErrorKind::Platform, "plat").into();
+        assert_eq!(platform.kind, HypervisorEfiErrorKind::Platform);
+        assert!(platform.to_string().contains("Platform"));
+    }
+
+    #[test]
+    fn hypervisor_efi_error_from_boot_abi_error() {
+        let err: HypervisorEfiError = hv_boot_abi::BootError::new(
+            hv_boot_abi::BootErrorKind::Parse,
+            "bad transfer",
+        )
+        .into();
+        assert_eq!(err.kind, HypervisorEfiErrorKind::Transfer);
     }
 }

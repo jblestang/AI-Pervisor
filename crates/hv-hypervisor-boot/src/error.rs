@@ -1,5 +1,8 @@
 //! Hypervisor boot-path errors.
 
+use alloc::string::String;
+use core::fmt;
+
 /// Kind of hypervisor boot error.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BootCheckErrorKind {
@@ -30,16 +33,14 @@ impl BootCheckError {
     }
 }
 
-impl std::fmt::Display for BootCheckError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for BootCheckError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}: {}", self.kind, self.message)
     }
 }
 
-impl std::error::Error for BootCheckError {}
-
-impl std::fmt::Display for BootCheckErrorKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for BootCheckErrorKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::BootAbi => write!(f, "boot abi error"),
             Self::Observation => write!(f, "boot observation error"),
@@ -50,7 +51,7 @@ impl std::fmt::Display for BootCheckErrorKind {
 
 impl From<hv_boot_abi::BootError> for BootCheckError {
     fn from(err: hv_boot_abi::BootError) -> Self {
-        Self::new(BootCheckErrorKind::BootAbi, err.to_string())
+        Self::new(BootCheckErrorKind::BootAbi, err.message)
     }
 }
 
@@ -60,7 +61,7 @@ impl From<hv_platform_model::PlatformError> for BootCheckError {
             hv_platform_model::PlatformErrorKind::Observation => BootCheckErrorKind::Observation,
             _ => BootCheckErrorKind::Platform,
         };
-        Self::new(kind, err.to_string())
+        Self::new(kind, err.message)
     }
 }
 

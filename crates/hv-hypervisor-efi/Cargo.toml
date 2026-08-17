@@ -11,11 +11,14 @@ publish = false
 workspace = true
 
 [dependencies]
-hv-boot-abi = { workspace = true }
-hv-types = { workspace = true }
+hv-boot-abi = { path = "../hv-boot-abi" }
+hv-hypervisor-boot = { path = "../hv-hypervisor-boot", default-features = false, features = [] }
+hv-types = { path = "../hv-types" }
 
 [dev-dependencies]
 hv-config-model = { workspace = true }
 hv-hypervisor = { workspace = true }
+hv-hypervisor-boot = { workspace = true }
 hv-loader = { workspace = true }
 hv-observation-types = { workspace = true }
+hv-platform-model = { workspace = true }

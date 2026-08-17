@@ -1,0 +1,28 @@
+[package]
+name = "hv-hypervisor-boot"
+description = "Portable Gate B boot validation and VMX init orchestration"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = ["std"]
+std = ["hv-config-model/std", "hv-platform-model/std"]
+
+[dependencies]
+hv-boot-abi = { path = "../hv-boot-abi" }
+hv-config-model = { path = "../hv-config-model", default-features = false, features = [] }
+hv-observation-types = { path = "../hv-observation-types" }
+hv-platform-model = { path = "../hv-platform-model", default-features = false, features = [] }
+hv-types = { path = "../hv-types" }
+hv-vmx = { path = "../hv-vmx", default-features = false, features = [] }
+
+[dev-dependencies]
+hv-config-model = { workspace = true, features = ["std"] }
+hv-loader = { workspace = true }
+hv-platform-model = { workspace = true, features = ["std"] }
+hv-vmx = { workspace = true }
