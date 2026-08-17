@@ -1,0 +1,47 @@
+schema_version: 1
+platform:
+  name: minimal
+  requirements:
+    arch: x86_64
+    vmx: required
+    ept: required
+    vtd: required
+    min_physical_cores: 1
+    min_ram_gib: 1
+    smt_policy: exclusive_core
+    interrupt_remapping: required
+    x2apic: preferred
+    invariant_tsc: preferred
+    vpid: preferred
+    vmx_preemption_timer: preferred
+    nx: required
+    page_sizes: [4096]
+security:
+  require_mid_in_datapath: false
+qemu:
+  machine: q35
+  cpus: 1
+  memory_mib: 1024
+  cpu_model: qemu64
+  accel: tcg
+  smp_sockets: 1
+  smp_cores: 1
+  smp_threads: 1
+partitions:
+  - id: a
+    vcpus: 1
+    memory_gib: 1
+    cpu_affinity:
+      physical_cores: [0]
+    devices: []
+ipc_channels:
+  - id: ""
+    producer: a
+    consumer: a
+    queue_slots: 4096
+    slot_size_bytes: 2048
+boot:
+  guest_images:
+    - partition: a
+      path: a.elf
+      sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
