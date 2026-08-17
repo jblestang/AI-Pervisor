@@ -12,6 +12,7 @@ workspace = true
 [dependencies]
 hv-boot-abi = { workspace = true }
 hv-config-model = { workspace = true }
+hv-observation-types = { workspace = true }
 hv-types = { workspace = true, features = ["serde"] }
 serde = { workspace = true }
 serde_json = { workspace = true }

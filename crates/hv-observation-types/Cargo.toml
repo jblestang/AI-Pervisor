@@ -1,0 +1,13 @@
+[package]
+name = "hv-observation-types"
+description = "Boot-time observation input types shared by loader and platform model"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+hv-types = { workspace = true }

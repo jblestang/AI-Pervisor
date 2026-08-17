@@ -6,6 +6,7 @@ members = [
     "crates/hv-platform-model",
     "crates/hv-boot-abi",
     "crates/hv-acpi-walk",
+    "crates/hv-observation-types",
     "crates/hv-guest-abi",
     "crates/hv-loader",
     "crates/hv-loader-efi",
@@ -26,6 +27,7 @@ hv-config-model = { path = "crates/hv-config-model" }
 hv-platform-model = { path = "crates/hv-platform-model" }
 hv-boot-abi = { path = "crates/hv-boot-abi" }
 hv-acpi-walk = { path = "crates/hv-acpi-walk" }
+hv-observation-types = { path = "crates/hv-observation-types" }
 hv-loader = { path = "crates/hv-loader" }
 hv-loader-efi = { path = "crates/hv-loader-efi" }
 hv-hypervisor = { path = "crates/hv-hypervisor" }

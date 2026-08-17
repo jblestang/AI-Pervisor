@@ -5,38 +5,47 @@
 use hv_config_model::compile_config_from_str;
 use hv_hypervisor::{boot_check, BootCheckError, BootCheckErrorKind};
 use hv_loader::{build_loader_handoff, encode_empty_acpi_firmware, LoaderHandoffInput};
-use hv_platform_model::{
-    observe_platform, CpuidSnapshot, ObservationInputs, PlatformError, PlatformErrorKind,
-    CPUID_1_ECX_VMX_BIT,
-};
+use hv_observation_types::{CpuidSnapshot, ObservationInputs, CPUID_1_ECX_VMX_BIT};
+use hv_platform_model::{observe_platform, PlatformError, PlatformErrorKind};
 use hv_types::SHA256_DIGEST_BYTES;
 
 fn rsdp_from_firmware(firmware: &hv_loader::FirmwareMemoryImage) -> Vec<u8> {
     firmware.bytes.get(0x1000..0x1000 + 36).expect("rsdp").to_vec()
 }
 
-#[test]
-fn boot_check_rejects_digest_mismatch() {
+fn reference_cpuid() -> CpuidSnapshot {
+    CpuidSnapshot {
+        leaf1_ecx: 1 << CPUID_1_ECX_VMX_BIT,
+        leaf1_edx: 0,
+        leaf1_ebx: 1 << 16,
+        leaf80000007_edx: None,
+        leaf80000008_ecx: None,
+        leaf480_ecx: None,
+        leaf480_ebx: None,
+    }
+}
+
+fn empty_handoff() -> (hv_loader::LoaderHandoff, hv_config_model::CompiledConfig) {
     let yaml = include_str!("../../../configs/qemu.yaml");
     let compiled = compile_config_from_str(yaml).expect("compile");
     let firmware = encode_empty_acpi_firmware();
-    let handoff = build_loader_handoff(&LoaderHandoffInput::with_default_descriptor_size(
-        compiled.digest.bytes,
-        vec![0u8; 48],
-        rsdp_from_firmware(&firmware),
-        firmware,
-        CpuidSnapshot {
-            leaf1_ecx: 1 << CPUID_1_ECX_VMX_BIT,
-            leaf1_edx: 0,
-            leaf1_ebx: 1 << 16,
-            leaf80000007_edx: None,
-            leaf80000008_ecx: None,
-            leaf480_ecx: None,
-            leaf480_ebx: None,
-        },
-        Vec::new(),
-    ))
+    let handoff = build_loader_handoff(
+        &LoaderHandoffInput::with_default_descriptor_size(
+            compiled.digest.bytes,
+            vec![0u8; 48],
+            rsdp_from_firmware(&firmware),
+            reference_cpuid(),
+            Vec::new(),
+        ),
+        &firmware,
+    )
     .expect("handoff");
+    (handoff, compiled)
+}
+
+#[test]
+fn boot_check_rejects_digest_mismatch() {
+    let (handoff, compiled) = empty_handoff();
     let bad = [0xFF; SHA256_DIGEST_BYTES];
     let err = boot_check(
         &handoff.boot_info_blob,
@@ -78,26 +87,7 @@ fn boot_check_rejects_invalid_boot_info() {
 
 #[test]
 fn boot_check_maps_observation_errors() {
-    let yaml = include_str!("../../../configs/qemu.yaml");
-    let compiled = compile_config_from_str(yaml).expect("compile");
-    let firmware = encode_empty_acpi_firmware();
-    let handoff = build_loader_handoff(&LoaderHandoffInput::with_default_descriptor_size(
-        compiled.digest.bytes,
-        vec![0u8; 48],
-        rsdp_from_firmware(&firmware),
-        firmware,
-        CpuidSnapshot {
-            leaf1_ecx: 1 << CPUID_1_ECX_VMX_BIT,
-            leaf1_edx: 0,
-            leaf1_ebx: 1 << 16,
-            leaf80000007_edx: None,
-            leaf80000008_ecx: None,
-            leaf480_ecx: None,
-            leaf480_ebx: None,
-        },
-        Vec::new(),
-    ))
-    .expect("handoff");
+    let (handoff, compiled) = empty_handoff();
     let mut observation = handoff.observation.clone();
     observation.memory_descriptor_size = 8;
     let err = boot_check(
@@ -112,26 +102,7 @@ fn boot_check_maps_observation_errors() {
 
 #[test]
 fn boot_check_rejects_memory_map_mismatch() {
-    let yaml = include_str!("../../../configs/qemu.yaml");
-    let compiled = compile_config_from_str(yaml).expect("compile");
-    let firmware = encode_empty_acpi_firmware();
-    let handoff = build_loader_handoff(&LoaderHandoffInput::with_default_descriptor_size(
-        compiled.digest.bytes,
-        vec![0u8; 48],
-        rsdp_from_firmware(&firmware),
-        firmware,
-        CpuidSnapshot {
-            leaf1_ecx: 1 << CPUID_1_ECX_VMX_BIT,
-            leaf1_edx: 0,
-            leaf1_ebx: 1 << 16,
-            leaf80000007_edx: None,
-            leaf80000008_ecx: None,
-            leaf480_ecx: None,
-            leaf480_ebx: None,
-        },
-        Vec::new(),
-    ))
-    .expect("handoff");
+    let (handoff, compiled) = empty_handoff();
     let mut observation = handoff.observation.clone();
     observation.memory_map.push(0);
     let err = boot_check(
@@ -142,6 +113,21 @@ fn boot_check_rejects_memory_map_mismatch() {
     )
     .expect_err("must fail");
     assert_eq!(err.kind, BootCheckErrorKind::BootAbi);
+}
+
+#[test]
+fn boot_check_maps_platform_validation_errors() {
+    let (handoff, compiled) = empty_handoff();
+    let mut observation = handoff.observation.clone();
+    observation.cpuid.leaf1_ecx = 0;
+    let err = boot_check(
+        &handoff.boot_info_blob,
+        &compiled.digest.bytes,
+        &compiled.requirements,
+        &observation,
+    )
+    .expect_err("must fail");
+    assert_eq!(err.kind, BootCheckErrorKind::Platform);
 }
 
 #[test]

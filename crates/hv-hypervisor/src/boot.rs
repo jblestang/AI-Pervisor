@@ -72,7 +72,6 @@ mod tests {
                 .get(0x1000..0x1000 + 36)
                 .expect("rsdp")
                 .to_vec(),
-            firmware,
             CpuidSnapshot {
                 leaf1_ecx: (1 << CPUID_1_ECX_VMX_BIT) | (1 << CPUID_1_ECX_X2APIC_BIT),
                 leaf1_edx: 1 << CPUID_1_EDX_NX_BIT,
@@ -99,7 +98,7 @@ mod tests {
                 },
             ],
         );
-        let handoff = build_loader_handoff(&input).expect("handoff");
+        let handoff = build_loader_handoff(&input, &firmware).expect("handoff");
         let (validated, warnings) = boot_check(
             &handoff.boot_info_blob,
             &digest,

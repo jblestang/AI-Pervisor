@@ -36,3 +36,14 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y build-essential g++-14 libstdc++-14-dev
       - name: fuzz smoke
         run: cargo xtask fuzz
+  build-efi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.85.0
+      - name: install libfuzzer build deps
+        run: sudo apt-get update && sudo apt-get install -y build-essential g++-14 libstdc++-14-dev
+      - name: build efi loader
+        run: cargo xtask build-efi

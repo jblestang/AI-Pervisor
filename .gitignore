@@ -1,5 +1,8 @@
 /target/
 /build/
+/xtask/build/
+/fuzz/target/
+/crates/hv-loader-efi-bin/target/
 /fuzz/corpus/
 /fuzz/artifacts/
 *.profraw

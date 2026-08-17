@@ -1,5 +1,8 @@
 //! Loader handoff errors.
 
+use core::fmt;
+use alloc::string::{String, ToString};
+
 /// Kind of loader error.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LoaderErrorKind {
@@ -30,16 +33,17 @@ impl LoaderError {
     }
 }
 
-impl std::fmt::Display for LoaderError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for LoaderError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}: {}", self.kind, self.message)
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for LoaderError {}
 
-impl std::fmt::Display for LoaderErrorKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for LoaderErrorKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::BootInfo => write!(f, "loader boot info error"),
             Self::AcpiWalk => write!(f, "loader acpi walk error"),

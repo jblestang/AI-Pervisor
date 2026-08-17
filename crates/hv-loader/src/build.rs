@@ -2,6 +2,8 @@
 
 use core::mem::size_of;
 
+use alloc::vec::Vec;
+
 use hv_boot_abi::{BootError, BootErrorKind, BootInfoDescriptor, BOOT_ABI_VERSION, BOOT_INFO_MAGIC};
 use hv_types::SHA256_DIGEST_BYTES;
 

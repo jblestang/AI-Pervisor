@@ -51,5 +51,6 @@ If observed hardware does not satisfy `PlatformRequirements`, boot must be refus
 | Runtime CPUID/ACPI/firmware ingestion | Implemented (`observe_platform`, loader handoff) |
 | ACPI table discovery | Implemented (`hv-acpi-walk`: RSDP → XSDT/RSDT walk in firmware memory) |
 | Portable UEFI loader entry | Implemented (`hv-loader-efi::uefi_loader_entry`, host-tested) |
-| UEFI `.efi` binary build | Not started (requires `x86_64-unknown-uefi` target; Phase 7+) |
+| UEFI `.efi` binary build | Implemented (`cargo xtask build-efi` → `build/hv-loader.efi`) |
+| OVMF runtime boot | Documented (`docs/ovmf-boot.md`; manual smoke) |
 | VMX/EPT/VT-d enablement | Not started |
