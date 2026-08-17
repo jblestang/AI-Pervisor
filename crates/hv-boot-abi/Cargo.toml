@@ -1,0 +1,13 @@
+[package]
+name = "hv-boot-abi"
+description = "Versioned boot ABI between the UEFI loader and hypervisor"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+hv-types = { workspace = true }
