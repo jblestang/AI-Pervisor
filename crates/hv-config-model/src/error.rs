@@ -126,3 +126,57 @@ impl std::fmt::Display for ConfigWarning {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn config_error_display_with_path() {
+        let err = ConfigError::new(ConfigErrorKind::Syntax, "bad value").with_path("platform.name");
+        let text = err.to_string();
+        assert!(text.contains("syntax error"));
+        assert!(text.contains("platform.name"));
+        assert!(text.contains("bad value"));
+    }
+
+    #[test]
+    fn config_error_display_without_path() {
+        let err = ConfigError::new(ConfigErrorKind::Parse, "invalid yaml");
+        assert_eq!(err.to_string(), "parse error: invalid yaml");
+    }
+
+    #[test]
+    fn config_error_with_file() {
+        let err = ConfigError::new(ConfigErrorKind::Parse, "missing")
+            .with_file(PathBuf::from("/tmp/x.yaml"));
+        assert_eq!(err.file, Some(PathBuf::from("/tmp/x.yaml")));
+    }
+
+    #[test]
+    fn config_error_kind_display_variants() {
+        assert_eq!(ConfigErrorKind::Parse.to_string(), "parse error");
+        assert_eq!(ConfigErrorKind::Syntax.to_string(), "syntax error");
+        assert_eq!(ConfigErrorKind::Semantic.to_string(), "semantic error");
+        assert_eq!(ConfigErrorKind::Arithmetic.to_string(), "arithmetic error");
+        assert_eq!(ConfigErrorKind::Internal.to_string(), "internal error");
+    }
+
+    #[test]
+    fn config_warning_display_with_and_without_path() {
+        let with_path = ConfigWarning::new(WarningKind::Security, "shared core")
+            .with_path("platform.requirements.smt_policy");
+        assert!(with_path.to_string().contains("Security"));
+        assert!(with_path.to_string().contains("shared core"));
+
+        let without_path = ConfigWarning::new(WarningKind::Timing, "jitter");
+        assert!(without_path.to_string().contains("Timing"));
+        assert!(without_path.to_string().contains("jitter"));
+    }
+
+    #[test]
+    fn warning_kind_safety_variant_formats() {
+        let warning = ConfigWarning::new(WarningKind::Safety, "policy");
+        assert!(warning.to_string().contains("Safety"));
+    }
+}

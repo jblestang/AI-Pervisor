@@ -78,7 +78,7 @@ mod tests {
     }
 
     #[test]
-    fn compatibility_check() {
+    fn boot_abi_accepts_compatible_header() {
         let header = BootInfoHeader {
             magic: BOOT_INFO_MAGIC,
             version: BOOT_ABI_VERSION,
@@ -88,5 +88,31 @@ mod tests {
             descriptor_count: 0,
         };
         assert!(boot_abi_is_compatible(&header));
+    }
+
+    #[test]
+    fn boot_abi_rejects_incompatible_version() {
+        let header = BootInfoHeader {
+            magic: BOOT_INFO_MAGIC,
+            version: BOOT_ABI_VERSION + 1,
+            size: core::mem::size_of::<BootInfoHeader>() as u32,
+            config_digest: [0; 32],
+            descriptor_table_offset: 0,
+            descriptor_count: 0,
+        };
+        assert!(!boot_abi_is_compatible(&header));
+    }
+
+    #[test]
+    fn boot_abi_rejects_bad_magic() {
+        let header = BootInfoHeader {
+            magic: *b"BADMAGIC",
+            version: BOOT_ABI_VERSION,
+            size: core::mem::size_of::<BootInfoHeader>() as u32,
+            config_digest: [0; 32],
+            descriptor_table_offset: 0,
+            descriptor_count: 0,
+        };
+        assert!(!boot_abi_is_compatible(&header));
     }
 }

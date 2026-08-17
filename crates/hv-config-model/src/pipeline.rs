@@ -55,3 +55,24 @@ pub fn compile_config(raw: RawConfig) -> Result<CompiledConfig, ConfigError> {
         warnings,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn compile_config_from_path_succeeds() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../configs/qemu.yaml");
+        let compiled = compile_config_from_path(&path).expect("compile");
+        assert_eq!(compiled.normalized.partitions.len(), 3);
+    }
+
+    #[test]
+    fn compile_config_roundtrip() {
+        let yaml = include_str!("../../../configs/qemu.yaml");
+        let raw = crate::parse::load_raw_from_str(yaml).expect("parse");
+        let compiled = compile_config(raw).expect("compile");
+        assert!(!compiled.intent.ipc.is_empty());
+    }
+}

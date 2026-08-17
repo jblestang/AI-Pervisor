@@ -418,6 +418,7 @@ const fn convert_smt(policy: RawSmtPolicy) -> NormalizedSmtPolicy {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
     use crate::parse::load_raw_from_str;

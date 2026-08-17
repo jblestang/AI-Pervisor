@@ -19,6 +19,8 @@ jobs:
         run: cargo clippy --all-targets --all-features -- -D warnings
       - name: test
         run: cargo test --workspace
+      - name: coverage
+        run: cargo xtask coverage
       - name: validate config
         run: cargo xtask config validate configs/qemu.yaml
       - name: build

@@ -323,3 +323,18 @@ fn compute_ipc_shared_bytes(
         })?;
     Ok(ByteSize::new(total))
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod tests {
+    use crate::compile_config_from_str;
+
+    #[test]
+    fn static_intent_ir_populates_memory_and_pci() {
+        let yaml = include_str!("../../../configs/qemu.yaml");
+        let compiled = compile_config_from_str(yaml).expect("compile");
+        assert!(compiled.intent.memory_intent.total_guest_bytes.bytes() > 0);
+        assert!(compiled.intent.memory_intent.total_ipc_bytes.bytes() > 0);
+        assert_eq!(compiled.intent.pci_intent.devices.len(), 2);
+    }
+}

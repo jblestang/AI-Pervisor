@@ -74,6 +74,7 @@ mod tests {
 
     #[test]
     fn gib_to_bytes() {
+        assert_eq!(Gibibyte::new(1).gib(), 1);
         assert_eq!(
             Gibibyte::new(1).to_bytes(),
             Ok(ByteSize::new(1_073_741_824))

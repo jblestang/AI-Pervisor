@@ -135,4 +135,28 @@ mod tests {
         assert_eq!(size_of::<GuestIpcRegion>(), 24);
         assert_eq!(size_of::<GuestDeviceRegion>(), 24);
     }
+
+    #[test]
+    fn guest_abi_compatibility_checks() {
+        let ok = GuestBootInfoHeader {
+            magic: GUEST_BOOT_INFO_MAGIC,
+            version: GUEST_ABI_VERSION,
+            size: size_of::<GuestBootInfoHeader>() as u32,
+            vm_id: VmId::new(0),
+            vcpu_id: VcpuId::new(0),
+            memory_table_offset: 0,
+            memory_region_count: 0,
+            ipc_table_offset: 0,
+            ipc_region_count: 0,
+            device_table_offset: 0,
+            device_region_count: 0,
+        };
+        assert!(guest_abi_is_compatible(&ok));
+
+        let bad_version = GuestBootInfoHeader {
+            version: GUEST_ABI_VERSION + 1,
+            ..ok
+        };
+        assert!(!guest_abi_is_compatible(&bad_version));
+    }
 }

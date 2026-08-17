@@ -26,13 +26,15 @@ pub use intent::{
     BootIntent, CpuPlacementIntent, GuestImageIntent, IpcIntent, MemoryLayoutIntent,
     PartitionIntent, PciDeviceIntent, PciOwnershipIntent, QemuPlanIntent, StaticIntentIR,
 };
-pub use normalize::NormalizedConfig;
+pub use normalize::{normalize, NormalizedConfig};
 pub use parse::{load_raw_from_path, load_raw_from_str};
 pub use pipeline::{
     compile_config, compile_config_from_path, compile_config_from_str, CompiledConfig,
 };
 pub use raw::RawConfig;
 pub use requirements::{
-    ArchRequirement, ExpectedPciDevice, FeatureRequirement, PageSizeSet, PlatformRequirements,
-    SmtPolicy,
+    platform_requirements, ArchRequirement, ExpectedPciDevice, FeatureRequirement, PageSizeSet,
+    PlatformRequirements, SmtPolicy,
 };
+pub use semantic::validate_semantics;
+pub use syntax::validate_syntax;

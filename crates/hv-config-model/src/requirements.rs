@@ -155,3 +155,41 @@ const fn convert_smt(policy: NormalizedSmtPolicy) -> SmtPolicy {
         NormalizedSmtPolicy::AllowCrossPartition => SmtPolicy::AllowCrossPartition,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::compile_config_from_str;
+
+    #[test]
+    fn platform_requirements_match_reference_config() {
+        let yaml = include_str!("../../../configs/qemu.yaml");
+        let compiled = compile_config_from_str(yaml).expect("compile");
+        let req = platform_requirements(&compiled.normalized);
+        assert_eq!(req.arch, ArchRequirement::X86_64);
+        assert_eq!(req.min_physical_cores, 3);
+        assert_eq!(req.expected_pci_devices.len(), 2);
+        assert!(!req.page_sizes.sizes.is_empty());
+    }
+
+    #[test]
+    fn platform_requirements_cover_all_feature_and_smt_variants() {
+        let yaml = include_str!("../tests/fixtures/valid/all_feature_levels.yaml");
+        let compiled = compile_config_from_str(yaml).expect("compile");
+        let req = platform_requirements(&compiled.normalized);
+        assert_eq!(req.vmx, FeatureRequirement::Disabled);
+        assert_eq!(req.ept, FeatureRequirement::Optional);
+        assert_eq!(req.vtd, FeatureRequirement::Preferred);
+        assert_eq!(req.smt_policy, SmtPolicy::SamePartitionSiblings);
+        assert_eq!(req.invariant_tsc, FeatureRequirement::Optional);
+        assert_eq!(req.vpid, FeatureRequirement::Disabled);
+    }
+
+    #[test]
+    fn platform_requirements_cover_allow_cross_partition_smt() {
+        let yaml = include_str!("../tests/fixtures/valid/allow_cross_partition.yaml");
+        let compiled = compile_config_from_str(yaml).expect("compile");
+        let req = platform_requirements(&compiled.normalized);
+        assert_eq!(req.smt_policy, SmtPolicy::AllowCrossPartition);
+    }
+}

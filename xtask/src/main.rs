@@ -1,30 +1,29 @@
-//! Workspace task runner.
+//! Workspace task runner entry point.
 
-#![deny(clippy::unwrap_used)]
-#![deny(clippy::expect_used)]
-#![deny(clippy::panic)]
-#![deny(clippy::unreachable)]
-#![deny(clippy::todo)]
-#![deny(clippy::unimplemented)]
-#![deny(clippy::indexing_slicing)]
-
-use std::process::{self, Command as ProcessCommand};
+use std::process;
 
 use clap::{Parser, Subcommand};
+use xtask::{dispatch_task, TaskCommand};
 
 #[derive(Parser)]
 #[command(name = "xtask", about = "Static hypervisor developer tasks")]
 struct Cli {
     #[command(subcommand)]
-    command: TaskCommand,
+    command: TaskCommandCli,
 }
 
 #[derive(Subcommand)]
-enum TaskCommand {
+enum TaskCommandCli {
     /// Run host unit tests.
     Test,
     /// Build all workspace crates.
     Build,
+    /// Run tests and enforce minimum line coverage.
+    Coverage {
+        /// Minimum required line coverage percentage.
+        #[arg(long, default_value_t = 95)]
+        min_lines: u8,
+    },
     /// Validate a configuration file.
     Config {
         #[command(subcommand)]
@@ -49,6 +48,18 @@ enum ConfigAction {
     },
 }
 
+fn map_command(command: TaskCommandCli) -> TaskCommand {
+    match command {
+        TaskCommandCli::Test => TaskCommand::Test,
+        TaskCommandCli::Build => TaskCommand::Build,
+        TaskCommandCli::Coverage { min_lines } => TaskCommand::Coverage { min_lines },
+        TaskCommandCli::Config { action } => match action {
+            ConfigAction::Validate { path } => TaskCommand::ConfigValidate { path },
+            ConfigAction::Generate { path, output } => TaskCommand::ConfigGenerate { path, output },
+        },
+    }
+}
+
 fn main() {
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
@@ -57,49 +68,5 @@ fn main() {
             process::exit(2);
         }
     };
-    let status = match cli.command {
-        TaskCommand::Test => run("cargo", &["test", "--workspace"]),
-        TaskCommand::Build => run("cargo", &["build", "--workspace"]),
-        TaskCommand::Config { action } => match action {
-            ConfigAction::Validate { path } => run(
-                "cargo",
-                &["run", "-q", "-p", "hv-config", "--", "validate", &path],
-            ),
-            ConfigAction::Generate { path, output } => run(
-                "cargo",
-                &[
-                    "run",
-                    "-q",
-                    "-p",
-                    "hv-config",
-                    "--",
-                    "generate",
-                    &path,
-                    "-o",
-                    &output,
-                ],
-            ),
-        },
-    };
-    process::exit(status);
-}
-
-fn run(program: &str, args: &[&str]) -> i32 {
-    let status = ProcessCommand::new(program).args(args).status();
-    match status {
-        Ok(status) => {
-            if status.success() {
-                0
-            } else {
-                match status.code() {
-                    Some(code) => code,
-                    None => 1,
-                }
-            }
-        }
-        Err(err) => {
-            eprintln!("failed to run {program}: {err}");
-            1
-        }
-    }
+    process::exit(dispatch_task(map_command(cli.command)));
 }

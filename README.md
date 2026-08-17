@@ -6,6 +6,7 @@ Static x86-64 hypervisor workspace (Phases 0–3 foundation).
 
 ```bash
 cargo xtask test
+cargo xtask coverage
 cargo xtask build
 cargo xtask config validate configs/qemu.yaml
 cargo xtask config generate configs/qemu.yaml

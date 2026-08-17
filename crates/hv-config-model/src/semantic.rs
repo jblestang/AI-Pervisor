@@ -66,7 +66,8 @@ pub fn validate_semantics(raw: &RawConfig) -> Result<Vec<ConfigWarning>, ConfigE
     }
 
     validate_ipc_graph(raw, &partition_ids)?;
-    validate_datapath_policy(raw, &partition_ids)?;
+    validate_guest_images(raw, &partition_ids)?;
+    validate_datapath_policy(raw)?;
 
     if raw.platform.requirements.smt_policy == RawSmtPolicy::AllowCrossPartition {
         warnings.push(ConfigWarning::new(
@@ -129,10 +130,36 @@ fn validate_ipc_graph(raw: &RawConfig, partition_ids: &HashSet<String>) -> Resul
     Ok(())
 }
 
-fn validate_datapath_policy(
+fn validate_guest_images(
     raw: &RawConfig,
     partition_ids: &HashSet<String>,
 ) -> Result<(), ConfigError> {
+    for image in &raw.boot.guest_images {
+        if !partition_ids.contains(&image.partition) {
+            return Err(ConfigError::new(
+                ConfigErrorKind::Semantic,
+                format!(
+                    "guest image references unknown partition '{}'",
+                    image.partition
+                ),
+            )
+            .with_path(format!("boot.guest_images[partition={}]", image.partition)));
+        }
+        if image.sha256.len() != 64 || !image.sha256.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Err(ConfigError::new(
+                ConfigErrorKind::Semantic,
+                "guest image sha256 must be 64 hex characters",
+            )
+            .with_path(format!(
+                "boot.guest_images[partition={}].sha256",
+                image.partition
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn validate_datapath_policy(raw: &RawConfig) -> Result<(), ConfigError> {
     if !raw.security.require_mid_in_datapath {
         return Ok(());
     }
@@ -167,29 +194,6 @@ fn validate_datapath_policy(
                 )
                 .with_path("security.require_mid_in_datapath"));
             }
-        }
-    }
-
-    for image in &raw.boot.guest_images {
-        if !partition_ids.contains(&image.partition) {
-            return Err(ConfigError::new(
-                ConfigErrorKind::Semantic,
-                format!(
-                    "guest image references unknown partition '{}'",
-                    image.partition
-                ),
-            )
-            .with_path(format!("boot.guest_images[partition={}]", image.partition)));
-        }
-        if image.sha256.len() != 64 || !image.sha256.chars().all(|c| c.is_ascii_hexdigit()) {
-            return Err(ConfigError::new(
-                ConfigErrorKind::Semantic,
-                "guest image sha256 must be 64 hex characters",
-            )
-            .with_path(format!(
-                "boot.guest_images[partition={}].sha256",
-                image.partition
-            )));
         }
     }
 

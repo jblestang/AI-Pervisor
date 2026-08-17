@@ -41,18 +41,16 @@ pub fn config_digest(config: &NormalizedConfig) -> Result<ConfigDigest, ConfigEr
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use crate::pipeline::compile_config_from_str;
 
     #[test]
-    fn digest_is_stable() {
+    fn digest_is_stable_and_hex_encoded() {
         let yaml = include_str!("../../../configs/qemu.yaml");
         let compiled_a = compile_config_from_str(yaml).expect("compile");
         let compiled_b = compile_config_from_str(yaml).expect("compile");
-        assert_eq!(
-            compiled_a.digest.to_hex(),
-            compiled_b.digest.to_hex(),
-            "config hash must be deterministic"
-        );
+        assert_eq!(compiled_a.digest.to_hex(), compiled_b.digest.to_hex());
+        assert_eq!(compiled_a.digest.to_hex().len(), 64);
     }
 }

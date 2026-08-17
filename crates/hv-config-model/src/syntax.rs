@@ -100,4 +100,41 @@ mod tests {
         let err = validate_syntax(&raw).expect_err("must fail");
         assert_eq!(err.kind, ConfigErrorKind::Syntax);
     }
+
+    #[test]
+    fn rejects_empty_platform_name() {
+        let yaml = include_str!("../tests/fixtures/invalid/empty_platform_name.yaml");
+        let raw = load_raw_from_str(yaml).expect("yaml parse");
+        let err = validate_syntax(&raw).expect_err("must fail");
+        assert_eq!(err.kind, ConfigErrorKind::Syntax);
+    }
+
+    #[test]
+    fn rejects_empty_partitions_list() {
+        let yaml = include_str!("../tests/fixtures/invalid/empty_partitions.yaml");
+        let raw = load_raw_from_str(yaml).expect("yaml parse");
+        let err = validate_syntax(&raw).expect_err("must fail");
+        assert_eq!(err.kind, ConfigErrorKind::Syntax);
+    }
+
+    #[test]
+    fn rejects_zero_vcpus_and_memory() {
+        let yaml = include_str!("../tests/fixtures/invalid/zero_vcpus.yaml");
+        let raw = load_raw_from_str(yaml).expect("yaml parse");
+        assert!(validate_syntax(&raw).is_err());
+
+        let yaml = include_str!("../tests/fixtures/invalid/zero_memory_gib.yaml");
+        let raw = load_raw_from_str(yaml).expect("yaml parse");
+        assert!(validate_syntax(&raw).is_err());
+    }
+
+    #[test]
+    fn rejects_invalid_ipc_fields() {
+        let empty_id = include_str!("../tests/fixtures/invalid/empty_ipc_id.yaml");
+        assert!(validate_syntax(&load_raw_from_str(empty_id).expect("parse")).is_err());
+        let zero_slots = include_str!("../tests/fixtures/invalid/zero_queue_slots.yaml");
+        assert!(validate_syntax(&load_raw_from_str(zero_slots).expect("parse")).is_err());
+        let zero_size = include_str!("../tests/fixtures/invalid/zero_slot_size.yaml");
+        assert!(validate_syntax(&load_raw_from_str(zero_size).expect("parse")).is_err());
+    }
 }

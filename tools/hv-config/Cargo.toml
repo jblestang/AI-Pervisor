@@ -6,9 +6,14 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+[lib]
+name = "hv_config"
+path = "src/lib.rs"
+
 [[bin]]
 name = "hv-config"
 path = "src/main.rs"
+test = false
 
 [lints]
 workspace = true
@@ -17,4 +22,16 @@ workspace = true
 hv-config-model = { workspace = true }
 clap = { workspace = true }
 serde_json = { workspace = true }
-hex = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.27.0"
+
+[[test]]
+name = "cli"
+path = "tests/cli.rs"
+harness = true
+
+[[test]]
+name = "dispatch"
+path = "tests/dispatch.rs"
+harness = true
