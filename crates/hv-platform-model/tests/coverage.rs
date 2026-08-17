@@ -172,6 +172,31 @@ fn observe_platform_without_dmar_reports_no_iommu() {
 }
 
 #[test]
+fn observe_platform_detects_interrupt_remapping_from_spec_dmar() {
+    let mut memory_map = vec![0u8; 48];
+    memory_map[0..4].copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
+    memory_map[24..32].copy_from_slice(&1u64.to_le_bytes());
+    let observed = observe_platform(&ObservationInputs {
+        cpuid: CpuidSnapshot {
+            leaf1_ecx: 0,
+            leaf1_edx: 0,
+            leaf1_ebx: 1 << 16,
+            leaf80000007_edx: None,
+            leaf80000008_ecx: None,
+            leaf480_ecx: None,
+            leaf480_ebx: None,
+        },
+        acpi_tables: hv_boot_abi::encode_reference_dmar_with_intr_remap().to_vec(),
+        memory_map,
+        memory_descriptor_size: 48,
+        pci_devices: Vec::new(),
+    })
+    .expect("observe");
+    assert!(observed.vtd);
+    assert!(observed.interrupt_remapping);
+}
+
+#[test]
 fn cpuid_snapshot_feature_helpers_cover_absent_leaves() {
     let snapshot = CpuidSnapshot {
         leaf1_ecx: 0,

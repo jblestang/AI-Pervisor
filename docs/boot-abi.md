@@ -29,8 +29,14 @@ LoaderHandoffInput (firmware snapshot)
        -> boot info blob + ObservationInputs
   -> hv-hypervisor::boot_check()
        -> BootInfoView::parse + verify_config_digest
+       -> RSDP checksum validation (AcpiRsdp::parse)
+       -> memory-map section cross-check
        -> observe_platform + validate_platform
 ```
+
+RSDP validation covers signature plus ACPI 1.0 / 2.0+ checksums. DMAR interrupt-remapping detection uses `DMAR_FLAGS_OFFSET = 0x25` and respects declared table length.
+
+See [Phase 5 expert review](reviews/phase-5-expert-review.md) for review findings and fixes.
 
 ## Compatibility
 

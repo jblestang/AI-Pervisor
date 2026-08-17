@@ -5,6 +5,7 @@ use core::mem::size_of;
 use hv_types::SHA256_DIGEST_BYTES;
 
 use crate::constants::RSDP_SIGNATURE;
+use crate::acpi::AcpiRsdp;
 use crate::descriptor_kind;
 use crate::error::{BootError, BootErrorKind};
 use crate::{boot_abi_is_compatible, BootInfoDescriptor, BootInfoHeader};
@@ -46,7 +47,9 @@ impl<'a> BootInfoView<'a> {
             ));
         }
 
-        Ok(Self { bytes, header })
+        let view = Self { bytes, header };
+        view.validate_layout()?;
+        Ok(view)
     }
 
     /// Returns the parsed header.
@@ -71,6 +74,7 @@ impl<'a> BootInfoView<'a> {
 
     /// Reads one descriptor by index.
     pub fn descriptor(&self, index: u32) -> Result<BootInfoDescriptor, BootError> {
+        let bounded = self.bounded_bytes()?;
         let table_offset = self.header.descriptor_table_offset as usize;
         let entry_offset = table_offset
             .checked_add(size_of::<BootInfoDescriptor>() * index as usize)
@@ -84,7 +88,7 @@ impl<'a> BootInfoView<'a> {
                 BootErrorKind::Bounds,
                 "descriptor entry overflow",
             ))?;
-        let entry_bytes = self.bytes.get(entry_offset..entry_end).ok_or(
+        let entry_bytes = bounded.get(entry_offset..entry_end).ok_or(
             BootError::new(BootErrorKind::Bounds, "descriptor entry out of bounds"),
         )?;
         read_descriptor(entry_bytes)
@@ -92,6 +96,7 @@ impl<'a> BootInfoView<'a> {
 
     /// Returns the payload bytes for a descriptor.
     pub fn section(&self, descriptor: &BootInfoDescriptor) -> Result<&'a [u8], BootError> {
+        let bounded = self.bounded_bytes()?;
         let start = descriptor.offset as usize;
         let end = start
             .checked_add(descriptor.size as usize)
@@ -99,7 +104,7 @@ impl<'a> BootInfoView<'a> {
                 BootErrorKind::Bounds,
                 "descriptor section overflow",
             ))?;
-        self.bytes
+        bounded
             .get(start..end)
             .ok_or(BootError::new(
                 BootErrorKind::Bounds,
@@ -148,9 +153,54 @@ impl<'a> BootInfoView<'a> {
             None => Ok(None),
         }
     }
+
+    fn validate_layout(&self) -> Result<(), BootError> {
+        let bounded = self.bounded_bytes()?;
+        let declared_size = self.header.size as usize;
+        let table_offset = self.header.descriptor_table_offset as usize;
+        let table_bytes = (self.header.descriptor_count as usize)
+            .checked_mul(size_of::<BootInfoDescriptor>())
+            .ok_or(BootError::new(
+                BootErrorKind::Bounds,
+                "descriptor table size overflow",
+            ))?;
+        let table_end = table_offset.checked_add(table_bytes).ok_or(BootError::new(
+            BootErrorKind::Bounds,
+            "descriptor table end overflow",
+        ))?;
+        if table_end > declared_size {
+            return Err(BootError::new(
+                BootErrorKind::Bounds,
+                "descriptor table exceeds declared boot info size",
+            ));
+        }
+        if table_end > bounded.len() {
+            return Err(BootError::new(
+                BootErrorKind::Bounds,
+                "descriptor table exceeds bounded boot info",
+            ));
+        }
+
+        for index in 0..self.header.descriptor_count {
+            let descriptor = self.descriptor(index)?;
+            let section_end = (descriptor.offset as usize)
+                .checked_add(descriptor.size as usize)
+                .ok_or(BootError::new(
+                    BootErrorKind::Bounds,
+                    "descriptor section end overflow",
+                ))?;
+            if section_end > declared_size {
+                return Err(BootError::new(
+                    BootErrorKind::Bounds,
+                    "descriptor section exceeds declared boot info size",
+                ));
+            }
+        }
+        Ok(())
+    }
 }
 
-/// Validates an ACPI RSDP section signature.
+/// Validates an ACPI RSDP section signature and checksums.
 pub fn validate_rsdp_section(section: &[u8]) -> Result<(), BootError> {
     if section.len() < RSDP_SIGNATURE.len() {
         return Err(BootError::new(
@@ -158,19 +208,7 @@ pub fn validate_rsdp_section(section: &[u8]) -> Result<(), BootError> {
             "RSDP section truncated",
         ));
     }
-    let signature = section
-        .get(0..RSDP_SIGNATURE.len())
-        .ok_or(BootError::new(
-            BootErrorKind::Parse,
-            "RSDP signature unavailable",
-        ))?;
-    if signature != RSDP_SIGNATURE {
-        return Err(BootError::new(
-            BootErrorKind::Parse,
-            "invalid RSDP signature",
-        ));
-    }
-    Ok(())
+    AcpiRsdp::parse(section).map(|_| ())
 }
 
 fn read_header(bytes: &[u8]) -> Result<BootInfoHeader, BootError> {
@@ -286,5 +324,14 @@ mod tests {
         blob[48..52].copy_from_slice(&56u32.to_le_bytes());
         blob[52..56].copy_from_slice(&0u32.to_le_bytes());
         blob
+    }
+
+    #[test]
+    fn rejects_descriptor_table_beyond_declared_size() {
+        let digest = [0u8; SHA256_DIGEST_BYTES];
+        let mut blob = encode_header_only_blob(digest);
+        blob[52..56].copy_from_slice(&1u32.to_le_bytes());
+        let err = BootInfoView::parse(&blob).expect_err("must fail");
+        assert_eq!(err.kind, BootErrorKind::Bounds);
     }
 }

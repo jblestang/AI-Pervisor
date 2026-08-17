@@ -3,7 +3,7 @@
 #![allow(clippy::expect_used, clippy::indexing_slicing)]
 
 use hv_boot_abi::{
-    descriptor_kind, validate_rsdp_section, BootErrorKind, BootInfoView, RSDP_SIGNATURE,
+    descriptor_kind, validate_rsdp_section, AcpiRsdp, BootErrorKind, BootInfoView,
     BOOT_ABI_VERSION, BOOT_INFO_MAGIC,
 };
 use hv_loader::{build_boot_info_blob, BootInfoSection};
@@ -45,7 +45,7 @@ fn boot_info_view_exposes_sections_and_bounded_bytes() {
             },
             BootInfoSection {
                 kind: descriptor_kind::RSDP,
-                data: RSDP_SIGNATURE.to_vec(),
+                data: AcpiRsdp::encode_reference_v2().to_vec(),
             },
         ],
     )
@@ -73,6 +73,28 @@ fn boot_info_view_exposes_sections_and_bounded_bytes() {
 fn validate_rsdp_rejects_bad_signature() {
     let err = validate_rsdp_section(b"BAD SIG").expect_err("must fail");
     assert_eq!(err.kind, BootErrorKind::Parse);
+}
+
+#[test]
+fn validate_rsdp_accepts_reference_v2() {
+    validate_rsdp_section(&AcpiRsdp::encode_reference_v2()).expect("valid rsdp");
+}
+
+#[test]
+fn parse_rejects_descriptor_section_beyond_declared_size() {
+    let digest = [0xDD; SHA256_DIGEST_BYTES];
+    let blob = build_boot_info_blob(
+        digest,
+        &[BootInfoSection {
+            kind: descriptor_kind::MEMORY_MAP,
+            data: vec![0xEE; 32],
+        }],
+    )
+    .expect("build");
+    let mut oversized = blob;
+    oversized[12..16].copy_from_slice(&56u32.to_le_bytes());
+    let err = BootInfoView::parse(&oversized).expect_err("must fail");
+    assert_eq!(err.kind, BootErrorKind::Bounds);
 }
 
 fn encode_header_only_blob(digest: [u8; SHA256_DIGEST_BYTES]) -> [u8; 56] {

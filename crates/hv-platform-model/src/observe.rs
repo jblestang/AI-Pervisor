@@ -1,8 +1,8 @@
 //! CPUID snapshot interpretation for runtime platform observation.
 
 use hv_boot_abi::{
-    DMAR_FLAG_INTR_REMAP, DMAR_FLAGS_OFFSET, DMAR_SIGNATURE, EFI_MEMORY_CONVENTIONAL,
-    UEFI_PAGE_SIZE, UefiMemoryDescriptor,
+    DMAR_FLAG_INTR_REMAP, DMAR_FLAGS_OFFSET, DMAR_MIN_LENGTH, DMAR_SIGNATURE,
+    EFI_MEMORY_CONVENTIONAL, UEFI_MEMORY_DESCRIPTOR_MIN_SIZE, UEFI_PAGE_SIZE, UefiMemoryDescriptor,
 };
 use hv_config_model::SUPPORTED_ARCH;
 use hv_types::ByteSize;
@@ -105,7 +105,7 @@ impl CpuidSnapshot {
 pub struct ObservationInputs {
     /// CPUID snapshot collected by the loader.
     pub cpuid: CpuidSnapshot,
-    /// ACPI table bytes accessible to the hypervisor.
+    /// Flattened ACPI table bytes collected by the loader (interim contract).
     pub acpi_tables: Vec<u8>,
     /// Raw UEFI memory map bytes.
     pub memory_map: Vec<u8>,
@@ -144,7 +144,7 @@ fn bit_set(value: u32, bit: u32) -> bool {
 }
 
 fn sum_conventional_ram(map: &[u8], descriptor_size: usize) -> Result<ByteSize, PlatformError> {
-    if descriptor_size < core::mem::size_of::<UefiMemoryDescriptor>() {
+    if descriptor_size < UEFI_MEMORY_DESCRIPTOR_MIN_SIZE {
         return Err(PlatformError::new(
             PlatformErrorKind::Observation,
             "memory descriptor size too small",
@@ -163,7 +163,7 @@ fn sum_conventional_ram(map: &[u8], descriptor_size: usize) -> Result<ByteSize, 
         let descriptor_bytes = map.get(offset..end).ok_or_else(|| {
             observation_error("memory map descriptor slice unavailable")
         })?;
-        let descriptor = read_memory_descriptor(descriptor_bytes)?;
+        let descriptor = UefiMemoryDescriptor::parse(descriptor_bytes).map_err(boot_to_observation)?;
         if descriptor.typ == EFI_MEMORY_CONVENTIONAL {
             let bytes = descriptor
                 .number_of_pages
@@ -179,53 +179,12 @@ fn sum_conventional_ram(map: &[u8], descriptor_size: usize) -> Result<ByteSize, 
     Ok(ByteSize::new(total))
 }
 
-fn read_memory_descriptor(bytes: &[u8]) -> Result<UefiMemoryDescriptor, PlatformError> {
-    let read_u32 = |start: usize| -> Result<u32, PlatformError> {
-        let slice = bytes
-            .get(start..start + 4)
-            .ok_or_else(|| observation_error("descriptor field truncated"))?;
-        let chunk: [u8; 4] = slice.try_into().map_err(|_| {
-            observation_error("descriptor field truncated")
-        })?;
-        Ok(u32::from_le_bytes(chunk))
-    };
-    let read_u64 = |start: usize| -> Result<u64, PlatformError> {
-        let slice = bytes
-            .get(start..start + 8)
-            .ok_or_else(|| observation_error("descriptor u64 truncated"))?;
-        let chunk: [u8; 8] = slice.try_into().map_err(|_| {
-            observation_error("descriptor u64 truncated")
-        })?;
-        Ok(u64::from_le_bytes(chunk))
-    };
-
-    Ok(UefiMemoryDescriptor {
-        typ: read_u32(0)?,
-        padding: read_u32(4)?,
-        physical_start: read_u64(8)?,
-        virtual_start: read_u64(16)?,
-        number_of_pages: read_u64(24)?,
-        attribute: read_u64(32)?,
-        reserved: read_u64(40)?,
-    })
-}
-
 fn scan_acpi_capabilities(tables: &[u8]) -> Result<(bool, bool), PlatformError> {
     let mut offset = 0usize;
     while offset < tables.len() {
         let header = tables
             .get(offset..offset + 8)
             .ok_or_else(|| observation_error("ACPI header truncated"))?;
-        if header.get(0..4).ok_or_else(|| observation_error("ACPI signature missing"))?
-            == DMAR_SIGNATURE
-        {
-            let flags = tables
-                .get(offset + DMAR_FLAGS_OFFSET)
-                .copied()
-                .ok_or_else(|| observation_error("DMAR flags unavailable"))?;
-            let interrupt_remapping = (flags & DMAR_FLAG_INTR_REMAP) != 0;
-            return Ok((true, interrupt_remapping));
-        }
         let length_bytes = tables
             .get(offset + 4..offset + 8)
             .ok_or_else(|| observation_error("ACPI length truncated"))?;
@@ -236,11 +195,37 @@ fn scan_acpi_capabilities(tables: &[u8]) -> Result<(bool, bool), PlatformError> 
         if length == 0 {
             break;
         }
-        offset = offset
+        let table_end = offset
             .checked_add(length)
             .ok_or_else(|| observation_error("ACPI scan offset overflow"))?;
+        if table_end > tables.len() {
+            return Err(observation_error("ACPI table exceeds provided buffer"));
+        }
+
+        if header.get(0..4).ok_or_else(|| observation_error("ACPI signature missing"))?
+            == DMAR_SIGNATURE
+        {
+            if length < DMAR_MIN_LENGTH {
+                return Err(observation_error("DMAR table shorter than minimum length"));
+            }
+            if table_end <= offset + DMAR_FLAGS_OFFSET {
+                return Err(observation_error("DMAR flags unavailable"));
+            }
+            let flags = tables
+                .get(offset + DMAR_FLAGS_OFFSET)
+                .copied()
+                .ok_or_else(|| observation_error("DMAR flags unavailable"))?;
+            let interrupt_remapping = (flags & DMAR_FLAG_INTR_REMAP) != 0;
+            return Ok((true, interrupt_remapping));
+        }
+
+        offset = table_end;
     }
     Ok((false, false))
+}
+
+fn boot_to_observation(err: hv_boot_abi::BootError) -> PlatformError {
+    PlatformError::new(PlatformErrorKind::Observation, format!("{err}"))
 }
 
 fn observation_error(message: &'static str) -> PlatformError {
@@ -251,7 +236,7 @@ fn observation_error(message: &'static str) -> PlatformError {
 #[allow(clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
-    use hv_boot_abi::UefiMemoryDescriptor;
+    use hv_boot_abi::encode_reference_dmar_with_intr_remap;
     use hv_types::{PciBus, PciDevice, PciFunction, PciSegment};
 
     fn reference_cpuid() -> CpuidSnapshot {
@@ -285,17 +270,10 @@ mod tests {
             attribute: 0,
             reserved: 0,
         });
-        let mut acpi_tables = Vec::new();
-        acpi_tables.extend_from_slice(b"DMAR");
-        acpi_tables.extend_from_slice(&128u32.to_le_bytes());
-        acpi_tables.resize(DMAR_FLAGS_OFFSET + 1, 0);
-        if let Some(flag) = acpi_tables.get_mut(DMAR_FLAGS_OFFSET) {
-            *flag = DMAR_FLAG_INTR_REMAP;
-        }
 
         let inputs = ObservationInputs {
             cpuid: reference_cpuid(),
-            acpi_tables,
+            acpi_tables: encode_reference_dmar_with_intr_remap().to_vec(),
             memory_map,
             memory_descriptor_size: 48,
             pci_devices: vec![PciBdf {
@@ -320,6 +298,36 @@ mod tests {
         let (vtd, interrupt_remapping) = scan_acpi_capabilities(&tables).expect("scan");
         assert!(!vtd);
         assert!(!interrupt_remapping);
+    }
+
+    #[test]
+    fn scan_acpi_rejects_short_dmar_table() {
+        let mut tables = vec![0u8; 16];
+        tables[0..4].copy_from_slice(b"DMAR");
+        tables[4..8].copy_from_slice(&16u32.to_le_bytes());
+        if let Some(flag) = tables.get_mut(DMAR_FLAGS_OFFSET) {
+            *flag = DMAR_FLAG_INTR_REMAP;
+        }
+        let err = scan_acpi_capabilities(&tables).expect_err("must fail");
+        assert_eq!(err.kind, PlatformErrorKind::Observation);
+    }
+
+    #[test]
+    fn sum_conventional_ram_accepts_40_byte_descriptor_stride() {
+        let mut memory_map = vec![0u8; 40];
+        memory_map[0..4].copy_from_slice(&EFI_MEMORY_CONVENTIONAL.to_le_bytes());
+        memory_map[24..32].copy_from_slice(&1u64.to_le_bytes());
+        let ram = sum_conventional_ram(&memory_map, 40).expect("sum");
+        assert_eq!(ram.bytes(), UEFI_PAGE_SIZE);
+    }
+
+    #[test]
+    fn scan_acpi_rejects_table_length_beyond_buffer() {
+        let mut tables = vec![0u8; 8];
+        tables[0..4].copy_from_slice(b"TEST");
+        tables[4..8].copy_from_slice(&64u32.to_le_bytes());
+        let err = scan_acpi_capabilities(&tables).expect_err("must fail");
+        assert_eq!(err.kind, PlatformErrorKind::Observation);
     }
 
     #[test]

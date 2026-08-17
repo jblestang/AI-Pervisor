@@ -23,6 +23,15 @@ pub fn boot_check(
         validate_rsdp_section(rsdp)?;
     }
 
+    if let Some(memory_map) = boot_info.memory_map_section()? {
+        if memory_map != observation.memory_map.as_slice() {
+            return Err(BootCheckError::new(
+                BootCheckErrorKind::BootAbi,
+                "boot info memory map does not match observation input",
+            ));
+        }
+    }
+
     let observed = observe_platform(observation)?;
     let (validated, warnings) = validate_platform(requirements, &observed).map_err(|err| {
         BootCheckError::new(BootCheckErrorKind::Platform, err.to_string())
@@ -34,6 +43,7 @@ pub fn boot_check(
 #[allow(clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use hv_boot_abi::{encode_reference_dmar_with_intr_remap, AcpiRsdp, EFI_MEMORY_CONVENTIONAL};
     use hv_config_model::compile_config_from_str;
     use hv_loader::{build_loader_handoff, LoaderHandoffInput};
     use hv_platform_model::{
@@ -49,23 +59,15 @@ mod tests {
         let compiled = compile_config_from_str(yaml).expect("compile");
         let digest = compiled.digest.bytes;
 
-        let mut acpi_tables = Vec::new();
-        acpi_tables.extend_from_slice(b"DMAR");
-        acpi_tables.extend_from_slice(&128u32.to_le_bytes());
-        acpi_tables.resize(hv_boot_abi::DMAR_FLAGS_OFFSET + 1, 0);
-        if let Some(flag) = acpi_tables.get_mut(hv_boot_abi::DMAR_FLAGS_OFFSET) {
-            *flag = hv_boot_abi::DMAR_FLAG_INTR_REMAP;
-        }
-
         let mut memory_map = vec![0u8; 48];
-        memory_map[0..4].copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
+        memory_map[0..4].copy_from_slice(&EFI_MEMORY_CONVENTIONAL.to_le_bytes());
         memory_map[24..32].copy_from_slice(&(2_097_152u64).to_le_bytes());
 
         let input = LoaderHandoffInput::with_default_descriptor_size(
             digest,
             memory_map,
-            hv_boot_abi::RSDP_SIGNATURE.to_vec(),
-            acpi_tables,
+            AcpiRsdp::encode_reference_v2().to_vec(),
+            encode_reference_dmar_with_intr_remap().to_vec(),
             CpuidSnapshot {
                 leaf1_ecx: (1 << CPUID_1_ECX_VMX_BIT) | (1 << CPUID_1_ECX_X2APIC_BIT),
                 leaf1_edx: 1 << CPUID_1_EDX_NX_BIT,

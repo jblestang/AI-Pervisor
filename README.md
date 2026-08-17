@@ -20,4 +20,5 @@ cargo clippy --all-targets --all-features -- -D warnings
 - [Platform contract](docs/platform-contract.md)
 - [Boot ABI](docs/boot-abi.md)
 - [Proof levels](docs/proof-levels.md)
+- [Phase 5 expert review](docs/reviews/phase-5-expert-review.md)
 - [No-panic policy](docs/no-panic.md)

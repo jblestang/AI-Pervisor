@@ -2,6 +2,7 @@
 
 #![allow(clippy::expect_used, clippy::indexing_slicing)]
 
+use hv_boot_abi::AcpiRsdp;
 use hv_config_model::compile_config_from_str;
 use hv_hypervisor::{boot_check, BootCheckErrorKind};
 use hv_loader::{build_loader_handoff, LoaderHandoffInput};
@@ -18,7 +19,7 @@ fn boot_check_rejects_digest_mismatch() {
     let handoff = build_loader_handoff(&LoaderHandoffInput::with_default_descriptor_size(
         compiled.digest.bytes,
         vec![0u8; 48],
-        hv_boot_abi::RSDP_SIGNATURE.to_vec(),
+        AcpiRsdp::encode_reference_v2().to_vec(),
         Vec::new(),
         CpuidSnapshot {
             leaf1_ecx: 1 << CPUID_1_ECX_VMX_BIT,
@@ -78,7 +79,7 @@ fn boot_check_maps_observation_errors() {
     let handoff = build_loader_handoff(&LoaderHandoffInput::with_default_descriptor_size(
         compiled.digest.bytes,
         vec![0u8; 48],
-        hv_boot_abi::RSDP_SIGNATURE.to_vec(),
+        AcpiRsdp::encode_reference_v2().to_vec(),
         Vec::new(),
         CpuidSnapshot {
             leaf1_ecx: 1 << CPUID_1_ECX_VMX_BIT,
@@ -104,8 +105,41 @@ fn boot_check_maps_observation_errors() {
     assert_eq!(err.kind, BootCheckErrorKind::Observation);
 }
 
-#[test]
-fn boot_check_error_display_covers_all_kinds() {
+    #[test]
+    fn boot_check_rejects_memory_map_mismatch() {
+        let yaml = include_str!("../../../configs/qemu.yaml");
+        let compiled = compile_config_from_str(yaml).expect("compile");
+        let handoff = build_loader_handoff(&LoaderHandoffInput::with_default_descriptor_size(
+            compiled.digest.bytes,
+            vec![0u8; 48],
+            AcpiRsdp::encode_reference_v2().to_vec(),
+            Vec::new(),
+            CpuidSnapshot {
+                leaf1_ecx: 1 << CPUID_1_ECX_VMX_BIT,
+                leaf1_edx: 0,
+                leaf1_ebx: 1 << 16,
+                leaf80000007_edx: None,
+                leaf80000008_ecx: None,
+                leaf480_ecx: None,
+                leaf480_ebx: None,
+            },
+            Vec::new(),
+        ))
+        .expect("handoff");
+        let mut observation = handoff.observation.clone();
+        observation.memory_map.push(0);
+        let err = boot_check(
+            &handoff.boot_info_blob,
+            &compiled.digest.bytes,
+            &compiled.requirements,
+            &observation,
+        )
+        .expect_err("must fail");
+        assert_eq!(err.kind, BootCheckErrorKind::BootAbi);
+    }
+
+    #[test]
+    fn boot_check_error_display_covers_all_kinds() {
     use hv_hypervisor::BootCheckError;
     assert!(BootCheckError::new(BootCheckErrorKind::BootAbi, "x")
         .to_string()

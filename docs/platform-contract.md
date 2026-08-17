@@ -49,5 +49,6 @@ If observed hardware does not satisfy `PlatformRequirements`, boot must be refus
 | ValidatedPlatform | Implemented (fail-closed compare against requirements) |
 | StaticPlatformIR with resolved addresses | Implemented (deterministic planner) |
 | Runtime CPUID/ACPI/firmware ingestion | Implemented (`observe_platform`, loader handoff) |
+| ACPI observation contract | Interim flattened table bytes from loader (RSDP walk in Phase 6+) |
 | UEFI loader binary (`.efi`) | Not started (Phase 6+) |
 | VMX/EPT/VT-d enablement | Not started |

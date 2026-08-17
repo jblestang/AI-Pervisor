@@ -98,7 +98,7 @@ fn append_descriptor(blob: &mut Vec<u8>, descriptor: &BootInfoDescriptor) -> Res
 #[allow(clippy::expect_used)]
 mod tests {
     use super::*;
-    use hv_boot_abi::{descriptor_kind, validate_rsdp_section, BootInfoView, RSDP_SIGNATURE};
+    use hv_boot_abi::{descriptor_kind, validate_rsdp_section, AcpiRsdp, BootInfoView};
 
     #[test]
     fn build_boot_info_blob_is_parseable() {
@@ -112,7 +112,7 @@ mod tests {
                 },
                 BootInfoSection {
                     kind: descriptor_kind::RSDP,
-                    data: RSDP_SIGNATURE.to_vec(),
+                    data: AcpiRsdp::encode_reference_v2().to_vec(),
                 },
             ],
         )
