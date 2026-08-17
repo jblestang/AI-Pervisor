@@ -12,7 +12,7 @@ Each critical requirement declares its validation level using these categories:
 - `PERFORMANCE`
 - `REVIEW`
 
-## Initial matrix (Phases 0–3)
+## Initial matrix (Phases 0–4)
 
 | Requirement | Levels |
 |-------------|--------|
@@ -24,6 +24,8 @@ Each critical requirement declares its validation level using these categories:
 | PCI unique ownership | UNIT + PROPERTY |
 | PlatformRequirements extraction | UNIT |
 | StaticIntentIR determinism | UNIT |
+| ObservedPlatform validation | UNIT |
+| StaticPlatformIR planning | UNIT |
 | Boot ABI layout | UNIT + REVIEW |
 | Guest ABI layout | UNIT + REVIEW |
 | No-panic policy (production code) | REVIEW + CI |

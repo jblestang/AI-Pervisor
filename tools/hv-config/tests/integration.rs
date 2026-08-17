@@ -2,7 +2,10 @@
 
 use std::path::Path;
 
-use hv_config::artifacts::{CONFIG_SHA256, STATIC_INTENT_JSON, STATIC_PLATFORM_RS};
+use hv_config::artifacts::{
+    CONFIG_SHA256, PLATFORM_LAYOUT, STATIC_INTENT_JSON, STATIC_PLATFORM_LAYOUT_JSON,
+    STATIC_PLATFORM_RS,
+};
 use hv_config::validate_config;
 use tempfile::tempdir;
 
@@ -27,6 +30,8 @@ fn generate_writes_artifacts() {
     assert!(output.path().join(CONFIG_SHA256).is_file());
     assert!(output.path().join(STATIC_PLATFORM_RS).is_file());
     assert!(output.path().join(STATIC_INTENT_JSON).is_file());
+    assert!(output.path().join(STATIC_PLATFORM_LAYOUT_JSON).is_file());
+    assert!(output.path().join(PLATFORM_LAYOUT).is_file());
 }
 
 #[test]

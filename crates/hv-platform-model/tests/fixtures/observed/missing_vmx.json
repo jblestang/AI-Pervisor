@@ -1,0 +1,20 @@
+{
+  "arch": "x86_64",
+  "vmx": false,
+  "ept": true,
+  "vtd": true,
+  "physical_cores": 4,
+  "ram_bytes": 8589934592,
+  "smt_enabled": false,
+  "interrupt_remapping": true,
+  "x2apic": true,
+  "invariant_tsc": true,
+  "vpid": true,
+  "vmx_preemption_timer": true,
+  "nx": true,
+  "page_sizes": [4096, 2097152],
+  "pci_devices": [
+    { "segment": 0, "bus": 0, "device": 3, "function": 0 },
+    { "segment": 0, "bus": 0, "device": 4, "function": 0 }
+  ]
+}

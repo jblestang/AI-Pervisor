@@ -1,6 +1,6 @@
 # AI-Pervisor
 
-Static x86-64 hypervisor workspace (Phases 0–3 foundation).
+Static x86-64 hypervisor workspace (Phases 0–4: config pipeline, platform validation, layout planning).
 
 ## Commands
 

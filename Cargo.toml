@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/hv-types",
     "crates/hv-config-model",
+    "crates/hv-platform-model",
     "crates/hv-boot-abi",
     "crates/hv-guest-abi",
     "tools/hv-config",
@@ -18,6 +19,7 @@ rust-version = "1.85"
 [workspace.dependencies]
 hv-types = { path = "crates/hv-types" }
 hv-config-model = { path = "crates/hv-config-model" }
+hv-platform-model = { path = "crates/hv-platform-model" }
 hv-boot-abi = { path = "crates/hv-boot-abi" }
 hv-guest-abi = { path = "crates/hv-guest-abi" }
 serde = { version = "1.0.217", features = ["derive"] }

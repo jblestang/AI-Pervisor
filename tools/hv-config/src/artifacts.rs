@@ -28,3 +28,7 @@ pub const CONFIG_SHA256: &str = "config.sha256";
 pub const STATIC_PLATFORM_RS: &str = "static-platform.rs";
 /// Static intent JSON artifact.
 pub const STATIC_INTENT_JSON: &str = "static-intent.json";
+/// Static platform layout JSON artifact.
+pub const STATIC_PLATFORM_LAYOUT_JSON: &str = "static-platform-layout.json";
+/// Human-readable platform layout summary.
+pub const PLATFORM_LAYOUT: &str = "platform-layout.txt";

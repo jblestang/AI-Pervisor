@@ -42,6 +42,11 @@ Properties:
 
 The digest is written to `build/config/config.sha256` by `cargo xtask config generate`.
 
+Phase 4 additionally emits:
+
+- `static-platform-layout.json` — resolved host physical layout (`StaticPlatformIR`)
+- `platform-layout.txt` — human-readable layout summary
+
 ## Validation
 
 Validation is fail-closed:
