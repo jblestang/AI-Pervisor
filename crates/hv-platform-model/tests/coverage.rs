@@ -1,8 +1,11 @@
 //! Coverage-oriented tests for platform validation and planning edge cases.
 
+#![allow(clippy::expect_used, clippy::indexing_slicing)]
+
 use hv_config_model::{compile_config_from_str, FeatureRequirement, SmtPolicy};
 use hv_platform_model::{
-    parse_observed_platform_json, plan_static_platform_ir, validate_platform, PlatformErrorKind,
+    observe_platform, parse_observed_platform_json, plan_static_platform_ir, validate_platform,
+    CpuidSnapshot, ObservationInputs, PlatformErrorKind,
 };
 
 fn reference_compiled() -> hv_config_model::CompiledConfig {
@@ -119,4 +122,73 @@ fn planner_covers_all_reference_partitions_and_channels() {
     let planned = plan_static_platform_ir(&compiled.intent).expect("plan");
     assert_eq!(planned.platform_name, compiled.intent.platform_name);
     assert!(planned.hypervisor_reserve.size.bytes() > 0);
+}
+
+#[test]
+fn observe_platform_rejects_descriptor_size_too_small() {
+    let err = observe_platform(&ObservationInputs {
+        cpuid: CpuidSnapshot {
+            leaf1_ecx: 0,
+            leaf1_edx: 0,
+            leaf1_ebx: 0,
+            leaf80000007_edx: None,
+            leaf80000008_ecx: None,
+            leaf480_ecx: None,
+            leaf480_ebx: None,
+        },
+        acpi_tables: Vec::new(),
+        memory_map: vec![0u8; 48],
+        memory_descriptor_size: 8,
+        pci_devices: Vec::new(),
+    })
+    .expect_err("must fail");
+    assert_eq!(err.kind, PlatformErrorKind::Observation);
+}
+
+#[test]
+fn observe_platform_without_dmar_reports_no_iommu() {
+    let mut memory_map = vec![0u8; 48];
+    memory_map[0..4].copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
+    memory_map[24..32].copy_from_slice(&1u64.to_le_bytes());
+    let observed = observe_platform(&ObservationInputs {
+        cpuid: CpuidSnapshot {
+            leaf1_ecx: 0,
+            leaf1_edx: 0,
+            leaf1_ebx: (2 << 16) | 2,
+            leaf80000007_edx: None,
+            leaf80000008_ecx: Some(0),
+            leaf480_ecx: None,
+            leaf480_ebx: None,
+        },
+        acpi_tables: Vec::new(),
+        memory_map,
+        memory_descriptor_size: 48,
+        pci_devices: Vec::new(),
+    })
+    .expect("observe");
+    assert!(!observed.vtd);
+    assert!(!observed.interrupt_remapping);
+    assert!(observed.smt_enabled);
+}
+
+#[test]
+fn cpuid_snapshot_feature_helpers_cover_absent_leaves() {
+    let snapshot = CpuidSnapshot {
+        leaf1_ecx: 0,
+        leaf1_edx: 0,
+        leaf1_ebx: 1 << 16,
+        leaf80000007_edx: None,
+        leaf80000008_ecx: None,
+        leaf480_ecx: None,
+        leaf480_ebx: None,
+    };
+    assert!(!snapshot.vmx());
+    assert!(!snapshot.nx());
+    assert!(!snapshot.x2apic());
+    assert!(!snapshot.invariant_tsc());
+    assert!(!snapshot.ept());
+    assert!(!snapshot.vpid());
+    assert!(!snapshot.vmx_preemption_timer());
+    assert!(!snapshot.smt_enabled());
+    assert_eq!(snapshot.physical_cores(), 1);
 }

@@ -8,7 +8,7 @@ Desired configuration (YAML)
         v
 PlatformRequirements
         |
-        | compare (future Phase 8–9)
+        | compare (Phase 5 runtime observation)
         v
 ObservedPlatform
         |
@@ -19,7 +19,7 @@ ValidatedPlatform
 StaticPlatformIR
 ```
 
-Phases 0–3 implement `PlatformRequirements` and `StaticIntentIR`. `ObservedPlatform` and `ValidatedPlatform` are future runtime components built from CPUID, ACPI, and the UEFI memory map.
+Phases 0–3 implement `PlatformRequirements` and `StaticIntentIR`. Phase 4 adds JSON fixture-based `ObservedPlatform` validation. Phase 5 adds runtime observation from CPUID, ACPI table bytes, the UEFI memory map, and PCI BDFs discovered at boot.
 
 ## PlatformRequirements
 
@@ -48,4 +48,6 @@ If observed hardware does not satisfy `PlatformRequirements`, boot must be refus
 | ObservedPlatform | Implemented (`hv-platform-model`, JSON fixtures for tests) |
 | ValidatedPlatform | Implemented (fail-closed compare against requirements) |
 | StaticPlatformIR with resolved addresses | Implemented (deterministic planner) |
-| Runtime CPUID/ACPI/firmware ingestion | Not started (Phase 5+) |
+| Runtime CPUID/ACPI/firmware ingestion | Implemented (`observe_platform`, loader handoff) |
+| UEFI loader binary (`.efi`) | Not started (Phase 6+) |
+| VMX/EPT/VT-d enablement | Not started |

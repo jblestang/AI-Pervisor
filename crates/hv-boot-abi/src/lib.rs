@@ -3,7 +3,7 @@
 //! The ABI uses plain C layouts only. No heap types, references, or Rust-specific
 //! metadata cross this boundary.
 
-#![no_std]
+#![cfg_attr(not(test), no_std)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]
@@ -13,6 +13,21 @@
 #![deny(clippy::indexing_slicing)]
 
 use hv_types::SHA256_DIGEST_BYTES;
+
+mod acpi;
+mod boot_info;
+mod constants;
+mod error;
+mod uefi;
+
+pub use acpi::{AcpiRsdp, AcpiTableHeader};
+pub use boot_info::{validate_rsdp_section, BootInfoView};
+pub use constants::{
+    DMAR_FLAG_INTR_REMAP, DMAR_FLAGS_OFFSET, DMAR_SIGNATURE, EFI_MEMORY_CONVENTIONAL,
+    RSDP_SIGNATURE, UEFI_PAGE_SIZE,
+};
+pub use error::{BootError, BootErrorKind};
+pub use uefi::UefiMemoryDescriptor;
 
 /// Current boot ABI version.
 pub const BOOT_ABI_VERSION: u32 = 1;
@@ -85,7 +100,7 @@ mod tests {
             magic: BOOT_INFO_MAGIC,
             version: BOOT_ABI_VERSION,
             size: size_of::<BootInfoHeader>() as u32,
-            config_digest: [0; 32],
+            config_digest: [0; SHA256_DIGEST_BYTES],
             descriptor_table_offset: 0,
             descriptor_count: 0,
         };
@@ -98,7 +113,7 @@ mod tests {
             magic: BOOT_INFO_MAGIC,
             version: BOOT_ABI_VERSION + 1,
             size: core::mem::size_of::<BootInfoHeader>() as u32,
-            config_digest: [0; 32],
+            config_digest: [0; SHA256_DIGEST_BYTES],
             descriptor_table_offset: 0,
             descriptor_count: 0,
         };
@@ -111,7 +126,7 @@ mod tests {
             magic: *b"BADMAGIC",
             version: BOOT_ABI_VERSION,
             size: core::mem::size_of::<BootInfoHeader>() as u32,
-            config_digest: [0; 32],
+            config_digest: [0; SHA256_DIGEST_BYTES],
             descriptor_table_offset: 0,
             descriptor_count: 0,
         };
