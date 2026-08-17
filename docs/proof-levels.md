@@ -26,6 +26,7 @@ Each critical requirement declares its validation level using these categories:
 | StaticIntentIR determinism | UNIT |
 | Boot ABI layout | UNIT + REVIEW |
 | Guest ABI layout | UNIT + REVIEW |
+| No-panic policy (production code) | REVIEW + CI |
 | ObservedPlatform | QEMU + REAL_HW (future) |
 | VMX / EPT / VT-d hardware | QEMU + REAL_HW (future) |
 | 200 Mbit/s datapath | PERFORMANCE (future) |
