@@ -1,6 +1,6 @@
 # AI-Pervisor
 
-Static x86-64 hypervisor workspace (Phases 0–5: config pipeline, platform validation, boot path).
+Static x86-64 hypervisor workspace (Phases 0–6: config pipeline, platform validation, boot path, ACPI walk).
 
 ## Commands
 
@@ -21,4 +21,5 @@ cargo clippy --all-targets --all-features -- -D warnings
 - [Boot ABI](docs/boot-abi.md)
 - [Proof levels](docs/proof-levels.md)
 - [Phase 5 expert review](docs/reviews/phase-5-expert-review.md)
+- [Phase 6 expert review](docs/reviews/phase-6-expert-review.md)
 - [No-panic policy](docs/no-panic.md)

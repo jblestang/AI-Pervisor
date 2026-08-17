@@ -143,6 +143,14 @@ impl AcpiRsdp {
         write_extended_checksum(&mut rsdp);
         rsdp
     }
+
+    /// Builds a reference RSDP pointing at the given XSDT physical address.
+    pub fn encode_reference_v2_with_xsdt(xsdt_address: u64) -> [u8; 36] {
+        let mut rsdp = Self::encode_reference_v2();
+        rsdp[24..32].copy_from_slice(&xsdt_address.to_le_bytes());
+        write_extended_checksum(&mut rsdp);
+        rsdp
+    }
 }
 
 fn read_signature(bytes: &[u8]) -> Result<[u8; 8], BootError> {
@@ -226,7 +234,19 @@ pub fn encode_reference_dmar_with_intr_remap() -> [u8; 48] {
     if let Some(flag) = table.get_mut(crate::constants::DMAR_FLAGS_OFFSET) {
         *flag = crate::constants::DMAR_FLAG_INTR_REMAP;
     }
+    finalize_acpi_table_checksum(&mut table);
     table
+}
+
+/// Computes the ACPI table checksum byte at offset 9.
+pub fn finalize_acpi_table_checksum(table: &mut [u8]) {
+    if let Some(checksum) = table.get_mut(9) {
+        *checksum = 0;
+    }
+    let sum = table.iter().fold(0u8, |acc, byte| acc.wrapping_add(*byte));
+    if let Some(checksum) = table.get_mut(9) {
+        *checksum = 0u8.wrapping_sub(sum);
+    }
 }
 
 #[cfg(test)]

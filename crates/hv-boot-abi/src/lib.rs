@@ -20,11 +20,14 @@ mod constants;
 mod error;
 mod uefi;
 
-pub use acpi::{encode_reference_dmar_with_intr_remap, AcpiRsdp, AcpiTableHeader};
+pub use acpi::{
+    encode_reference_dmar_with_intr_remap, finalize_acpi_table_checksum, AcpiRsdp,
+    AcpiTableHeader,
+};
 pub use boot_info::{validate_rsdp_section, BootInfoView};
 pub use constants::{
     DMAR_FLAG_INTR_REMAP, DMAR_FLAGS_OFFSET, DMAR_HOST_ADDRESS_WIDTH_OFFSET, DMAR_MIN_LENGTH,
-    DMAR_SIGNATURE, EFI_MEMORY_CONVENTIONAL, RSDP_SIGNATURE, UEFI_MEMORY_DESCRIPTOR_MIN_SIZE,
+    DMAR_SIGNATURE, EFI_MEMORY_CONVENTIONAL, RSDP_REVISION_ACPI2, RSDP_SIGNATURE, UEFI_MEMORY_DESCRIPTOR_MIN_SIZE,
     UEFI_MEMORY_DESCRIPTOR_OVMF_SIZE, UEFI_PAGE_SIZE,
 };
 pub use error::{BootError, BootErrorKind};

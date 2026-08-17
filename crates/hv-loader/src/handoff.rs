@@ -1,7 +1,8 @@
 //! Loader handoff construction from firmware-provided inputs.
 
 use crate::build::{build_boot_info_blob, BootInfoSection};
-use hv_boot_abi::{validate_rsdp_section, BootInfoView, UEFI_MEMORY_DESCRIPTOR_MIN_SIZE};
+use hv_acpi_walk::{collect_acpi_tables, FirmwareMemoryImage};
+use hv_boot_abi::{validate_rsdp_section, AcpiRsdp, BootInfoView, UEFI_MEMORY_DESCRIPTOR_MIN_SIZE};
 use hv_platform_model::{CpuidSnapshot, ObservationInputs};
 use hv_types::{PciBdf, SHA256_DIGEST_BYTES};
 
@@ -19,8 +20,8 @@ pub struct LoaderHandoffInput {
     pub memory_descriptor_size: usize,
     /// ACPI RSDP bytes copied from firmware.
     pub rsdp: Vec<u8>,
-    /// ACPI table bytes reachable from the loader.
-    pub acpi_tables: Vec<u8>,
+    /// Firmware physical memory image used to walk ACPI tables.
+    pub firmware_memory: FirmwareMemoryImage,
     /// CPUID snapshot collected at boot.
     pub cpuid: CpuidSnapshot,
     /// PCI devices discovered by firmware.
@@ -42,7 +43,7 @@ impl LoaderHandoffInput {
         config_digest: [u8; SHA256_DIGEST_BYTES],
         memory_map: Vec<u8>,
         rsdp: Vec<u8>,
-        acpi_tables: Vec<u8>,
+        firmware_memory: FirmwareMemoryImage,
         cpuid: CpuidSnapshot,
         pci_devices: Vec<PciBdf>,
     ) -> Self {
@@ -51,7 +52,7 @@ impl LoaderHandoffInput {
             memory_map,
             memory_descriptor_size: DEFAULT_MEMORY_DESCRIPTOR_SIZE,
             rsdp,
-            acpi_tables,
+            firmware_memory,
             cpuid,
             pci_devices,
         }
@@ -75,6 +76,10 @@ pub fn build_loader_handoff(input: &LoaderHandoffInput) -> Result<LoaderHandoff,
 
     validate_rsdp_section(&input.rsdp).map_err(LoaderError::from)?;
 
+    let parsed_rsdp = AcpiRsdp::parse(&input.rsdp).map_err(LoaderError::from)?;
+    let acpi_tables =
+        collect_acpi_tables(&input.firmware_memory, &parsed_rsdp).map_err(LoaderError::from)?;
+
     let boot_info_blob = build_boot_info_blob(
         input.config_digest,
         &[
@@ -93,7 +98,7 @@ pub fn build_loader_handoff(input: &LoaderHandoffInput) -> Result<LoaderHandoff,
 
     let observation = ObservationInputs {
         cpuid: input.cpuid.clone(),
-        acpi_tables: input.acpi_tables.clone(),
+        acpi_tables,
         memory_map: input.memory_map.clone(),
         memory_descriptor_size: input.memory_descriptor_size,
         pci_devices: input.pci_devices.clone(),
@@ -109,7 +114,7 @@ pub fn build_loader_handoff(input: &LoaderHandoffInput) -> Result<LoaderHandoff,
 #[allow(clippy::expect_used)]
 mod tests {
     use super::*;
-    use hv_boot_abi::AcpiRsdp;
+    use crate::firmware::encode_empty_acpi_firmware;
     use hv_platform_model::{
         CPUID_1_ECX_VMX_BIT, CPUID_1_ECX_X2APIC_BIT, CPUID_1_EDX_NX_BIT,
         CPUID_480_ECX_EPT_BIT, CPUID_480_ECX_VPID_BIT, CPUID_80000007_EDX_INVARIANT_TSC_BIT,
@@ -118,11 +123,20 @@ mod tests {
     #[test]
     fn build_loader_handoff_produces_parseable_boot_info() {
         let digest = [0x11; SHA256_DIGEST_BYTES];
+        let firmware = encode_empty_acpi_firmware();
+        let rsdp = firmware
+            .bytes
+            .get(
+                crate::firmware::reference_addresses::RSDP as usize
+                    ..crate::firmware::reference_addresses::RSDP as usize + 36,
+            )
+            .expect("rsdp slice")
+            .to_vec();
         let input = LoaderHandoffInput::with_default_descriptor_size(
             digest,
             vec![0u8; 48],
-            AcpiRsdp::encode_reference_v2().to_vec(),
-            Vec::new(),
+            rsdp,
+            firmware,
             CpuidSnapshot {
                 leaf1_ecx: (1 << CPUID_1_ECX_VMX_BIT) | (1 << CPUID_1_ECX_X2APIC_BIT),
                 leaf1_edx: 1 << CPUID_1_EDX_NX_BIT,
