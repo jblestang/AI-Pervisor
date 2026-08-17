@@ -13,11 +13,13 @@ use std::path::Path;
 use std::process::Command as ProcessCommand;
 
 mod constants;
+mod ovmf_smoke;
 
 use clap::{Parser, Subcommand};
 use constants::{
     DEFAULT_BOOT_CHAIN_OUTPUT_DIR, DEFAULT_COVERAGE_MIN_LINES, DEFAULT_EFI_CONFIG_PATH,
     DEFAULT_EFI_OUTPUT_PATH, DEFAULT_FUZZ_RUNS, DEFAULT_HYPERVISOR_EFI_OUTPUT_PATH,
+    DEFAULT_OVMF_SMOKE_TIMEOUT_SECS,
 };
 use hv_config::constants::DEFAULT_CONFIG_OUTPUT_DIR;
 
@@ -112,6 +114,16 @@ pub fn run_build_hypervisor_efi(config_path: &str, output_path: &str) -> i32 {
         run_with_cxx_gpp,
         build_hypervisor_efi_image,
     )
+}
+
+/// Runs an OVMF/QEMU smoke boot of the loader + hypervisor chain.
+pub fn run_ovmf_smoke_boot(
+    config_path: &str,
+    boot_chain_dir: &str,
+    timeout_secs: u64,
+    build_first: bool,
+) -> i32 {
+    ovmf_smoke::run_ovmf_smoke_boot(config_path, boot_chain_dir, timeout_secs, build_first)
 }
 
 /// Builds loader and hypervisor `.efi` images into one output directory.
@@ -314,7 +326,7 @@ fn efi_build_command(workspace: &std::path::Path, digest_path: &str) -> ProcessC
     command
 }
 
-fn workspace_root() -> std::path::PathBuf {
+pub(crate) fn workspace_root() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..")
 }
 
@@ -500,6 +512,12 @@ fn dispatch_task_with(task: TaskCommand, runner: fn(&str, &[&str]) -> i32) -> i3
         TaskCommand::BuildBootChain { config, output_dir } => {
             run_build_boot_chain(&config, &output_dir)
         }
+        TaskCommand::OvmfSmokeBoot {
+            config,
+            boot_chain_dir,
+            timeout_secs,
+            build,
+        } => run_ovmf_smoke_boot(&config, &boot_chain_dir, timeout_secs, build),
         TaskCommand::ConfigValidate { path } => run_config_validate(&path),
         TaskCommand::ConfigGenerate { path, output } => run_config_generate(&path, &output),
     }
@@ -562,6 +580,21 @@ enum TaskCommandCli {
         #[arg(long, default_value = DEFAULT_BOOT_CHAIN_OUTPUT_DIR)]
         output_dir: String,
     },
+    /// Boot the loader + hypervisor chain under OVMF/QEMU and verify serial output.
+    OvmfSmokeBoot {
+        /// Path to YAML configuration used when `--build` is set.
+        #[arg(long, default_value = DEFAULT_EFI_CONFIG_PATH)]
+        config: String,
+        /// Directory containing `hv-loader.efi` and `hv-hypervisor.efi`.
+        #[arg(long, default_value = DEFAULT_BOOT_CHAIN_OUTPUT_DIR)]
+        boot_chain_dir: String,
+        /// Maximum seconds to wait for OVMF/QEMU before evaluating the serial log.
+        #[arg(long, default_value_t = DEFAULT_OVMF_SMOKE_TIMEOUT_SECS)]
+        timeout_secs: u64,
+        /// Skip rebuilding the boot chain (requires existing `.efi` images).
+        #[arg(long, default_value_t = false)]
+        no_build: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -595,6 +628,17 @@ pub(crate) fn map_cli_command(command: TaskCommandCli) -> TaskCommand {
         TaskCommandCli::BuildBootChain { config, output_dir } => {
             TaskCommand::BuildBootChain { config, output_dir }
         }
+        TaskCommandCli::OvmfSmokeBoot {
+            config,
+            boot_chain_dir,
+            timeout_secs,
+            no_build,
+        } => TaskCommand::OvmfSmokeBoot {
+            config,
+            boot_chain_dir,
+            timeout_secs,
+            build: !no_build,
+        },
         TaskCommandCli::Config { action } => match action {
             ConfigActionCli::Validate { path } => TaskCommand::ConfigValidate { path },
             ConfigActionCli::Generate { path, output } => {
@@ -652,6 +696,17 @@ pub enum TaskCommand {
         /// Output directory for boot-chain images.
         output_dir: String,
     },
+    /// Boot the loader + hypervisor chain under OVMF/QEMU and verify serial output.
+    OvmfSmokeBoot {
+        /// Path to YAML configuration used when building the boot chain.
+        config: String,
+        /// Directory containing `hv-loader.efi` and `hv-hypervisor.efi`.
+        boot_chain_dir: String,
+        /// Maximum seconds to wait for OVMF/QEMU before evaluating the serial log.
+        timeout_secs: u64,
+        /// Build the boot chain before launching QEMU.
+        build: bool,
+    },
     /// Validate a configuration file.
     ConfigValidate {
         /// Path to YAML configuration.
@@ -694,6 +749,7 @@ mod tests {
     use crate::constants::{
         DEFAULT_BOOT_CHAIN_OUTPUT_DIR, DEFAULT_COVERAGE_MIN_LINES, DEFAULT_EFI_CONFIG_PATH,
         DEFAULT_EFI_OUTPUT_PATH, DEFAULT_FUZZ_RUNS, DEFAULT_HYPERVISOR_EFI_OUTPUT_PATH,
+        DEFAULT_OVMF_SMOKE_TIMEOUT_SECS,
     };
     use hv_config::constants::DEFAULT_CONFIG_OUTPUT_DIR;
 
@@ -980,6 +1036,24 @@ mod tests {
             TaskCommand::BuildBootChain {
                 config: String::from(DEFAULT_EFI_CONFIG_PATH),
                 output_dir: String::from(DEFAULT_BOOT_CHAIN_OUTPUT_DIR),
+            }
+        );
+        assert_eq!(
+            parse_task_command(["xtask", "ovmf-smoke-boot"]).expect("parse ovmf smoke boot"),
+            TaskCommand::OvmfSmokeBoot {
+                config: String::from(DEFAULT_EFI_CONFIG_PATH),
+                boot_chain_dir: String::from(DEFAULT_BOOT_CHAIN_OUTPUT_DIR),
+                timeout_secs: DEFAULT_OVMF_SMOKE_TIMEOUT_SECS,
+                build: true,
+            }
+        );
+        assert_eq!(
+            parse_task_command(["xtask", "ovmf-smoke-boot", "--no-build"]).expect("parse no build"),
+            TaskCommand::OvmfSmokeBoot {
+                config: String::from(DEFAULT_EFI_CONFIG_PATH),
+                boot_chain_dir: String::from(DEFAULT_BOOT_CHAIN_OUTPUT_DIR),
+                timeout_secs: DEFAULT_OVMF_SMOKE_TIMEOUT_SECS,
+                build: false,
             }
         );
     }

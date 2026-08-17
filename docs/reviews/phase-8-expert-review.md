@@ -33,7 +33,7 @@ Multi-domain review of hypervisor transfer, UEFI chain-load, and PCI firmware en
 ### Documented (deferred)
 
 11. **Full platform validation on UEFI** — Hypervisor firmware entry verifies transfer structure and digests only; VMX/EPT/VT-d enablement and full observed-platform validation remain host-tested until Phase 9+.
-12. **OVMF CI runtime boot** — CI builds boot-chain images; QEMU/OVMF runtime smoke boot remains manual (`docs/ovmf-boot.md`).
+12. **OVMF CI runtime boot** — `cargo xtask ovmf-smoke-boot` launches OVMF/QEMU in CI and verifies firmware serial output after `build-boot-chain`.
 13. **Production PCI discovery** — No ECAM/`PciRootBridgeIo`, no bridge recursion, bus walk stops at first empty bus; sufficient for reference QEMU topology only.
 14. **Transfer slice hardening** — Hypervisor UEFI entry trusts `header.total_size` from runtime memory when forming the slice; allocation-size binding is Phase 9+ hardening.
 15. **Requirements snapshot metadata** — `partition_id` / device `kind` strings omitted from snapshot; BDF + vm_id validation only today.
@@ -56,6 +56,7 @@ Multi-domain review of hypervisor transfer, UEFI chain-load, and PCI firmware en
 - `cargo clippy --all-targets --all-features -- -D warnings` — pass
 - `cargo xtask coverage` — pass (≥ 95% line coverage)
 - `cargo xtask build-boot-chain` — produces `build/boot-chain/hv-loader.efi` and `hv-hypervisor.efi`
+- `cargo xtask ovmf-smoke-boot --no-build` — pass (OVMF/QEMU serial log shows boot attempt without Aborted)
 - `cargo clippy --release --target x86_64-unknown-uefi --manifest-path crates/hv-loader-efi-bin/Cargo.toml -- -D warnings` — pass
 
 ## Review status
