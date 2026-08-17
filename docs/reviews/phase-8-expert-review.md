@@ -44,11 +44,11 @@ Multi-domain review of hypervisor transfer, UEFI chain-load, and PCI firmware en
 
 ## Verification
 
-- `cargo test --workspace`
-- `cargo clippy --all-targets --all-features -- -D warnings`
-- `cargo xtask coverage`
-- `cargo xtask build-boot-chain`
+- `cargo test --workspace` — pass
+- `cargo clippy --all-targets --all-features -- -D warnings` — pass
+- `cargo xtask coverage` — pass (≥ 95% line coverage)
+- `cargo xtask build-boot-chain` — produces `build/boot-chain/hv-loader.efi` and `hv-hypervisor.efi`
 
 ## Review status
 
-All MUST and SHOULD items above are applied. Deferred items are documented with explicit phase ownership.
+All MUST and SHOULD items above are applied. Deferred items are documented with explicit phase ownership. PR **#7** is ready for human review.

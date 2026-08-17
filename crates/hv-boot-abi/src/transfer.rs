@@ -550,7 +550,7 @@ fn write_u32(out: &mut alloc::vec::Vec<u8>, value: u32) {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used)]
+#[allow(clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
     use hv_types::{PciBus, PciDevice, PciFunction, PciSegment};

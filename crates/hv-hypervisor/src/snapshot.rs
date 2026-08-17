@@ -301,9 +301,16 @@ mod tests {
         assert!(requirements_snapshot_from_platform(&requirements, compiled.digest.bytes).is_err());
 
         requirements = compiled.requirements.clone();
-        requirements.expected_pci_devices = (0..=MAX_REQUIREMENTS_PCI_DEVICES)
-            .map(|index| compiled.requirements.expected_pci_devices[0].clone())
-            .collect();
+        let device = compiled
+            .requirements
+            .expected_pci_devices
+            .first()
+            .expect("device")
+            .clone();
+        requirements.expected_pci_devices =
+            (0..=MAX_REQUIREMENTS_PCI_DEVICES)
+                .map(|_| device.clone())
+                .collect();
         assert!(requirements_snapshot_from_platform(&requirements, compiled.digest.bytes).is_err());
     }
 }
