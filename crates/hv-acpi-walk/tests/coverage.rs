@@ -4,7 +4,7 @@
 
 use hv_acpi_walk::{
     collect_acpi_tables, AcpiWalkErrorKind, FirmwareMemoryImage, PhysicalMemory,
-    ACPI_TABLE_HEADER_LENGTH,
+    ACPI_TABLE_HEADER_LENGTH, ACPI_TABLE_MAX_LENGTH,
 };
 use hv_boot_abi::{finalize_acpi_table_checksum, AcpiRsdp, encode_reference_dmar_with_intr_remap};
 
@@ -104,6 +104,33 @@ fn collect_acpi_tables_skips_null_xsdt_entries() {
 }
 
 #[test]
+fn collect_acpi_tables_rejects_declared_length_above_limit() {
+    let table_address = 0x3000u64;
+    let xsdt_address = 0x2000u64;
+    let mut xsdt = vec![0u8; ACPI_TABLE_HEADER_LENGTH + 8];
+    xsdt[0..4].copy_from_slice(b"XSDT");
+    xsdt[ACPI_TABLE_HEADER_LENGTH..ACPI_TABLE_HEADER_LENGTH + 8]
+        .copy_from_slice(&table_address.to_le_bytes());
+    let xsdt_length = xsdt.len() as u32;
+    xsdt[4..8].copy_from_slice(&xsdt_length.to_le_bytes());
+    finalize_acpi_table_checksum(&mut xsdt);
+
+    let mut table_header = vec![0u8; ACPI_TABLE_HEADER_LENGTH];
+    table_header[0..4].copy_from_slice(b"DMAR");
+    table_header[4..8].copy_from_slice(&((ACPI_TABLE_MAX_LENGTH + 1) as u32).to_le_bytes());
+
+    let rsdp = AcpiRsdp::encode_reference_v2_with_xsdt(xsdt_address);
+    let mut image = vec![0u8; 0x4000];
+    image[xsdt_address as usize..xsdt_address as usize + xsdt.len()].copy_from_slice(&xsdt);
+    image[table_address as usize..table_address as usize + table_header.len()]
+        .copy_from_slice(&table_header);
+    let memory = FirmwareMemoryImage::new(0, image);
+    let parsed = AcpiRsdp::parse(&rsdp).expect("parse");
+    let err = collect_acpi_tables(&memory, &parsed).expect_err("must fail");
+    assert_eq!(err.kind, AcpiWalkErrorKind::Bounds);
+}
+
+#[test]
 fn collect_acpi_tables_rejects_invalid_root_table_checksum() {
     let xsdt_address = 0x2000u64;
     let mut xsdt = vec![0u8; ACPI_TABLE_HEADER_LENGTH];
@@ -119,4 +146,69 @@ fn collect_acpi_tables_rejects_invalid_root_table_checksum() {
     let parsed = AcpiRsdp::parse(&rsdp).expect("parse");
     let err = collect_acpi_tables(&memory, &parsed).expect_err("must fail");
     assert_eq!(err.kind, AcpiWalkErrorKind::Parse);
+}
+
+fn encode_xsdt_with_entry_pointers(pointers: &[u64]) -> Vec<u8> {
+    let mut xsdt = vec![0u8; ACPI_TABLE_HEADER_LENGTH + pointers.len() * 8];
+    xsdt[0..4].copy_from_slice(b"XSDT");
+    for (index, pointer) in pointers.iter().enumerate() {
+        let start = ACPI_TABLE_HEADER_LENGTH + index * 8;
+        xsdt[start..start + 8].copy_from_slice(&pointer.to_le_bytes());
+    }
+    let length = xsdt.len() as u32;
+    xsdt[4..8].copy_from_slice(&length.to_le_bytes());
+    finalize_acpi_table_checksum(&mut xsdt);
+    xsdt
+}
+
+fn encode_large_table(signature: &[u8; 4], total_length: usize) -> Vec<u8> {
+    let mut table = vec![0u8; total_length];
+    table[0..4].copy_from_slice(signature);
+    table[4..8].copy_from_slice(&(total_length as u32).to_le_bytes());
+    finalize_acpi_table_checksum(&mut table);
+    table
+}
+
+#[test]
+fn collect_acpi_tables_rejects_excessive_root_entries() {
+    use hv_acpi_walk::ACPI_ROOT_MAX_ENTRIES;
+
+    let xsdt_address = 0x2000u64;
+    let pointers = vec![0u64; ACPI_ROOT_MAX_ENTRIES + 1];
+    let xsdt = encode_xsdt_with_entry_pointers(&pointers);
+    let rsdp = AcpiRsdp::encode_reference_v2_with_xsdt(xsdt_address);
+    let mut image = vec![0u8; 0x4000];
+    image[xsdt_address as usize..xsdt_address as usize + xsdt.len()].copy_from_slice(&xsdt);
+    let memory = FirmwareMemoryImage::new(0, image);
+    let parsed = AcpiRsdp::parse(&rsdp).expect("parse");
+    let err = collect_acpi_tables(&memory, &parsed).expect_err("must fail");
+    assert_eq!(err.kind, AcpiWalkErrorKind::Bounds);
+}
+
+#[test]
+fn collect_acpi_tables_rejects_collected_byte_limit() {
+    use hv_acpi_walk::{ACPI_COLLECTED_MAX_BYTES, ACPI_TABLE_MAX_LENGTH};
+
+    let table_length = ACPI_TABLE_MAX_LENGTH;
+    let tables_needed = ACPI_COLLECTED_MAX_BYTES / table_length + 1;
+    let table_stride = table_length as u64;
+    let mut pointers = Vec::with_capacity(tables_needed);
+    for index in 0..tables_needed {
+        pointers.push(0x1_0000_0000u64 + index as u64 * table_stride);
+    }
+    let xsdt_address = 0x2000u64;
+    let xsdt = encode_xsdt_with_entry_pointers(&pointers);
+    let image_end = pointers.last().expect("pointer") + table_stride;
+    let mut image = vec![0u8; image_end as usize];
+    for pointer in &pointers {
+        let table = encode_large_table(b"TEST", table_length);
+        let start = *pointer as usize;
+        image[start..start + table.len()].copy_from_slice(&table);
+    }
+    image[xsdt_address as usize..xsdt_address as usize + xsdt.len()].copy_from_slice(&xsdt);
+    let rsdp = AcpiRsdp::encode_reference_v2_with_xsdt(xsdt_address);
+    let memory = FirmwareMemoryImage::new(0, image);
+    let parsed = AcpiRsdp::parse(&rsdp).expect("parse");
+    let err = collect_acpi_tables(&memory, &parsed).expect_err("must fail");
+    assert_eq!(err.kind, AcpiWalkErrorKind::Bounds);
 }

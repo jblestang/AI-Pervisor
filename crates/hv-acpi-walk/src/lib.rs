@@ -17,7 +17,8 @@ mod physical;
 mod walk;
 
 pub use constants::{
-    ACPI_TABLE_HEADER_LENGTH, RSDT_ENTRY_SIZE, RSDT_SIGNATURE, XSDT_ENTRY_SIZE, XSDT_SIGNATURE,
+    ACPI_COLLECTED_MAX_BYTES, ACPI_ROOT_MAX_ENTRIES, ACPI_TABLE_HEADER_LENGTH,
+    ACPI_TABLE_MAX_LENGTH, RSDT_ENTRY_SIZE, RSDT_SIGNATURE, XSDT_ENTRY_SIZE, XSDT_SIGNATURE,
 };
 pub use error::{AcpiWalkError, AcpiWalkErrorKind};
 pub use physical::{FirmwareMemoryImage, PhysicalMemory};

@@ -1,6 +1,6 @@
 //! Firmware memory fixtures and ACPI image builders for loader tests.
 
-#![allow(clippy::indexing_slicing)]
+#![allow(clippy::indexing_slicing, clippy::expect_used)]
 
 use hv_acpi_walk::{ACPI_TABLE_HEADER_LENGTH, FirmwareMemoryImage};
 use hv_boot_abi::{finalize_acpi_table_checksum, AcpiRsdp, encode_reference_dmar_with_intr_remap};
@@ -65,8 +65,11 @@ fn encode_xsdt_with_table(table_address: u64) -> Vec<u8> {
 
 fn write_at(image: &mut [u8], address: u64, data: &[u8]) {
     let start = address as usize;
-    let end = start + data.len();
-    if let Some(slice) = image.get_mut(start..end) {
-        slice.copy_from_slice(data);
-    }
+    let end = start
+        .checked_add(data.len())
+        .expect("firmware fixture write overflow");
+    image
+        .get_mut(start..end)
+        .expect("firmware fixture write out of bounds")
+        .copy_from_slice(data);
 }

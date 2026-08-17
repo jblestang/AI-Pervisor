@@ -4,7 +4,8 @@ use hv_boot_abi::AcpiRsdp;
 use hv_boot_abi::RSDP_REVISION_ACPI2;
 
 use crate::constants::{
-    ACPI_TABLE_HEADER_LENGTH, RSDT_ENTRY_SIZE, RSDT_SIGNATURE, XSDT_ENTRY_SIZE, XSDT_SIGNATURE,
+    ACPI_COLLECTED_MAX_BYTES, ACPI_ROOT_MAX_ENTRIES, ACPI_TABLE_HEADER_LENGTH,
+    ACPI_TABLE_MAX_LENGTH, RSDT_ENTRY_SIZE, RSDT_SIGNATURE, XSDT_ENTRY_SIZE, XSDT_SIGNATURE,
 };
 use crate::error::{AcpiWalkError, AcpiWalkErrorKind};
 use crate::physical::PhysicalMemory;
@@ -87,6 +88,7 @@ fn append_nested_tables(
     ))?)?;
 
     let mut entry_offset = ACPI_TABLE_HEADER_LENGTH;
+    let mut entries_processed = 0usize;
     while entry_offset
         .checked_add(entry_size)
         .ok_or(AcpiWalkError::new(
@@ -95,6 +97,19 @@ fn append_nested_tables(
         ))?
         <= root_length
     {
+        if entries_processed >= ACPI_ROOT_MAX_ENTRIES {
+            return Err(AcpiWalkError::new(
+                AcpiWalkErrorKind::Bounds,
+                "ACPI root table entry count exceeds limit",
+            ));
+        }
+        entries_processed = entries_processed
+            .checked_add(1)
+            .ok_or(AcpiWalkError::new(
+                AcpiWalkErrorKind::Bounds,
+                "ACPI root entry count overflow",
+            ))?;
+
         let pointer = read_entry_pointer(root_table, entry_offset, entry_size)?;
         if pointer != 0 {
             let table = read_table(memory, pointer)?;
@@ -114,6 +129,19 @@ fn append_nested_tables(
             validate_table_checksum(table.get(0..table_length).ok_or(
                 AcpiWalkError::new(AcpiWalkErrorKind::Bounds, "table bounded slice unavailable"),
             )?)?;
+            let next_len = output
+                .len()
+                .checked_add(table_length)
+                .ok_or(AcpiWalkError::new(
+                    AcpiWalkErrorKind::Bounds,
+                    "collected ACPI table bytes overflow",
+                ))?;
+            if next_len > ACPI_COLLECTED_MAX_BYTES {
+                return Err(AcpiWalkError::new(
+                    AcpiWalkErrorKind::Bounds,
+                    "collected ACPI table bytes exceed limit",
+                ));
+            }
             output.extend_from_slice(table.get(0..table_length).ok_or(
                 AcpiWalkError::new(AcpiWalkErrorKind::Bounds, "table append slice unavailable"),
             )?);
@@ -137,6 +165,12 @@ fn read_table(memory: &impl PhysicalMemory, address: u64) -> Result<alloc::vec::
         return Err(AcpiWalkError::new(
             AcpiWalkErrorKind::Bounds,
             "ACPI table length smaller than header",
+        ));
+    }
+    if length > ACPI_TABLE_MAX_LENGTH {
+        return Err(AcpiWalkError::new(
+            AcpiWalkErrorKind::Bounds,
+            "ACPI table declared length exceeds limit",
         ));
     }
     let mut table = alloc::vec![0u8; length];

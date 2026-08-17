@@ -57,15 +57,7 @@ impl PhysicalMemory for FirmwareMemoryImage {
             AcpiWalkErrorKind::Memory,
             "physical read slice unavailable",
         ))?;
-        for (index, byte) in buffer.iter_mut().enumerate() {
-            let value = slice
-                .get(index)
-                .ok_or(AcpiWalkError::new(
-                    AcpiWalkErrorKind::Memory,
-                    "physical read byte missing",
-                ))?;
-            *byte = *value;
-        }
+        buffer.copy_from_slice(slice);
         Ok(())
     }
 }
