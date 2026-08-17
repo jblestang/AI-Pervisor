@@ -26,7 +26,7 @@ pub use intent::{
     BootIntent, CpuPlacementIntent, GuestImageIntent, IpcIntent, MemoryLayoutIntent,
     PartitionIntent, PciDeviceIntent, PciOwnershipIntent, QemuPlanIntent, StaticIntentIR,
 };
-pub use normalize::{normalize, NormalizedConfig};
+pub use normalize::{normalize, NormalizedConfig, NormalizedSmtPolicy};
 pub use parse::{load_raw_from_path, load_raw_from_str};
 pub use pipeline::{
     compile_config, compile_config_from_path, compile_config_from_str, CompiledConfig,

@@ -235,6 +235,7 @@ fn dfs_has_cycle(node: &str, edges: &[(String, String)], visiting: &mut HashSet<
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
     use crate::parse::load_raw_from_str;
@@ -255,5 +256,21 @@ mod tests {
             let edges = vec![(producer.clone(), producer)];
             prop_assert!(has_cycle(&edges));
         }
+    }
+
+    #[test]
+    fn datapath_policy_ignores_devices_without_role() {
+        let yaml = include_str!("../tests/fixtures/valid/datapath_device_without_role.yaml");
+        let raw = load_raw_from_str(yaml).expect("parse");
+        crate::syntax::validate_syntax(&raw).expect("syntax");
+        validate_semantics(&raw).expect("semantic");
+    }
+
+    #[test]
+    fn datapath_policy_skips_same_partition_ingress_and_egress() {
+        let yaml = include_str!("../tests/fixtures/valid/datapath_same_partition_gateway.yaml");
+        let raw = load_raw_from_str(yaml).expect("parse");
+        crate::syntax::validate_syntax(&raw).expect("syntax");
+        validate_semantics(&raw).expect("semantic");
     }
 }

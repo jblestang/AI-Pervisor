@@ -109,6 +109,40 @@ fn all_feature_levels_fixture_compiles() {
 }
 
 #[test]
+fn smt_disabled_fixture_compiles() {
+    let yaml = load_fixture("valid/smt_disabled.yaml");
+    let compiled = match compile_config_from_str(&yaml) {
+        Ok(compiled) => compiled,
+        Err(err) => {
+            assert!(false, "compile: {err}");
+            return;
+        }
+    };
+    assert_eq!(
+        compiled.normalized.requirements.smt_policy,
+        hv_config_model::NormalizedSmtPolicy::Disabled
+    );
+}
+
+#[test]
+fn datapath_device_without_role_compiles_under_mid_policy() {
+    let yaml = load_fixture("valid/datapath_device_without_role.yaml");
+    match compile_config_from_str(&yaml) {
+        Ok(_) => {}
+        Err(err) => assert!(false, "compile: {err}"),
+    }
+}
+
+#[test]
+fn datapath_same_partition_gateway_compiles() {
+    let yaml = load_fixture("valid/datapath_same_partition_gateway.yaml");
+    match compile_config_from_str(&yaml) {
+        Ok(_) => {}
+        Err(err) => assert!(false, "compile: {err}"),
+    }
+}
+
+#[test]
 fn syntax_rejects_empty_platform_name() {
     assert_syntax_error("invalid/empty_platform_name.yaml");
 }

@@ -36,6 +36,23 @@ fn compile_rejects_guest_memory_sum_overflow() {
 }
 
 #[test]
+fn compile_rejects_ipc_sum_overflow() {
+    let yaml = include_str!("fixtures/invalid/ipc_sum_overflow.yaml");
+    let err = compile_config_from_str(yaml).expect_err("ipc sum overflow");
+    assert_eq!(err.kind, ConfigErrorKind::Arithmetic);
+}
+
+#[test]
+fn smt_disabled_fixture_normalizes_disabled_policy() {
+    let yaml = include_str!("fixtures/valid/smt_disabled.yaml");
+    let compiled = compile_config_from_str(yaml).expect("compile smt disabled");
+    assert_eq!(
+        compiled.normalized.requirements.smt_policy,
+        hv_config_model::NormalizedSmtPolicy::Disabled
+    );
+}
+
+#[test]
 fn normalize_rejects_invalid_device_bdf() {
     let yaml = include_str!("../../../configs/qemu.yaml");
     let mut raw = load_raw_from_str(yaml).expect("parse");

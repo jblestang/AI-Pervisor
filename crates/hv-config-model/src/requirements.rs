@@ -157,6 +157,7 @@ const fn convert_smt(policy: NormalizedSmtPolicy) -> SmtPolicy {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
     use crate::compile_config_from_str;
@@ -191,5 +192,17 @@ mod tests {
         let compiled = compile_config_from_str(yaml).expect("compile");
         let req = platform_requirements(&compiled.normalized);
         assert_eq!(req.smt_policy, SmtPolicy::AllowCrossPartition);
+    }
+
+    #[test]
+    fn platform_requirements_cover_disabled_smt() {
+        let yaml = include_str!("../tests/fixtures/valid/smt_disabled.yaml");
+        let compiled = compile_config_from_str(yaml).expect("compile");
+        let req = platform_requirements(&compiled.normalized);
+        assert_eq!(req.smt_policy, SmtPolicy::Disabled);
+        assert_eq!(
+            compiled.normalized.requirements.smt_policy,
+            crate::normalize::NormalizedSmtPolicy::Disabled
+        );
     }
 }

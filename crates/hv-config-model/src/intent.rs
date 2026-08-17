@@ -307,12 +307,7 @@ fn compute_ipc_shared_bytes(
     queue_slots: u32,
     slot_size_bytes: u32,
 ) -> Result<ByteSize, crate::error::ConfigError> {
-    let per_slot = u64::from(slot_size_bytes).checked_add(64).ok_or_else(|| {
-        crate::error::ConfigError::new(
-            crate::error::ConfigErrorKind::Arithmetic,
-            "ipc slot metadata overflow",
-        )
-    })?;
+    let per_slot = u64::from(slot_size_bytes) + 64;
     let total = per_slot
         .checked_mul(u64::from(queue_slots))
         .ok_or_else(|| {

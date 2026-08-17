@@ -8,8 +8,11 @@
 #![deny(clippy::unimplemented)]
 #![deny(clippy::indexing_slicing)]
 
+use std::ffi::OsString;
 use std::path::Path;
 use std::process::Command as ProcessCommand;
+
+use clap::{Parser, Subcommand};
 
 /// Runs `cargo test --workspace`.
 pub fn run_tests() -> i32 {
@@ -67,6 +70,72 @@ fn dispatch_task_with(task: TaskCommand, runner: fn(&str, &[&str]) -> i32) -> i3
         TaskCommand::ConfigValidate { path } => run_config_validate(&path),
         TaskCommand::ConfigGenerate { path, output } => run_config_generate(&path, &output),
     }
+}
+
+#[derive(Parser, Debug)]
+#[command(name = "xtask", about = "Static hypervisor developer tasks")]
+struct Cli {
+    #[command(subcommand)]
+    command: TaskCommandCli,
+}
+
+#[derive(Subcommand, Debug)]
+enum TaskCommandCli {
+    /// Run host unit tests.
+    Test,
+    /// Build all workspace crates.
+    Build,
+    /// Run tests and enforce minimum line coverage.
+    Coverage {
+        /// Minimum required line coverage percentage.
+        #[arg(long, default_value_t = 95)]
+        min_lines: u8,
+    },
+    /// Validate a configuration file.
+    Config {
+        #[command(subcommand)]
+        action: ConfigActionCli,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum ConfigActionCli {
+    /// Validate configuration semantics and syntax.
+    Validate {
+        /// Path to YAML configuration.
+        path: String,
+    },
+    /// Generate configuration artifacts.
+    Generate {
+        /// Path to YAML configuration.
+        path: String,
+        /// Output directory.
+        #[arg(short, long, default_value = "build/config")]
+        output: String,
+    },
+}
+
+/// Maps CLI subcommands to library dispatch values.
+pub(crate) fn map_cli_command(command: TaskCommandCli) -> TaskCommand {
+    match command {
+        TaskCommandCli::Test => TaskCommand::Test,
+        TaskCommandCli::Build => TaskCommand::Build,
+        TaskCommandCli::Coverage { min_lines } => TaskCommand::Coverage { min_lines },
+        TaskCommandCli::Config { action } => match action {
+            ConfigActionCli::Validate { path } => TaskCommand::ConfigValidate { path },
+            ConfigActionCli::Generate { path, output } => TaskCommand::ConfigGenerate { path, output },
+        },
+    }
+}
+
+/// Parses CLI arguments into a [`TaskCommand`].
+pub fn parse_task_command<I, T>(args: I) -> Result<TaskCommand, clap::Error>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString> + Clone,
+{
+    let cli = Cli::try_parse_from(args)?;
+    Ok(map_cli_command(cli.command))
 }
 
 /// Parsed xtask subcommands used by the CLI and tests.
@@ -197,5 +266,43 @@ mod tests {
             dispatch_task(TaskCommand::ConfigGenerate { path, output }),
             0
         );
+    }
+
+    #[test]
+    fn parse_task_command_covers_all_subcommands() {
+        assert_eq!(
+            parse_task_command(["xtask", "test"]).expect("parse test"),
+            TaskCommand::Test
+        );
+        assert_eq!(
+            parse_task_command(["xtask", "build"]).expect("parse build"),
+            TaskCommand::Build
+        );
+        assert_eq!(
+            parse_task_command(["xtask", "coverage", "--min-lines", "95"]).expect("parse coverage"),
+            TaskCommand::Coverage { min_lines: 95 }
+        );
+        assert_eq!(
+            parse_task_command(["xtask", "config", "validate", "cfg.yaml"]).expect("parse validate"),
+            TaskCommand::ConfigValidate {
+                path: String::from("cfg.yaml")
+            }
+        );
+        assert_eq!(
+            parse_task_command(["xtask", "config", "generate", "cfg.yaml"]).expect("parse generate"),
+            TaskCommand::ConfigGenerate {
+                path: String::from("cfg.yaml"),
+                output: String::from("build/config"),
+            }
+        );
+    }
+
+    #[test]
+    fn public_run_tests_wrapper_executes_once() {
+        if std::env::var("XTASK_COVER_RUN_TESTS").is_ok() {
+            return;
+        }
+        std::env::set_var("XTASK_COVER_RUN_TESTS", "1");
+        assert_eq!(run_tests(), 0);
     }
 }
