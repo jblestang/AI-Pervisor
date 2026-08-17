@@ -295,6 +295,7 @@ dependencies = [
  "hv-boot-abi",
  "hv-config-model",
  "hv-loader",
+ "hv-observation-types",
  "hv-platform-model",
  "hv-types",
 ]
@@ -305,7 +306,7 @@ version = "0.1.0"
 dependencies = [
  "hv-acpi-walk",
  "hv-boot-abi",
- "hv-platform-model",
+ "hv-observation-types",
  "hv-types",
 ]
 
@@ -313,10 +314,18 @@ dependencies = [
 name = "hv-loader-efi"
 version = "0.1.0"
 dependencies = [
+ "hv-acpi-walk",
  "hv-boot-abi",
  "hv-config-model",
  "hv-loader",
- "hv-platform-model",
+ "hv-observation-types",
+ "hv-types",
+]
+
+[[package]]
+name = "hv-observation-types"
+version = "0.1.0"
+dependencies = [
  "hv-types",
 ]
 
@@ -326,6 +335,7 @@ version = "0.1.0"
 dependencies = [
  "hv-boot-abi",
  "hv-config-model",
+ "hv-observation-types",
  "hv-types",
  "proptest",
  "serde",

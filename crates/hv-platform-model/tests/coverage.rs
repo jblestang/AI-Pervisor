@@ -77,7 +77,8 @@ fn validate_emits_preferred_feature_warnings() {
     json = json.replace("\"x2apic\": true", "\"x2apic\": false");
     json = json.replace("\"vpid\": true", "\"vpid\": false");
     let observed = parse_observed_platform_json(&json).expect("parse");
-    let (_validated, warnings) = validate_platform(&compiled.requirements, &observed).expect("validate");
+    let (_validated, warnings) =
+        validate_platform(&compiled.requirements, &observed).expect("validate");
     assert_eq!(warnings.len(), 2);
 }
 
@@ -99,7 +100,8 @@ fn validate_warns_when_smt_enabled_under_exclusive_core_policy() {
     let mut json = reference_observed_json();
     json = json.replace("\"smt_enabled\": false", "\"smt_enabled\": true");
     let observed = parse_observed_platform_json(&json).expect("parse");
-    let (_validated, warnings) = validate_platform(&compiled.requirements, &observed).expect("validate");
+    let (_validated, warnings) =
+        validate_platform(&compiled.requirements, &observed).expect("validate");
     assert_eq!(warnings.len(), 1);
 }
 
@@ -108,7 +110,10 @@ fn validate_rejects_each_required_feature_when_missing() {
     let compiled = reference_compiled();
     for field in ["vmx", "ept", "vtd", "interrupt_remapping", "nx"] {
         let mut json = reference_observed_json();
-        json = json.replace(&format!("\"{field}\": true"), &format!("\"{field}\": false"));
+        json = json.replace(
+            &format!("\"{field}\": true"),
+            &format!("\"{field}\": false"),
+        );
         let observed = parse_observed_platform_json(&json).expect("parse");
         let err = validate_platform(&compiled.requirements, &observed).expect_err("must fail");
         assert!(err.message.contains(field));

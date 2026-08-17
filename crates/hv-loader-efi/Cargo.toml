@@ -9,11 +9,17 @@ rust-version.workspace = true
 [lints]
 workspace = true
 
+[features]
+default = ["std"]
+std = ["hv-loader/std"]
+
 [dependencies]
+hv-acpi-walk = { workspace = true }
 hv-loader = { workspace = true }
-hv-platform-model = { workspace = true }
+hv-observation-types = { workspace = true }
 hv-types = { workspace = true }
 
 [dev-dependencies]
 hv-boot-abi = { workspace = true }
 hv-config-model = { workspace = true }
+hv-loader = { workspace = true, features = ["std"] }

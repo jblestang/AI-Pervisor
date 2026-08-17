@@ -1,8 +1,6 @@
 //! Platform requirement extraction from normalized configuration.
 
-use crate::normalize::{
-    NormalizedConfig, NormalizedFeatureLevel, NormalizedSmtPolicy,
-};
+use crate::normalize::{NormalizedConfig, NormalizedFeatureLevel, NormalizedSmtPolicy};
 use hv_types::{ByteSize, PciBdf, VmId};
 
 /// Supported architecture requirement.

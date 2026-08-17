@@ -9,11 +9,16 @@ rust-version.workspace = true
 [lints]
 workspace = true
 
+[features]
+default = ["std"]
+std = []
+
 [dependencies]
 hv-acpi-walk = { workspace = true }
 hv-boot-abi = { workspace = true }
-hv-platform-model = { workspace = true }
+hv-observation-types = { workspace = true }
 hv-types = { workspace = true }
 
 [dev-dependencies]
 hv-boot-abi = { workspace = true }
+hv-observation-types = { workspace = true }

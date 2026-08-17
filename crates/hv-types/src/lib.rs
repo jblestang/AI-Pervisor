@@ -19,10 +19,10 @@ mod units;
 pub use arith::{
     align_down, align_up, checked_add_usize, checked_mul_usize, is_aligned, ArithmeticError,
 };
+pub use constants::{BYTES_PER_GIB, BYTES_PER_MIB, SHA256_DIGEST_BYTES, SHA256_HEX_LEN};
 pub use ids::{
     ApicId, GuestPhysAddr, GuestVirtAddr, HostPhysAddr, HostVirtAddr, InterruptVector,
     IommuDomainId, Iova, IpcChannelId, LogicalCpuId, PackageId, PciBdf, PciBus, PciDevice,
     PciFunction, PciSegment, PhysicalCoreId, VcpuId, VmId,
 };
-pub use constants::{BYTES_PER_GIB, BYTES_PER_MIB, SHA256_DIGEST_BYTES, SHA256_HEX_LEN};
 pub use units::{ByteSize, Gibibyte, Mebibyte, PageCount};

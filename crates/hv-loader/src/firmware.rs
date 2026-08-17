@@ -2,8 +2,8 @@
 
 #![allow(clippy::indexing_slicing, clippy::expect_used)]
 
-use hv_acpi_walk::{ACPI_TABLE_HEADER_LENGTH, FirmwareMemoryImage};
-use hv_boot_abi::{finalize_acpi_table_checksum, AcpiRsdp, encode_reference_dmar_with_intr_remap};
+use hv_acpi_walk::{FirmwareMemoryImage, ACPI_TABLE_HEADER_LENGTH};
+use hv_boot_abi::{encode_reference_dmar_with_intr_remap, finalize_acpi_table_checksum, AcpiRsdp};
 
 /// Physical addresses used by the reference QEMU firmware fixture.
 pub mod reference_addresses {

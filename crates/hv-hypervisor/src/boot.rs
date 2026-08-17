@@ -33,9 +33,8 @@ pub fn boot_check(
     }
 
     let observed = observe_platform(observation)?;
-    let (validated, warnings) = validate_platform(requirements, &observed).map_err(|err| {
-        BootCheckError::new(BootCheckErrorKind::Platform, err.to_string())
-    })?;
+    let (validated, warnings) = validate_platform(requirements, &observed)
+        .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.to_string()))?;
     Ok((validated, warnings))
 }
 
@@ -72,16 +71,13 @@ mod tests {
                 .get(0x1000..0x1000 + 36)
                 .expect("rsdp")
                 .to_vec(),
-            firmware,
             CpuidSnapshot {
                 leaf1_ecx: (1 << CPUID_1_ECX_VMX_BIT) | (1 << CPUID_1_ECX_X2APIC_BIT),
                 leaf1_edx: 1 << CPUID_1_EDX_NX_BIT,
                 leaf1_ebx: (4 << 16) | 4,
                 leaf80000007_edx: Some(1 << CPUID_80000007_EDX_INVARIANT_TSC_BIT),
                 leaf80000008_ecx: Some(3),
-                leaf480_ecx: Some(
-                    (1 << CPUID_480_ECX_EPT_BIT) | (1 << CPUID_480_ECX_VPID_BIT),
-                ),
+                leaf480_ecx: Some((1 << CPUID_480_ECX_EPT_BIT) | (1 << CPUID_480_ECX_VPID_BIT)),
                 leaf480_ebx: Some(1 << CPUID_480_EBX_PREEMPTION_TIMER_BIT),
             },
             vec![
@@ -99,7 +95,7 @@ mod tests {
                 },
             ],
         );
-        let handoff = build_loader_handoff(&input).expect("handoff");
+        let handoff = build_loader_handoff(&input, &firmware).expect("handoff");
         let (validated, warnings) = boot_check(
             &handoff.boot_info_blob,
             &digest,

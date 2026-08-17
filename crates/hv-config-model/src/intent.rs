@@ -3,9 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::constants::{hypervisor_reserve_bytes, IPC_SLOT_METADATA_BYTES};
-use crate::normalize::{
-    NormalizedConfig, NormalizedPartition,
-};
+use crate::normalize::{NormalizedConfig, NormalizedPartition};
 use crate::requirements::PlatformRequirements;
 use hv_types::{ByteSize, IpcChannelId, PciBdf, VmId};
 

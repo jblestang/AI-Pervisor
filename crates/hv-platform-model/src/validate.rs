@@ -1,8 +1,6 @@
 //! Fail-closed comparison between compile-time requirements and observed platform.
 
-use hv_config_model::{
-    FeatureRequirement, PlatformRequirements, SmtPolicy,
-};
+use hv_config_model::{FeatureRequirement, PlatformRequirements, SmtPolicy};
 
 use crate::error::{PlatformError, PlatformErrorKind, PlatformWarning};
 use crate::observed::ObservedPlatform;
@@ -34,7 +32,12 @@ pub fn validate_platform(
         observed.interrupt_remapping,
         &mut warnings,
     )?;
-    check_feature("x2apic", requirements.x2apic, observed.x2apic, &mut warnings)?;
+    check_feature(
+        "x2apic",
+        requirements.x2apic,
+        observed.x2apic,
+        &mut warnings,
+    )?;
     check_feature(
         "invariant_tsc",
         requirements.invariant_tsc,

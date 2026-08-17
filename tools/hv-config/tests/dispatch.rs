@@ -10,9 +10,7 @@ use hv_config::{dispatch_config, validate_config, ConfigCommand};
 fn dispatch_validate_and_generate_reference_config() {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../configs/qemu.yaml");
     assert_eq!(
-        dispatch_config(ConfigCommand::Validate {
-            path: path.clone()
-        }),
+        dispatch_config(ConfigCommand::Validate { path: path.clone() }),
         0
     );
     let output = tempfile::tempdir().expect("tempdir");
@@ -29,8 +27,5 @@ fn dispatch_validate_and_generate_reference_config() {
 fn validate_config_rejects_missing_file_via_dispatch() {
     let path = PathBuf::from("/no/such/config.yaml");
     assert_eq!(validate_config(&path), 1);
-    assert_eq!(
-        dispatch_config(ConfigCommand::Validate { path }),
-        1
-    );
+    assert_eq!(dispatch_config(ConfigCommand::Validate { path }), 1);
 }

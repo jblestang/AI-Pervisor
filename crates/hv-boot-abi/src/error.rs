@@ -55,10 +55,7 @@ mod tests {
         let err = BootError::new(BootErrorKind::Parse, "truncated header");
         assert!(err.to_string().contains("boot parse error"));
         assert!(err.to_string().contains("truncated header"));
-        assert_eq!(
-            BootErrorKind::Incompatible.to_string(),
-            "boot incompatible"
-        );
+        assert_eq!(BootErrorKind::Incompatible.to_string(), "boot incompatible");
         assert_eq!(BootErrorKind::Bounds.to_string(), "boot bounds error");
         assert_eq!(
             BootErrorKind::DigestMismatch.to_string(),

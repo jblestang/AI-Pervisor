@@ -4,8 +4,8 @@ use core::mem::size_of;
 
 use hv_types::SHA256_DIGEST_BYTES;
 
-use crate::constants::RSDP_SIGNATURE;
 use crate::acpi::AcpiRsdp;
+use crate::constants::RSDP_SIGNATURE;
 use crate::descriptor_kind;
 use crate::error::{BootError, BootErrorKind};
 use crate::{boot_abi_is_compatible, BootInfoDescriptor, BootInfoHeader};
@@ -88,9 +88,10 @@ impl<'a> BootInfoView<'a> {
                 BootErrorKind::Bounds,
                 "descriptor entry overflow",
             ))?;
-        let entry_bytes = bounded.get(entry_offset..entry_end).ok_or(
-            BootError::new(BootErrorKind::Bounds, "descriptor entry out of bounds"),
-        )?;
+        let entry_bytes = bounded.get(entry_offset..entry_end).ok_or(BootError::new(
+            BootErrorKind::Bounds,
+            "descriptor entry out of bounds",
+        ))?;
         read_descriptor(entry_bytes)
     }
 
@@ -104,12 +105,10 @@ impl<'a> BootInfoView<'a> {
                 BootErrorKind::Bounds,
                 "descriptor section overflow",
             ))?;
-        bounded
-            .get(start..end)
-            .ok_or(BootError::new(
-                BootErrorKind::Bounds,
-                "descriptor section out of bounds",
-            ))
+        bounded.get(start..end).ok_or(BootError::new(
+            BootErrorKind::Bounds,
+            "descriptor section out of bounds",
+        ))
     }
 
     /// Finds the first descriptor of the requested kind.
@@ -250,34 +249,26 @@ fn read_u32(bytes: &[u8], offset: &mut usize) -> Result<u32, BootError> {
     let end = offset
         .checked_add(size_of::<u32>())
         .ok_or(BootError::new(BootErrorKind::Parse, "u32 read overflow"))?;
-    let slice = bytes
-        .get(*offset..end)
-        .ok_or(BootError::new(BootErrorKind::Parse, "u32 read out of bounds"))?;
-    let chunk: [u8; 4] = slice.try_into().map_err(|_| {
-        BootError::new(BootErrorKind::Parse, "u32 read truncated")
-    })?;
+    let slice = bytes.get(*offset..end).ok_or(BootError::new(
+        BootErrorKind::Parse,
+        "u32 read out of bounds",
+    ))?;
+    let chunk: [u8; 4] = slice
+        .try_into()
+        .map_err(|_| BootError::new(BootErrorKind::Parse, "u32 read truncated"))?;
     let value = u32::from_le_bytes(chunk);
     *offset = end;
     Ok(value)
 }
 
-fn copy_field(
-    destination: &mut [u8],
-    source: &[u8],
-    offset: &mut usize,
-) -> Result<(), BootError> {
+fn copy_field(destination: &mut [u8], source: &[u8], offset: &mut usize) -> Result<(), BootError> {
     let end = offset
         .checked_add(destination.len())
-        .ok_or(BootError::new(
-            BootErrorKind::Parse,
-            "field copy overflow",
-        ))?;
-    let slice = source
-        .get(*offset..end)
-        .ok_or(BootError::new(
-            BootErrorKind::Parse,
-            "field copy out of bounds",
-        ))?;
+        .ok_or(BootError::new(BootErrorKind::Parse, "field copy overflow"))?;
+    let slice = source.get(*offset..end).ok_or(BootError::new(
+        BootErrorKind::Parse,
+        "field copy out of bounds",
+    ))?;
     for (index, byte) in destination.iter_mut().enumerate() {
         let value = slice
             .get(index)

@@ -44,25 +44,13 @@ fn write_artifacts(
     )?;
     write_file(output.join(IPC_MAP), render_ipc_map(compiled))?;
     write_file(output.join(PCI_MAP), render_pci_map(compiled))?;
-    write_file(
-        output.join(CPU_TOPOLOGY),
-        render_cpu_topology(compiled),
-    )?;
+    write_file(output.join(CPU_TOPOLOGY), render_cpu_topology(compiled))?;
     write_file(output.join(MEMORY_MAP), render_memory_map(compiled))?;
-    write_file(
-        output.join(CORE_OWNERSHIP),
-        render_core_ownership(compiled),
-    )?;
+    write_file(output.join(CORE_OWNERSHIP), render_core_ownership(compiled))?;
     write_file(output.join(BOOT_LAYOUT), render_boot_layout(compiled))?;
-    write_file(
-        output.join(GUEST_IMAGES),
-        render_guest_images(compiled),
-    )?;
+    write_file(output.join(GUEST_IMAGES), render_guest_images(compiled))?;
     write_file(output.join(QEMU_ARGS), render_qemu_args(compiled))?;
-    write_file(
-        output.join(BOOT_MANIFEST),
-        render_boot_manifest(compiled),
-    )?;
+    write_file(output.join(BOOT_MANIFEST), render_boot_manifest(compiled))?;
     write_file(
         output.join(BUILD_MANIFEST),
         render_build_manifest(source, compiled),

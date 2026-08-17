@@ -1,119 +1,16 @@
 //! CPUID snapshot interpretation for runtime platform observation.
 
 use hv_boot_abi::{
-    DMAR_FLAG_INTR_REMAP, DMAR_FLAGS_OFFSET, DMAR_MIN_LENGTH, DMAR_SIGNATURE,
-    EFI_MEMORY_CONVENTIONAL, UEFI_MEMORY_DESCRIPTOR_MIN_SIZE, UEFI_PAGE_SIZE, UefiMemoryDescriptor,
+    UefiMemoryDescriptor, DMAR_FLAGS_OFFSET, DMAR_FLAG_INTR_REMAP, DMAR_MIN_LENGTH, DMAR_SIGNATURE,
+    EFI_MEMORY_CONVENTIONAL, UEFI_MEMORY_DESCRIPTOR_MIN_SIZE, UEFI_PAGE_SIZE,
 };
 use hv_config_model::SUPPORTED_ARCH;
+use hv_observation_types::ObservationInputs;
 use hv_types::ByteSize;
 
-use crate::cpuid_constants::{
-    CPUID_1_ECX_VMX_BIT, CPUID_1_ECX_X2APIC_BIT, CPUID_1_EDX_NX_BIT,
-    CPUID_480_EBX_PREEMPTION_TIMER_BIT, CPUID_480_ECX_EPT_BIT, CPUID_480_ECX_VPID_BIT,
-    CPUID_80000007_EDX_INVARIANT_TSC_BIT, DEFAULT_PAGE_SIZES,
-};
+use crate::cpuid_constants::DEFAULT_PAGE_SIZES;
 use crate::error::{PlatformError, PlatformErrorKind};
 use crate::observed::ObservedPlatform;
-use hv_types::PciBdf;
-
-/// Raw CPUID leaves collected by the loader before hypervisor entry.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CpuidSnapshot {
-    /// CPUID leaf 1 ECX register value.
-    pub leaf1_ecx: u32,
-    /// CPUID leaf 1 EDX register value.
-    pub leaf1_edx: u32,
-    /// CPUID leaf 1 EBX register value.
-    pub leaf1_ebx: u32,
-    /// CPUID leaf 0x8000_0007 EDX register value when available.
-    pub leaf80000007_edx: Option<u32>,
-    /// CPUID leaf 0x8000_0008 ECX register value when available.
-    pub leaf80000008_ecx: Option<u32>,
-    /// CPUID leaf 0x480 ECX register value when VMX is enabled.
-    pub leaf480_ecx: Option<u32>,
-    /// CPUID leaf 0x480 EBX register value when VMX is enabled.
-    pub leaf480_ebx: Option<u32>,
-}
-
-impl CpuidSnapshot {
-    /// Returns whether VMX is supported.
-    pub fn vmx(&self) -> bool {
-        bit_set(self.leaf1_ecx, CPUID_1_ECX_VMX_BIT)
-    }
-
-    /// Returns whether NX is supported.
-    pub fn nx(&self) -> bool {
-        bit_set(self.leaf1_edx, CPUID_1_EDX_NX_BIT)
-    }
-
-    /// Returns whether x2APIC is supported.
-    pub fn x2apic(&self) -> bool {
-        bit_set(self.leaf1_ecx, CPUID_1_ECX_X2APIC_BIT)
-    }
-
-    /// Returns whether invariant TSC is supported.
-    pub fn invariant_tsc(&self) -> bool {
-        self.leaf80000007_edx
-            .is_some_and(|edx| bit_set(edx, CPUID_80000007_EDX_INVARIANT_TSC_BIT))
-    }
-
-    /// Returns whether EPT is supported.
-    pub fn ept(&self) -> bool {
-        self.leaf480_ecx
-            .is_some_and(|ecx| bit_set(ecx, CPUID_480_ECX_EPT_BIT))
-    }
-
-    /// Returns whether VPID is supported.
-    pub fn vpid(&self) -> bool {
-        self.leaf480_ecx
-            .is_some_and(|ecx| bit_set(ecx, CPUID_480_ECX_VPID_BIT))
-    }
-
-    /// Returns whether the VMX preemption timer is supported.
-    pub fn vmx_preemption_timer(&self) -> bool {
-        self.leaf480_ebx
-            .is_some_and(|ebx| bit_set(ebx, CPUID_480_EBX_PREEMPTION_TIMER_BIT))
-    }
-
-    /// Returns the number of logical processors reported in leaf 1 EBX.
-    pub fn logical_processors(&self) -> u32 {
-        (self.leaf1_ebx >> 16) & 0xFF
-    }
-
-    /// Returns the number of physical cores per package when leaf 0x8000_0008 is available.
-    pub fn cores_per_package(&self) -> Option<u32> {
-        self.leaf80000008_ecx.map(|ecx| (ecx & 0xFF) + 1)
-    }
-
-    /// Returns whether SMT appears enabled from CPUID topology.
-    pub fn smt_enabled(&self) -> bool {
-        match self.cores_per_package() {
-            Some(cores) => self.logical_processors() > cores,
-            None => false,
-        }
-    }
-
-    /// Returns the estimated physical core count.
-    pub fn physical_cores(&self) -> u32 {
-        self.cores_per_package()
-            .unwrap_or_else(|| self.logical_processors().max(1))
-    }
-}
-
-/// Inputs required to observe a platform at boot time.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ObservationInputs {
-    /// CPUID snapshot collected by the loader.
-    pub cpuid: CpuidSnapshot,
-    /// Flattened ACPI table bytes collected by the loader (interim contract).
-    pub acpi_tables: Vec<u8>,
-    /// Raw UEFI memory map bytes.
-    pub memory_map: Vec<u8>,
-    /// Size of one UEFI memory map descriptor.
-    pub memory_descriptor_size: usize,
-    /// PCI devices discovered by firmware.
-    pub pci_devices: Vec<PciBdf>,
-}
 
 /// Observes platform capabilities from firmware-provided boot inputs.
 pub fn observe_platform(inputs: &ObservationInputs) -> Result<ObservedPlatform, PlatformError> {
@@ -139,10 +36,6 @@ pub fn observe_platform(inputs: &ObservationInputs) -> Result<ObservedPlatform, 
     })
 }
 
-fn bit_set(value: u32, bit: u32) -> bool {
-    (value & (1 << bit)) != 0
-}
-
 fn sum_conventional_ram(map: &[u8], descriptor_size: usize) -> Result<ByteSize, PlatformError> {
     if descriptor_size < UEFI_MEMORY_DESCRIPTOR_MIN_SIZE {
         return Err(PlatformError::new(
@@ -160,10 +53,11 @@ fn sum_conventional_ram(map: &[u8], descriptor_size: usize) -> Result<ByteSize, 
         if end > map.len() {
             break;
         }
-        let descriptor_bytes = map.get(offset..end).ok_or_else(|| {
-            observation_error("memory map descriptor slice unavailable")
-        })?;
-        let descriptor = UefiMemoryDescriptor::parse(descriptor_bytes).map_err(boot_to_observation)?;
+        let descriptor_bytes = map
+            .get(offset..end)
+            .ok_or_else(|| observation_error("memory map descriptor slice unavailable"))?;
+        let descriptor =
+            UefiMemoryDescriptor::parse(descriptor_bytes).map_err(boot_to_observation)?;
         if descriptor.typ == EFI_MEMORY_CONVENTIONAL {
             let bytes = descriptor
                 .number_of_pages
@@ -188,9 +82,9 @@ fn scan_acpi_capabilities(tables: &[u8]) -> Result<(bool, bool), PlatformError> 
         let length_bytes = tables
             .get(offset + 4..offset + 8)
             .ok_or_else(|| observation_error("ACPI length truncated"))?;
-        let chunk: [u8; 4] = length_bytes.try_into().map_err(|_| {
-            observation_error("ACPI length truncated")
-        })?;
+        let chunk: [u8; 4] = length_bytes
+            .try_into()
+            .map_err(|_| observation_error("ACPI length truncated"))?;
         let length = u32::from_le_bytes(chunk) as usize;
         if length == 0 {
             break;
@@ -202,7 +96,9 @@ fn scan_acpi_capabilities(tables: &[u8]) -> Result<(bool, bool), PlatformError> 
             return Err(observation_error("ACPI table exceeds provided buffer"));
         }
 
-        if header.get(0..4).ok_or_else(|| observation_error("ACPI signature missing"))?
+        if header
+            .get(0..4)
+            .ok_or_else(|| observation_error("ACPI signature missing"))?
             == DMAR_SIGNATURE
         {
             if length < DMAR_MIN_LENGTH {
@@ -237,7 +133,12 @@ fn observation_error(message: &'static str) -> PlatformError {
 mod tests {
     use super::*;
     use hv_boot_abi::encode_reference_dmar_with_intr_remap;
-    use hv_types::{PciBus, PciDevice, PciFunction, PciSegment};
+    use hv_observation_types::{
+        CpuidSnapshot, CPUID_1_ECX_VMX_BIT, CPUID_1_ECX_X2APIC_BIT, CPUID_1_EDX_NX_BIT,
+        CPUID_480_EBX_PREEMPTION_TIMER_BIT, CPUID_480_ECX_EPT_BIT, CPUID_480_ECX_VPID_BIT,
+        CPUID_80000007_EDX_INVARIANT_TSC_BIT,
+    };
+    use hv_types::{PciBdf, PciBus, PciDevice, PciFunction, PciSegment};
 
     fn reference_cpuid() -> CpuidSnapshot {
         CpuidSnapshot {
@@ -331,6 +232,14 @@ mod tests {
     }
 
     #[test]
+    fn scan_acpi_detects_interrupt_remapping_in_reference_dmar() {
+        let (vtd, interrupt_remapping) =
+            scan_acpi_capabilities(&encode_reference_dmar_with_intr_remap()).expect("scan");
+        assert!(vtd);
+        assert!(interrupt_remapping);
+    }
+
+    #[test]
     fn sum_conventional_ram_skips_trailing_partial_descriptor() {
         let memory_map = encode_descriptor(UefiMemoryDescriptor {
             typ: EFI_MEMORY_CONVENTIONAL,
@@ -345,5 +254,46 @@ mod tests {
         with_trailing_byte.push(0);
         let ram = sum_conventional_ram(&with_trailing_byte, 48).expect("sum");
         assert_eq!(ram.bytes(), UEFI_PAGE_SIZE);
+    }
+
+    #[test]
+    fn sum_conventional_ram_rejects_page_count_overflow() {
+        let mut memory_map = vec![0u8; 48];
+        memory_map[0..4].copy_from_slice(&EFI_MEMORY_CONVENTIONAL.to_le_bytes());
+        memory_map[24..32].copy_from_slice(&u64::MAX.to_le_bytes());
+        let err = sum_conventional_ram(&memory_map, 48).expect_err("must fail");
+        assert_eq!(err.kind, PlatformErrorKind::Observation);
+    }
+
+    #[test]
+    fn sum_conventional_ram_rejects_total_overflow() {
+        let pages = u64::MAX / UEFI_PAGE_SIZE;
+        let mut memory_map = vec![0u8; 96];
+        for chunk in memory_map.chunks_mut(48) {
+            chunk[0..4].copy_from_slice(&EFI_MEMORY_CONVENTIONAL.to_le_bytes());
+            chunk[24..32].copy_from_slice(&pages.to_le_bytes());
+        }
+        let err = sum_conventional_ram(&memory_map, 48).expect_err("must fail");
+        assert_eq!(err.kind, PlatformErrorKind::Observation);
+    }
+
+    #[test]
+    fn scan_acpi_rejects_truncated_length_field() {
+        let tables = vec![0u8; 6];
+        let err = scan_acpi_capabilities(&tables).expect_err("must fail");
+        assert_eq!(err.kind, PlatformErrorKind::Observation);
+    }
+
+    #[test]
+    fn observe_platform_maps_boot_abi_errors() {
+        let inputs = ObservationInputs {
+            cpuid: reference_cpuid(),
+            acpi_tables: Vec::new(),
+            memory_map: vec![0u8; 48],
+            memory_descriptor_size: 4,
+            pci_devices: Vec::new(),
+        };
+        let err = observe_platform(&inputs).expect_err("must fail");
+        assert_eq!(err.kind, PlatformErrorKind::Observation);
     }
 }

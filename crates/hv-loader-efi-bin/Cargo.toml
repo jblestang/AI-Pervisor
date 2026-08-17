@@ -1,0 +1,34 @@
+[package]
+name = "hv-loader-efi-bin"
+description = "UEFI loader application binary for Gate B boot handoff"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[workspace]
+
+[dependencies]
+hv-acpi-walk = { path = "../hv-acpi-walk" }
+hv-loader-efi = { path = "../hv-loader-efi", default-features = false }
+hv-observation-types = { path = "../hv-observation-types" }
+hv-types = { path = "../hv-types" }
+log = { version = "0.4", default-features = false }
+uefi = { version = "0.31", features = ["alloc", "logger"] }
+
+[build-dependencies]
+hex = "0.4.3"
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1
+
+[[bin]]
+name = "hv-loader"
+path = "src/main.rs"
+test = false
+bench = false

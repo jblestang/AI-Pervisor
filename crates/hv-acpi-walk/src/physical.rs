@@ -29,30 +29,37 @@ impl FirmwareMemoryImage {
 
 impl PhysicalMemory for FirmwareMemoryImage {
     fn read_physical(&self, physical_address: u64, buffer: &mut [u8]) -> Result<(), AcpiWalkError> {
-        let offset = physical_address.checked_sub(self.base_address).ok_or(
-            AcpiWalkError::new(AcpiWalkErrorKind::Memory, "physical address below image base"),
-        )?;
+        let offset = physical_address
+            .checked_sub(self.base_address)
+            .ok_or(AcpiWalkError::new(
+                AcpiWalkErrorKind::Memory,
+                "physical address below image base",
+            ))?;
         let end = offset
             .checked_add(buffer.len() as u64)
             .ok_or(AcpiWalkError::new(
                 AcpiWalkErrorKind::Bounds,
                 "physical read overflow",
             ))?;
-        if end > self.base_address.checked_add(self.bytes.len() as u64).ok_or(
-            AcpiWalkError::new(AcpiWalkErrorKind::Bounds, "image length overflow"),
-        )? {
+        if end
+            > self
+                .base_address
+                .checked_add(self.bytes.len() as u64)
+                .ok_or(AcpiWalkError::new(
+                    AcpiWalkErrorKind::Bounds,
+                    "image length overflow",
+                ))?
+        {
             return Err(AcpiWalkError::new(
                 AcpiWalkErrorKind::Memory,
                 "physical read exceeds firmware image",
             ));
         }
         let start = offset as usize;
-        let end = start
-            .checked_add(buffer.len())
-            .ok_or(AcpiWalkError::new(
-                AcpiWalkErrorKind::Bounds,
-                "physical read slice overflow",
-            ))?;
+        let end = start.checked_add(buffer.len()).ok_or(AcpiWalkError::new(
+            AcpiWalkErrorKind::Bounds,
+            "physical read slice overflow",
+        ))?;
         let slice = self.bytes.get(start..end).ok_or(AcpiWalkError::new(
             AcpiWalkErrorKind::Memory,
             "physical read slice unavailable",

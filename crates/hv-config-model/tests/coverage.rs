@@ -3,14 +3,12 @@
 #![allow(clippy::assertions_on_constants)]
 
 use hv_config_model::{
-    compile_config_from_str, load_raw_from_str, validate_semantics, validate_syntax, ConfigErrorKind,
+    compile_config_from_str, load_raw_from_str, validate_semantics, validate_syntax,
+    ConfigErrorKind,
 };
 
 fn load_fixture(name: &str) -> String {
-    let path = format!(
-        "{}/tests/fixtures/{name}",
-        env!("CARGO_MANIFEST_DIR")
-    );
+    let path = format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"));
     match std::fs::read_to_string(path) {
         Ok(contents) => contents,
         Err(err) => {

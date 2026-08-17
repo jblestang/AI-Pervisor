@@ -1,5 +1,8 @@
 //! Hypervisor loader errors at the UEFI entry boundary.
 
+use alloc::string::{String, ToString};
+use core::fmt;
+
 /// Kind of UEFI loader error.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LoaderEfiErrorKind {
@@ -26,16 +29,17 @@ impl LoaderEfiError {
     }
 }
 
-impl std::fmt::Display for LoaderEfiError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for LoaderEfiError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}: {}", self.kind, self.message)
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for LoaderEfiError {}
 
-impl std::fmt::Display for LoaderEfiErrorKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for LoaderEfiErrorKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Handoff => write!(f, "uefi loader handoff error"),
         }
