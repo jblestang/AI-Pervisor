@@ -1,0 +1,20 @@
+[package]
+name = "hv-config"
+description = "Configuration compiler CLI for the static hypervisor"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "hv-config"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+hv-config-model = { workspace = true }
+clap = { workspace = true }
+serde_json = { workspace = true }
+hex = { workspace = true }

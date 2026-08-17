@@ -1,0 +1,18 @@
+[package]
+name = "hv-types"
+description = "Strongly typed identifiers and safe arithmetic for the static hypervisor"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { workspace = true, optional = true }
+
+[features]
+serde = ["dep:serde"]
+[dev-dependencies]
+proptest = { workspace = true }
