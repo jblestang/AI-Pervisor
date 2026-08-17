@@ -10,6 +10,10 @@
 
 mod boot;
 mod error;
+mod snapshot;
+mod transfer;
 
 pub use boot::boot_check;
 pub use error::{BootCheckError, BootCheckErrorKind};
+pub use snapshot::{platform_requirements_from_snapshot, requirements_snapshot_from_platform};
+pub use transfer::{boot_from_transfer, boot_from_transfer_snapshot};

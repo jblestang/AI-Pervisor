@@ -8,10 +8,12 @@ extern crate alloc;
 
 mod collect;
 mod physical;
+mod publish;
 
 use collect::collect_firmware_inputs;
-use hv_loader_efi::{uefi_loader_entry, UefiLoaderParams};
+use hv_loader_efi::{build_hypervisor_transfer_from_entry, UefiLoaderParams};
 use physical::{IdentityMappedPhysicalMemory, DEFAULT_MAX_PHYSICAL_ADDRESS};
+use publish::{chain_load_hypervisor, publish_hypervisor_transfer};
 use uefi::prelude::*;
 
 include!(concat!(env!("OUT_DIR"), "/config_digest.rs"));
@@ -31,7 +33,7 @@ fn efi_main() -> Status {
 fn run_loader() -> Result<(), &'static str> {
     let firmware = collect_firmware_inputs()?;
     let memory = IdentityMappedPhysicalMemory::new(DEFAULT_MAX_PHYSICAL_ADDRESS);
-    let _handoff = uefi_loader_entry(
+    let (_handoff, transfer) = build_hypervisor_transfer_from_entry(
         UefiLoaderParams {
             config_digest: CONFIG_DIGEST,
             memory_map: firmware.memory_map,
@@ -43,5 +45,8 @@ fn run_loader() -> Result<(), &'static str> {
         &memory,
     )
     .map_err(|_| "loader handoff rejected inputs")?;
+
+    publish_hypervisor_transfer(&transfer).map_err(|_| "failed to publish hypervisor transfer")?;
+    chain_load_hypervisor().map_err(|_| "failed to chain-load hypervisor image")?;
     Ok(())
 }

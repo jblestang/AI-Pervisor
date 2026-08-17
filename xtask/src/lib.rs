@@ -16,7 +16,8 @@ mod constants;
 
 use clap::{Parser, Subcommand};
 use constants::{
-    DEFAULT_COVERAGE_MIN_LINES, DEFAULT_EFI_CONFIG_PATH, DEFAULT_EFI_OUTPUT_PATH, DEFAULT_FUZZ_RUNS,
+    DEFAULT_BOOT_CHAIN_OUTPUT_DIR, DEFAULT_COVERAGE_MIN_LINES, DEFAULT_EFI_CONFIG_PATH,
+    DEFAULT_EFI_OUTPUT_PATH, DEFAULT_FUZZ_RUNS, DEFAULT_HYPERVISOR_EFI_OUTPUT_PATH,
 };
 use hv_config::constants::DEFAULT_CONFIG_OUTPUT_DIR;
 
@@ -100,6 +101,188 @@ fn run_build_efi_with(
     }
 
     copy_efi_artifact(output.to_str().unwrap_or(output_path))
+}
+
+/// Builds the UEFI hypervisor `.efi` image for the given configuration.
+pub fn run_build_hypervisor_efi(config_path: &str, output_path: &str) -> i32 {
+    run_build_hypervisor_efi_with(
+        config_path,
+        output_path,
+        run_config_generate,
+        run_with_cxx_gpp,
+        build_hypervisor_efi_image,
+    )
+}
+
+/// Builds loader and hypervisor `.efi` images into one output directory.
+pub fn run_build_boot_chain(config_path: &str, output_dir: &str) -> i32 {
+    run_build_boot_chain_with(
+        config_path,
+        output_dir,
+        run_config_generate,
+        run_with_cxx_gpp,
+        build_efi_image,
+        build_hypervisor_efi_image,
+    )
+}
+
+fn run_build_boot_chain_with(
+    config_path: &str,
+    output_dir: &str,
+    generate: fn(&str, &str) -> i32,
+    install_target: fn(&str, &[&str]) -> i32,
+    build_loader: fn(&std::path::Path, &str) -> i32,
+    build_hypervisor: fn(&std::path::Path, &str, &str) -> i32,
+) -> i32 {
+    let workspace = workspace_root();
+    let output = workspace.join(output_dir);
+    if std::fs::create_dir_all(&output).is_err() {
+        eprintln!(
+            "failed to create boot-chain output directory: {}",
+            output.display()
+        );
+        return 1;
+    }
+
+    let loader_output = output.join("hv-loader.efi");
+    let hypervisor_output = output.join("hv-hypervisor.efi");
+    let loader_path = loader_output.to_string_lossy().into_owned();
+    let hypervisor_path = hypervisor_output.to_string_lossy().into_owned();
+
+    if run_build_efi_with(
+        config_path,
+        &loader_path,
+        generate,
+        install_target,
+        build_loader,
+    ) != 0
+    {
+        return 1;
+    }
+    if run_build_hypervisor_efi_with(
+        config_path,
+        &hypervisor_path,
+        generate,
+        install_target,
+        build_hypervisor,
+    ) != 0
+    {
+        return 1;
+    }
+
+    eprintln!(
+        "built boot chain: {} and {}",
+        loader_output.display(),
+        hypervisor_output.display()
+    );
+    0
+}
+
+fn run_build_hypervisor_efi_with(
+    config_path: &str,
+    output_path: &str,
+    generate: fn(&str, &str) -> i32,
+    install_target: fn(&str, &[&str]) -> i32,
+    build: fn(&std::path::Path, &str, &str) -> i32,
+) -> i32 {
+    let workspace = workspace_root();
+    let config = workspace.join(config_path);
+    let output = workspace.join(output_path);
+    let build_dir = workspace.join("build");
+
+    if generate(
+        config.to_str().unwrap_or(config_path),
+        build_dir.to_str().unwrap_or("build"),
+    ) != 0
+    {
+        return 1;
+    }
+
+    if install_target("rustup", &["target", "add", "x86_64-unknown-uefi"]) != 0 {
+        return 1;
+    }
+
+    let digest_path = build_dir
+        .join("config.sha256")
+        .canonicalize()
+        .map(|path| path.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| {
+            build_dir
+                .join("config.sha256")
+                .to_string_lossy()
+                .into_owned()
+        });
+    let config_source = config
+        .canonicalize()
+        .map(|path| path.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| config.to_string_lossy().into_owned());
+
+    if build(&workspace, &digest_path, &config_source) != 0 {
+        return 1;
+    }
+
+    copy_hypervisor_efi_artifact(output.to_str().unwrap_or(output_path))
+}
+
+fn build_hypervisor_efi_image(
+    workspace: &std::path::Path,
+    digest_path: &str,
+    config_path: &str,
+) -> i32 {
+    build_hypervisor_efi_image_with(workspace, digest_path, config_path, run_command)
+}
+
+fn build_hypervisor_efi_image_with(
+    workspace: &std::path::Path,
+    digest_path: &str,
+    config_path: &str,
+    runner: fn(ProcessCommand) -> i32,
+) -> i32 {
+    runner(hypervisor_efi_build_command(
+        workspace,
+        digest_path,
+        config_path,
+    ))
+}
+
+fn hypervisor_efi_build_command(
+    workspace: &std::path::Path,
+    digest_path: &str,
+    config_path: &str,
+) -> ProcessCommand {
+    let mut command = ProcessCommand::new("cargo");
+    command
+        .current_dir(workspace)
+        .args([
+            "build",
+            "--release",
+            "--manifest-path",
+            "crates/hv-hypervisor-efi-bin/Cargo.toml",
+            "--target",
+            "x86_64-unknown-uefi",
+        ])
+        .env("HV_CONFIG_DIGEST_PATH", digest_path)
+        .env("HV_CONFIG_PATH", config_path)
+        .env("CXX", "g++");
+    command
+}
+
+fn copy_hypervisor_efi_artifact(output_path: &str) -> i32 {
+    let source = workspace_root()
+        .join("crates/hv-hypervisor-efi-bin/target/x86_64-unknown-uefi/release/hv-hypervisor.efi");
+    match std::fs::copy(&source, output_path) {
+        Ok(_) => {
+            eprintln!("built UEFI hypervisor: {output_path}");
+            0
+        }
+        Err(err) => {
+            eprintln!(
+                "failed to copy {} to {output_path}: {err}",
+                source.display()
+            );
+            1
+        }
+    }
 }
 
 fn build_efi_image(workspace: &std::path::Path, digest_path: &str) -> i32 {
@@ -311,6 +494,12 @@ fn dispatch_task_with(task: TaskCommand, runner: fn(&str, &[&str]) -> i32) -> i3
         TaskCommand::Coverage { min_lines } => coverage_command(min_lines),
         TaskCommand::Fuzz { runs } => fuzz_command(runs, run_with_cxx_gpp),
         TaskCommand::BuildEfi { config, output } => run_build_efi(&config, &output),
+        TaskCommand::BuildHypervisorEfi { config, output } => {
+            run_build_hypervisor_efi(&config, &output)
+        }
+        TaskCommand::BuildBootChain { config, output_dir } => {
+            run_build_boot_chain(&config, &output_dir)
+        }
         TaskCommand::ConfigValidate { path } => run_config_validate(&path),
         TaskCommand::ConfigGenerate { path, output } => run_config_generate(&path, &output),
     }
@@ -355,6 +544,24 @@ enum TaskCommandCli {
         #[arg(long, default_value = DEFAULT_EFI_OUTPUT_PATH)]
         output: String,
     },
+    /// Build the UEFI hypervisor `.efi` image.
+    BuildHypervisorEfi {
+        /// Path to YAML configuration used to embed requirements metadata.
+        #[arg(long, default_value = DEFAULT_EFI_CONFIG_PATH)]
+        config: String,
+        /// Output path for the built `.efi` file.
+        #[arg(long, default_value = DEFAULT_HYPERVISOR_EFI_OUTPUT_PATH)]
+        output: String,
+    },
+    /// Build loader and hypervisor `.efi` images for OVMF boot-chain testing.
+    BuildBootChain {
+        /// Path to YAML configuration used to embed artifacts.
+        #[arg(long, default_value = DEFAULT_EFI_CONFIG_PATH)]
+        config: String,
+        /// Output directory for boot-chain images.
+        #[arg(long, default_value = DEFAULT_BOOT_CHAIN_OUTPUT_DIR)]
+        output_dir: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -382,6 +589,12 @@ pub(crate) fn map_cli_command(command: TaskCommandCli) -> TaskCommand {
         TaskCommandCli::Coverage { min_lines } => TaskCommand::Coverage { min_lines },
         TaskCommandCli::Fuzz { runs } => TaskCommand::Fuzz { runs },
         TaskCommandCli::BuildEfi { config, output } => TaskCommand::BuildEfi { config, output },
+        TaskCommandCli::BuildHypervisorEfi { config, output } => {
+            TaskCommand::BuildHypervisorEfi { config, output }
+        }
+        TaskCommandCli::BuildBootChain { config, output_dir } => {
+            TaskCommand::BuildBootChain { config, output_dir }
+        }
         TaskCommandCli::Config { action } => match action {
             ConfigActionCli::Validate { path } => TaskCommand::ConfigValidate { path },
             ConfigActionCli::Generate { path, output } => {
@@ -425,6 +638,20 @@ pub enum TaskCommand {
         /// Output path for the built `.efi` file.
         output: String,
     },
+    /// Build the UEFI hypervisor `.efi` image.
+    BuildHypervisorEfi {
+        /// Path to YAML configuration used to embed requirements metadata.
+        config: String,
+        /// Output path for the built `.efi` file.
+        output: String,
+    },
+    /// Build loader and hypervisor `.efi` images for OVMF boot-chain testing.
+    BuildBootChain {
+        /// Path to YAML configuration used to embed artifacts.
+        config: String,
+        /// Output directory for boot-chain images.
+        output_dir: String,
+    },
     /// Validate a configuration file.
     ConfigValidate {
         /// Path to YAML configuration.
@@ -465,8 +692,8 @@ pub fn run(program: &str, args: &[&str]) -> i32 {
 mod tests {
     use super::*;
     use crate::constants::{
-        DEFAULT_COVERAGE_MIN_LINES, DEFAULT_EFI_CONFIG_PATH, DEFAULT_EFI_OUTPUT_PATH,
-        DEFAULT_FUZZ_RUNS,
+        DEFAULT_BOOT_CHAIN_OUTPUT_DIR, DEFAULT_COVERAGE_MIN_LINES, DEFAULT_EFI_CONFIG_PATH,
+        DEFAULT_EFI_OUTPUT_PATH, DEFAULT_FUZZ_RUNS, DEFAULT_HYPERVISOR_EFI_OUTPUT_PATH,
     };
     use hv_config::constants::DEFAULT_CONFIG_OUTPUT_DIR;
 
@@ -741,6 +968,74 @@ mod tests {
                 output: String::from("out.efi"),
             }
         );
+        assert_eq!(
+            parse_task_command(["xtask", "build-hypervisor-efi"]).expect("parse build hypervisor"),
+            TaskCommand::BuildHypervisorEfi {
+                config: String::from(DEFAULT_EFI_CONFIG_PATH),
+                output: String::from(DEFAULT_HYPERVISOR_EFI_OUTPUT_PATH),
+            }
+        );
+        assert_eq!(
+            parse_task_command(["xtask", "build-boot-chain"]).expect("parse boot chain"),
+            TaskCommand::BuildBootChain {
+                config: String::from(DEFAULT_EFI_CONFIG_PATH),
+                output_dir: String::from(DEFAULT_BOOT_CHAIN_OUTPUT_DIR),
+            }
+        );
+    }
+
+    #[test]
+    fn hypervisor_efi_build_command_sets_release_uefi_manifest_and_env() {
+        let workspace = workspace_root();
+        let command =
+            hypervisor_efi_build_command(&workspace, "/tmp/config.sha256", "/tmp/config.yaml");
+        assert_eq!(command.get_program(), "cargo");
+        let args: Vec<_> = command.get_args().collect();
+        assert!(args.iter().any(|arg| *arg == "--release"));
+        assert!(args
+            .iter()
+            .any(|arg| *arg == "crates/hv-hypervisor-efi-bin/Cargo.toml"));
+        let env_keys: Vec<_> = command
+            .get_envs()
+            .map(|(key, _)| key.to_string_lossy())
+            .collect();
+        assert!(env_keys.iter().any(|key| key == "HV_CONFIG_DIGEST_PATH"));
+        assert!(env_keys.iter().any(|key| key == "HV_CONFIG_PATH"));
+    }
+
+    #[test]
+    fn run_build_boot_chain_with_mock_pipeline_succeeds() {
+        let workspace = workspace_root();
+        let output_dir = workspace.join("build/mock-boot-chain");
+        let _ = std::fs::remove_dir_all(&output_dir);
+        let write_loader = |workspace: &std::path::Path, _digest: &str| {
+            let source = workspace
+                .join("crates/hv-loader-efi-bin/target/x86_64-unknown-uefi/release/hv-loader.efi");
+            std::fs::create_dir_all(source.parent().expect("parent")).expect("dir");
+            std::fs::write(&source, b"mock-loader").expect("write");
+            0
+        };
+        let write_hypervisor = |workspace: &std::path::Path, _digest: &str, _config: &str| {
+            let source = workspace.join(
+                "crates/hv-hypervisor-efi-bin/target/x86_64-unknown-uefi/release/hv-hypervisor.efi",
+            );
+            std::fs::create_dir_all(source.parent().expect("parent")).expect("dir");
+            std::fs::write(&source, b"mock-hypervisor").expect("write");
+            0
+        };
+        assert_eq!(
+            run_build_boot_chain_with(
+                "configs/qemu.yaml",
+                "build/mock-boot-chain",
+                |_, _| 0,
+                |_, _| 0,
+                write_loader,
+                write_hypervisor,
+            ),
+            0
+        );
+        assert!(output_dir.join("hv-loader.efi").is_file());
+        assert!(output_dir.join("hv-hypervisor.efi").is_file());
     }
 
     #[test]

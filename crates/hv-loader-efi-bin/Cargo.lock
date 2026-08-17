@@ -55,6 +55,7 @@ name = "hv-loader-efi"
 version = "0.1.0"
 dependencies = [
  "hv-acpi-walk",
+ "hv-boot-abi",
  "hv-loader",
  "hv-observation-types",
  "hv-types",
@@ -66,6 +67,7 @@ version = "0.1.0"
 dependencies = [
  "hex",
  "hv-acpi-walk",
+ "hv-boot-abi",
  "hv-loader-efi",
  "hv-observation-types",
  "hv-types",

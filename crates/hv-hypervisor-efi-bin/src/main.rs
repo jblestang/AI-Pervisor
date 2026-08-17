@@ -1,0 +1,67 @@
+//! UEFI hypervisor application entry point.
+
+#![no_main]
+#![no_std]
+#![allow(unsafe_code)]
+
+extern crate alloc;
+
+use hv_boot_abi::HypervisorTransferHeader;
+use hv_hypervisor_efi::verify_hypervisor_transfer;
+use uefi::prelude::*;
+use uefi::system::with_config_table;
+use uefi::table::cfg::ConfigTableEntry;
+use uefi::{guid, Guid};
+
+include!(concat!(env!("OUT_DIR"), "/embedded_config.rs"));
+
+/// UEFI configuration table GUID for the hypervisor transfer header.
+const HV_TRANSFER_TABLE_GUID: Guid = guid!("7502be2e-6d0d-4daf-8df4-0f89a2b3c4d5");
+
+#[entry]
+fn efi_main() -> Status {
+    if uefi::helpers::init().is_err() {
+        return Status::ABORTED;
+    }
+
+    match run_hypervisor() {
+        Ok(_) => Status::SUCCESS,
+        Err(_) => Status::ABORTED,
+    }
+}
+
+fn run_hypervisor() -> Result<(), &'static str> {
+    let transfer = locate_transfer_blob()?;
+    verify_hypervisor_transfer(transfer, &CONFIG_DIGEST, &REQUIREMENTS_SNAPSHOT)
+        .map_err(|_| "hypervisor transfer verification failed")?;
+    Ok(())
+}
+
+fn locate_transfer_blob() -> Result<&'static [u8], &'static str> {
+    with_config_table(transfer_from_config_table)
+        .ok_or("hypervisor transfer configuration table not found")
+}
+
+fn transfer_from_config_table(entries: &[ConfigTableEntry]) -> Option<&'static [u8]> {
+    for entry in entries {
+        if entry.guid != HV_TRANSFER_TABLE_GUID {
+            continue;
+        }
+        if entry.address.is_null() {
+            return None;
+        }
+        let header_ptr = entry.address.cast::<HypervisorTransferHeader>();
+        let header = unsafe { core::ptr::read_volatile(header_ptr) };
+        if header.magic != hv_boot_abi::TRANSFER_MAGIC {
+            return None;
+        }
+        let total_size = header.total_size as usize;
+        if total_size < core::mem::size_of::<HypervisorTransferHeader>() {
+            return None;
+        }
+        return Some(unsafe {
+            core::slice::from_raw_parts(entry.address.cast::<u8>(), total_size)
+        });
+    }
+    None
+}

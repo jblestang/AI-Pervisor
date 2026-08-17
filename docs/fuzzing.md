@@ -32,6 +32,7 @@ Optional seed inputs live under `fuzz/corpus/<target>/` and can be passed as tra
 | `pci_bdf_parse` | `hv-config-model` | `parse_bdf` |
 | `observed_platform_json` | `hv-platform-model` | `parse_observed_platform_json` |
 | `observe_platform` | `hv-platform-model` | `observe_platform` (UEFI memory-map and ACPI capability scanning) |
+| `transfer_parse` | `hv-boot-abi` | `HypervisorTransferView::parse`, `decode_observation_transfer` |
 
 ## Policy
 

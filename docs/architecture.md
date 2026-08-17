@@ -9,7 +9,8 @@
 | 5 | B | Boot info ABI parsing, runtime CPUID/ACPI/UEFI observation, loader handoff, hypervisor boot check |
 | 6 | B | ACPI RSDP walk, firmware memory model, portable UEFI loader entry (`hv-loader-efi`) |
 | 7 | B | UEFI `.efi` binary build, runtime firmware input collection, OVMF docs |
-| 8+ | B–D | Hypervisor transfer, VMX/EPT/VT-d, datapath |
+| 8 | B | Hypervisor transfer ABI, UEFI chain-load, PCI enumeration, requirements snapshot embedding |
+| 9+ | B–D | VMX/EPT/VT-d enablement, datapath |
 
 Phases 0–3 complete Gate A. Phase 4 begins Gate B with host-side platform validation and deterministic layout planning.
 
@@ -25,6 +26,8 @@ Phases 0–3 complete Gate A. Phase 4 begins Gate B with host-side platform vali
 | `hv-loader` | Boot info blob construction, firmware memory fixtures, handoff bundle |
 | `hv-loader-efi` | Portable UEFI loader entry (`uefi_loader_entry`) |
 | `hv-loader-efi-bin` | UEFI application binary (`hv-loader.efi`) |
+| `hv-hypervisor-efi` | Portable hypervisor transfer verification entry |
+| `hv-hypervisor-efi-bin` | UEFI hypervisor application binary (`hv-hypervisor.efi`) |
 | `hv-observation-types` | Boot-time observation input types (`no_std`) |
 | `hv-hypervisor` | Boot-path orchestration (digest verify, observe, validate) |
 | `hv-guest-abi` | Hypervisor to guest boot ABI skeleton |
@@ -54,7 +57,7 @@ The runtime must consume only compiled artifacts. Partition names such as `in`, 
 - **Gate C (before e1000):** EPT/VT-d/IRQ isolation and lifecycle
 - **Gate D (before optimization):** end-to-end datapath and malicious tests
 
-Phases 0–3 complete Gate A. Phase 4 adds observed-platform validation and static layout planning (Gate B foundation). Phase 5 wires the boot path: the loader builds a versioned boot info blob, the hypervisor parses it, observes firmware inputs, and runs fail-closed platform validation before VMX setup. Phase 6 replaces the interim flattened ACPI contract with RSDP-directed table discovery and introduces the portable UEFI loader entry crate. Phase 7 builds the UEFI application (`hv-loader.efi`) that collects runtime firmware inputs and runs the handoff under OVMF. All parsing surfaces are fuzzed via libFuzzer (`fuzz/`, `cargo xtask fuzz`); see [fuzzing.md](fuzzing.md). OVMF boot: [ovmf-boot.md](ovmf-boot.md).
+Phases 0–3 complete Gate A. Phase 4 adds observed-platform validation and static layout planning (Gate B foundation). Phase 5 wires the boot path: the loader builds a versioned boot info blob, the hypervisor parses it, observes firmware inputs, and runs fail-closed platform validation before VMX setup. Phase 6 replaces the interim flattened ACPI contract with RSDP-directed table discovery and introduces the portable UEFI loader entry crate. Phase 7 builds the UEFI application (`hv-loader.efi`) that collects runtime firmware inputs and runs the handoff under OVMF. Phase 8 publishes the hypervisor transfer blob, chain-loads `hv-hypervisor.efi`, and enumerates PCI devices at firmware boot. All parsing surfaces are fuzzed via libFuzzer (`fuzz/`, `cargo xtask fuzz`); see [fuzzing.md](fuzzing.md). OVMF boot: [ovmf-boot.md](ovmf-boot.md).
 
 ## No-panic policy
 
