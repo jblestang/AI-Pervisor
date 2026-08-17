@@ -147,6 +147,7 @@ impl<'a> HypervisorTransferView<'a> {
         if header.total_size as usize != bytes.len() {
             return Err(transfer_error("transfer total size mismatch"));
         }
+        validate_canonical_layout(&header)?;
         let boot_info = slice_at(bytes, header.boot_info_offset, header.boot_info_size)?;
         let observation = slice_at(bytes, header.observation_offset, header.observation_size)?;
         Ok(Self {
@@ -363,6 +364,32 @@ fn encode_observation_transfer(
     bytes.extend_from_slice(parts.memory_map);
     bytes.extend_from_slice(parts.acpi_tables);
     Ok(bytes)
+}
+
+fn validate_canonical_layout(header: &HypervisorTransferHeader) -> Result<(), BootError> {
+    let header_size = size_of::<HypervisorTransferHeader>();
+    if header.boot_info_offset as usize != header_size {
+        return Err(transfer_error(
+            "boot info offset must immediately follow header",
+        ));
+    }
+    let boot_end = (header.boot_info_offset as usize)
+        .checked_add(header.boot_info_size as usize)
+        .ok_or(transfer_error("boot info end overflow"))?;
+    if boot_end != header.observation_offset as usize {
+        return Err(transfer_error(
+            "observation must immediately follow boot info",
+        ));
+    }
+    let observation_end = (header.observation_offset as usize)
+        .checked_add(header.observation_size as usize)
+        .ok_or(transfer_error("observation end overflow"))?;
+    if observation_end != header.total_size as usize {
+        return Err(transfer_error(
+            "transfer total size must equal section span",
+        ));
+    }
+    Ok(())
 }
 
 fn read_transfer_header(bytes: &[u8]) -> Result<HypervisorTransferHeader, BootError> {
@@ -682,6 +709,71 @@ mod tests {
     #[test]
     fn decode_observation_transfer_rejects_truncated_payload() {
         assert!(decode_observation_transfer(&[0u8; 4]).is_err());
+    }
+
+    #[test]
+    fn transfer_header_and_observation_header_layouts_are_stable() {
+        use core::mem::{align_of, size_of};
+
+        assert_eq!(size_of::<HypervisorTransferHeader>(), 32);
+        assert_eq!(align_of::<HypervisorTransferHeader>(), 4);
+        assert_eq!(size_of::<ObservationTransferHeader>(), 48);
+    }
+
+    #[test]
+    fn transfer_parse_rejects_non_canonical_section_layout() {
+        let blob = build_hypervisor_transfer_blob(
+            &[0xAA; 8],
+            &ObservationTransferParts {
+                cpuid: CpuidTransferSnapshot {
+                    leaf1_ecx: 0,
+                    leaf1_edx: 0,
+                    leaf1_ebx: 0,
+                    leaf80000007_edx: None,
+                    leaf80000008_ecx: None,
+                    leaf480_ecx: None,
+                    leaf480_ebx: None,
+                },
+                memory_map: &[],
+                memory_descriptor_size: 48,
+                acpi_tables: &[],
+                pci_devices: &[],
+            },
+        )
+        .expect("build");
+        let header_size = core::mem::size_of::<HypervisorTransferHeader>();
+        assert_eq!(header_size, 32);
+        let mut non_canonical = blob.clone();
+        non_canonical[16..20].copy_from_slice(&64u32.to_le_bytes());
+        assert!(HypervisorTransferView::parse(&non_canonical).is_err());
+    }
+
+    #[test]
+    fn transfer_parse_rejects_gap_between_boot_info_and_observation() {
+        let blob = build_hypervisor_transfer_blob(
+            &[0xAA; 8],
+            &ObservationTransferParts {
+                cpuid: CpuidTransferSnapshot {
+                    leaf1_ecx: 0,
+                    leaf1_edx: 0,
+                    leaf1_ebx: 0,
+                    leaf80000007_edx: None,
+                    leaf80000008_ecx: None,
+                    leaf480_ecx: None,
+                    leaf480_ebx: None,
+                },
+                memory_map: &[],
+                memory_descriptor_size: 48,
+                acpi_tables: &[],
+                pci_devices: &[],
+            },
+        )
+        .expect("build");
+        let boot_info_offset = u32::from_le_bytes(blob[16..20].try_into().expect("offset"));
+        let boot_info_size = u32::from_le_bytes(blob[20..24].try_into().expect("size"));
+        let mut gapped = blob;
+        gapped[24..28].copy_from_slice(&(boot_info_offset + boot_info_size + 4).to_le_bytes());
+        assert!(HypervisorTransferView::parse(&gapped).is_err());
     }
 
     #[test]

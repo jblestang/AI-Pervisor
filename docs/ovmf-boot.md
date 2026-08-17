@@ -52,6 +52,10 @@ qemu-system-x86_64 \
 
 On success the loader chain-loads the hypervisor, which verifies the published transfer blob and returns `EFI_SUCCESS`.
 
+## PCI enumeration limits (Phase 8)
+
+Firmware PCI discovery uses legacy CF8/CFC config ports on segment 0. It walks bus numbers starting at 0 and stops at the first bus with no responding devices. It does not recurse PCI-to-PCI bridges or enumerate ECAM/MMCONFIG. This is sufficient for the reference QEMU q35 topology (`0000:00:03.0`, `0000:00:04.0`) but is not production-complete firmware discovery.
+
 ## Runtime inputs collected by the loader
 
 | Input | Source |
@@ -59,7 +63,7 @@ On success the loader chain-loads the hypervisor, which verifies the published t
 | UEFI memory map | `GetMemoryMap` via `uefi::boot::memory_map` |
 | ACPI RSDP | UEFI configuration table (`ACPI2_GUID` / `ACPI_GUID`) |
 | CPUID snapshot | Raw `cpuid` instructions |
-| PCI BDF list | PCI config-space scan (segment 0) |
+| PCI BDF list | PCI config-space scan via legacy ports (segment 0, bus 0 walk; see limits below) |
 | ACPI tables | RSDP-directed walk via identity-mapped physical memory |
 
 ## Transfer handoff

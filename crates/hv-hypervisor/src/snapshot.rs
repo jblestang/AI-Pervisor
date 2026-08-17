@@ -307,10 +307,9 @@ mod tests {
             .first()
             .expect("device")
             .clone();
-        requirements.expected_pci_devices =
-            (0..=MAX_REQUIREMENTS_PCI_DEVICES)
-                .map(|_| device.clone())
-                .collect();
+        requirements.expected_pci_devices = (0..=MAX_REQUIREMENTS_PCI_DEVICES)
+            .map(|_| device.clone())
+            .collect();
         assert!(requirements_snapshot_from_platform(&requirements, compiled.digest.bytes).is_err());
     }
 }

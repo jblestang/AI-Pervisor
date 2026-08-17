@@ -132,7 +132,7 @@ fn scan_pci_bus(bus: u8, devices: &mut Vec<PciBdf>) -> bool {
         }
         bus_present = true;
         let header_type = ((pci_config_read32(bus, device, 0, 0x0C) >> 16) & 0xFF) as u8;
-        let multifunction = header_type & 0x80 != 0;
+        let multifunction = (header_type & 0x80) != 0;
         let max_function = if multifunction { 7 } else { 0 };
         for function in 0u8..=max_function {
             let id = pci_config_read32(bus, device, function, 0);
@@ -154,10 +154,10 @@ fn scan_pci_bus(bus: u8, devices: &mut Vec<PciBdf>) -> bool {
 }
 
 fn pci_config_read32(bus: u8, device: u8, function: u8, offset: u8) -> u32 {
-    let address = 0x8000_0000u32
-        | u32::from(bus) << 16
-        | u32::from(device & 0x1F) << 11
-        | u32::from(function & 0x7) << 8
+    let address = (0x8000_0000u32
+        | (u32::from(bus) << 16)
+        | (u32::from(device & 0x1F) << 11)
+        | (u32::from(function & 0x7) << 8))
         | u32::from(offset & 0xFC);
     unsafe {
         core::arch::asm!(
@@ -180,8 +180,8 @@ fn pci_config_read32(bus: u8, device: u8, function: u8, offset: u8) -> u32 {
 fn cpuid(leaf: u32, subleaf: u32) -> (u32, u32, u32, u32) {
     let mut eax = leaf;
     let mut ecx = subleaf;
-    let mut edx = 0u32;
-    let mut ebx = 0u32;
+    let mut edx;
+    let mut ebx;
     unsafe {
         core::arch::asm!(
             "push rbx",
@@ -191,7 +191,7 @@ fn cpuid(leaf: u32, subleaf: u32) -> (u32, u32, u32, u32) {
             ebx_out = lateout(reg) ebx,
             inout("eax") eax,
             inout("ecx") ecx,
-            out("edx") edx,
+            lateout("edx") edx,
             options(nostack, preserves_flags),
         );
     }
