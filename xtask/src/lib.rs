@@ -15,7 +15,7 @@ use std::process::Command as ProcessCommand;
 mod constants;
 
 use clap::{Parser, Subcommand};
-use constants::DEFAULT_COVERAGE_MIN_LINES;
+use constants::{DEFAULT_COVERAGE_MIN_LINES, DEFAULT_FUZZ_RUNS};
 use hv_config::constants::DEFAULT_CONFIG_OUTPUT_DIR;
 
 /// Runs `cargo test --workspace`.
@@ -36,6 +36,52 @@ pub fn run_config_validate(path: &str) -> i32 {
 /// Generates configuration artifacts through the `hv-config` library.
 pub fn run_config_generate(path: &str, output: &str) -> i32 {
     hv_config::generate::generate(Path::new(path), Path::new(output))
+}
+
+/// Runs libFuzzer smoke tests for all parsing fuzz targets.
+pub fn run_fuzz(runs: u32) -> i32 {
+    fuzz_command(runs, run_with_cxx_gpp)
+}
+
+fn fuzz_command(runs: u32, runner: fn(&str, &[&str]) -> i32) -> i32 {
+    if runner(
+        "cargo",
+        &["build", "--release", "--manifest-path", "fuzz/Cargo.toml"],
+    ) != 0
+    {
+        return 1;
+    }
+
+    let runs_arg = format!("-runs={runs}");
+    for target in constants::FUZZ_TARGETS {
+        let binary = format!("fuzz/target/release/{target}");
+        if runner(&binary, &[runs_arg.as_str(), "-max_total_time=30"]) != 0 {
+            return 1;
+        }
+    }
+
+    0
+}
+
+fn run_with_cxx_gpp(program: &str, args: &[&str]) -> i32 {
+    let mut command = ProcessCommand::new(program);
+    command.args(args).env("CXX", "g++");
+    match command.status() {
+        Ok(status) => {
+            if status.success() {
+                0
+            } else {
+                match status.code() {
+                    Some(code) => code,
+                    None => 1,
+                }
+            }
+        }
+        Err(err) => {
+            eprintln!("failed to run {program}: {err}");
+            1
+        }
+    }
 }
 
 /// Runs workspace coverage and fails below `min_lines` percent line coverage.
@@ -71,6 +117,7 @@ fn dispatch_task_with(task: TaskCommand, runner: fn(&str, &[&str]) -> i32) -> i3
         TaskCommand::Test => test_command(runner),
         TaskCommand::Build => runner("cargo", &["build", "--workspace"]),
         TaskCommand::Coverage { min_lines } => coverage_command(min_lines, runner),
+        TaskCommand::Fuzz { runs } => fuzz_command(runs, run_with_cxx_gpp),
         TaskCommand::ConfigValidate { path } => run_config_validate(&path),
         TaskCommand::ConfigGenerate { path, output } => run_config_generate(&path, &output),
     }
@@ -100,6 +147,12 @@ enum TaskCommandCli {
         #[command(subcommand)]
         action: ConfigActionCli,
     },
+    /// Run libFuzzer smoke tests for parsing code.
+    Fuzz {
+        /// Number of libFuzzer iterations per target.
+        #[arg(long, default_value_t = DEFAULT_FUZZ_RUNS)]
+        runs: u32,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -125,6 +178,7 @@ pub(crate) fn map_cli_command(command: TaskCommandCli) -> TaskCommand {
         TaskCommandCli::Test => TaskCommand::Test,
         TaskCommandCli::Build => TaskCommand::Build,
         TaskCommandCli::Coverage { min_lines } => TaskCommand::Coverage { min_lines },
+        TaskCommandCli::Fuzz { runs } => TaskCommand::Fuzz { runs },
         TaskCommandCli::Config { action } => match action {
             ConfigActionCli::Validate { path } => TaskCommand::ConfigValidate { path },
             ConfigActionCli::Generate { path, output } => TaskCommand::ConfigGenerate { path, output },
@@ -153,6 +207,11 @@ pub enum TaskCommand {
     Coverage {
         /// Minimum required line coverage percentage.
         min_lines: u8,
+    },
+    /// Run libFuzzer smoke tests for parsing code.
+    Fuzz {
+        /// Number of libFuzzer iterations per target.
+        runs: u32,
     },
     /// Validate a configuration file.
     ConfigValidate {
@@ -193,7 +252,7 @@ pub fn run(program: &str, args: &[&str]) -> i32 {
 #[allow(clippy::expect_used, clippy::assertions_on_constants)]
 mod tests {
     use super::*;
-    use crate::constants::DEFAULT_COVERAGE_MIN_LINES;
+    use crate::constants::{DEFAULT_COVERAGE_MIN_LINES, DEFAULT_FUZZ_RUNS};
     use hv_config::constants::DEFAULT_CONFIG_OUTPUT_DIR;
 
     fn test_command_with(runner: fn(&str, &[&str]) -> i32) -> i32 {
@@ -317,6 +376,16 @@ mod tests {
                 path: String::from("cfg.yaml"),
                 output: String::from(DEFAULT_CONFIG_OUTPUT_DIR),
             }
+        );
+        assert_eq!(
+            parse_task_command(["xtask", "fuzz"]).expect("parse fuzz"),
+            TaskCommand::Fuzz {
+                runs: DEFAULT_FUZZ_RUNS,
+            }
+        );
+        assert_eq!(
+            parse_task_command(["xtask", "fuzz", "--runs", "1024"]).expect("parse fuzz runs"),
+            TaskCommand::Fuzz { runs: 1024 }
         );
     }
 

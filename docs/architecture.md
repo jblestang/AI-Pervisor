@@ -51,7 +51,7 @@ The runtime must consume only compiled artifacts. Partition names such as `in`, 
 - **Gate C (before e1000):** EPT/VT-d/IRQ isolation and lifecycle
 - **Gate D (before optimization):** end-to-end datapath and malicious tests
 
-Phases 0–3 complete Gate A. Phase 4 adds observed-platform validation and static layout planning (Gate B foundation). Phase 5 wires the boot path: the loader builds a versioned boot info blob, the hypervisor parses it, observes firmware inputs, and runs fail-closed platform validation before VMX setup. Phase 6 replaces the interim flattened ACPI contract with RSDP-directed table discovery and introduces the portable UEFI loader entry crate.
+Phases 0–3 complete Gate A. Phase 4 adds observed-platform validation and static layout planning (Gate B foundation). Phase 5 wires the boot path: the loader builds a versioned boot info blob, the hypervisor parses it, observes firmware inputs, and runs fail-closed platform validation before VMX setup. Phase 6 replaces the interim flattened ACPI contract with RSDP-directed table discovery and introduces the portable UEFI loader entry crate. All parsing surfaces are fuzzed via libFuzzer (`fuzz/`, `cargo xtask fuzz`); see [fuzzing.md](fuzzing.md).
 
 ## No-panic policy
 

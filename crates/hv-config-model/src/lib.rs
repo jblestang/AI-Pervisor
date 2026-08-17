@@ -32,6 +32,7 @@ pub use intent::{
 };
 pub use normalize::{normalize, NormalizedConfig, NormalizedSmtPolicy};
 pub use parse::{load_raw_from_path, load_raw_from_str};
+pub use pci::parse_bdf;
 pub use pipeline::{
     compile_config, compile_config_from_path, compile_config_from_str, CompiledConfig,
 };
