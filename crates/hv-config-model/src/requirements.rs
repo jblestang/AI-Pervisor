@@ -1,7 +1,7 @@
 //! Platform requirement extraction from normalized configuration.
 
 use crate::normalize::{
-    NormalizedConfig, NormalizedDeviceKind, NormalizedFeatureLevel, NormalizedSmtPolicy,
+    NormalizedConfig, NormalizedFeatureLevel, NormalizedSmtPolicy,
 };
 use hv_types::{ByteSize, PciBdf, VmId};
 
@@ -93,6 +93,15 @@ pub struct PlatformRequirements {
     pub expected_pci_devices: Vec<ExpectedPciDevice>,
 }
 
+impl ArchRequirement {
+    /// Returns the canonical architecture string for this requirement.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::X86_64 => crate::constants::SUPPORTED_ARCH,
+        }
+    }
+}
+
 /// Builds platform requirements from a normalized configuration.
 pub fn platform_requirements(config: &NormalizedConfig) -> PlatformRequirements {
     let mut expected_pci_devices = Vec::new();
@@ -102,9 +111,7 @@ pub fn platform_requirements(config: &NormalizedConfig) -> PlatformRequirements 
                 vm_id: partition.vm_id,
                 partition_id: partition.id.clone(),
                 bdf: device.bdf,
-                kind: match device.kind {
-                    NormalizedDeviceKind::NicE1000 => "nic_e1000".to_string(),
-                },
+                kind: device.kind.as_str().to_string(),
             });
         }
     }

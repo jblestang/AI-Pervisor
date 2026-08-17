@@ -13,6 +13,8 @@ use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
 
+pub mod artifacts;
+pub mod constants;
 pub mod generate;
 
 /// Parsed hv-config subcommands used by the CLI and tests.
@@ -51,7 +53,7 @@ enum CommandCli {
         /// Path to the YAML configuration file.
         path: PathBuf,
         /// Output directory for generated artifacts.
-        #[arg(short, long, default_value = "build/config")]
+        #[arg(short, long, default_value = crate::constants::DEFAULT_CONFIG_OUTPUT_DIR)]
         output: PathBuf,
     },
 }
@@ -104,6 +106,7 @@ pub fn validate_config(path: &Path) -> i32 {
 #[allow(clippy::expect_used)]
 mod tests {
     use super::*;
+    use crate::constants::DEFAULT_CONFIG_OUTPUT_DIR;
 
     #[test]
     fn parse_validate_command() {
@@ -125,7 +128,7 @@ mod tests {
             command,
             ConfigCommand::Generate {
                 path: PathBuf::from("configs/qemu.yaml"),
-                output: PathBuf::from("build/config"),
+                output: PathBuf::from(DEFAULT_CONFIG_OUTPUT_DIR),
             }
         );
     }

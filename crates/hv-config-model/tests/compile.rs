@@ -1,6 +1,7 @@
 //! Integration tests for configuration compilation.
 
 use hv_config_model::{compile_config_from_str, ConfigErrorKind};
+use hv_types::SHA256_HEX_LEN;
 
 #[test]
 fn compiles_reference_config() {
@@ -8,7 +9,7 @@ fn compiles_reference_config() {
     let compiled = compile_config_from_str(yaml).expect("reference config must compile");
     assert_eq!(compiled.normalized.partitions.len(), 3);
     assert_eq!(compiled.normalized.ipc_channels.len(), 2);
-    assert_eq!(compiled.digest.to_hex().len(), 64);
+    assert_eq!(compiled.digest.to_hex().len(), SHA256_HEX_LEN);
 }
 
 #[test]

@@ -8,6 +8,7 @@
 #![deny(clippy::unimplemented)]
 #![deny(clippy::indexing_slicing)]
 
+mod constants;
 mod digest;
 mod error;
 mod intent;
@@ -20,6 +21,9 @@ mod requirements;
 mod semantic;
 mod syntax;
 
+pub use constants::{
+    hypervisor_reserve_bytes, HYPERVISOR_RESERVE_MIB, IPC_SLOT_METADATA_BYTES, SUPPORTED_ARCH,
+};
 pub use digest::{config_digest, ConfigDigest};
 pub use error::{ConfigError, ConfigErrorKind, ConfigWarning, WarningKind};
 pub use intent::{

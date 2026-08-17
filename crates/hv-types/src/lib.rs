@@ -12,6 +12,7 @@
 #![deny(clippy::indexing_slicing)]
 
 mod arith;
+mod constants;
 mod ids;
 mod units;
 
@@ -23,4 +24,5 @@ pub use ids::{
     IommuDomainId, Iova, IpcChannelId, LogicalCpuId, PackageId, PciBdf, PciBus, PciDevice,
     PciFunction, PciSegment, PhysicalCoreId, VcpuId, VmId,
 };
-pub use units::{ByteSize, Gibibyte, PageCount};
+pub use constants::{BYTES_PER_GIB, BYTES_PER_MIB, SHA256_DIGEST_BYTES, SHA256_HEX_LEN};
+pub use units::{ByteSize, Gibibyte, Mebibyte, PageCount};

@@ -2,6 +2,7 @@
 
 use std::process;
 
+use hv_config::constants::CLI_EXIT_USAGE;
 use xtask::parse_task_command;
 
 fn main() {
@@ -9,7 +10,7 @@ fn main() {
         Ok(command) => command,
         Err(err) => {
             let _ = err.print();
-            process::exit(2);
+            process::exit(CLI_EXIT_USAGE);
         }
     };
     process::exit(xtask::dispatch_task(command));

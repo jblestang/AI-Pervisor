@@ -2,8 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::constants::{hypervisor_reserve_bytes, IPC_SLOT_METADATA_BYTES};
 use crate::normalize::{
-    NormalizedConfig, NormalizedDeviceKind, NormalizedDeviceRole, NormalizedPartition,
+    NormalizedConfig, NormalizedPartition,
 };
 use crate::requirements::PlatformRequirements;
 use hv_types::{ByteSize, IpcChannelId, PciBdf, VmId};
@@ -222,9 +223,7 @@ pub fn static_intent_ir(
             pci_devices.push((
                 device.bdf,
                 partition.vm_id,
-                match device.kind {
-                    NormalizedDeviceKind::NicE1000 => "nic_e1000".to_string(),
-                },
+                device.kind.as_str().to_string(),
             ));
         }
     }
@@ -260,7 +259,7 @@ pub fn static_intent_ir(
         memory_intent: MemoryLayoutIntent {
             total_guest_bytes,
             total_ipc_bytes,
-            hypervisor_reserve_bytes: ByteSize::new(64 * 1024 * 1024),
+            hypervisor_reserve_bytes: hypervisor_reserve_bytes(),
         },
         boot_intent: BootIntent { guest_images },
         pci_intent: PciOwnershipIntent {
@@ -290,14 +289,9 @@ fn partition_intent(partition: &NormalizedPartition) -> PartitionIntent {
             .devices
             .iter()
             .map(|device| PciDeviceIntent {
-                kind: match device.kind {
-                    NormalizedDeviceKind::NicE1000 => "nic_e1000".to_string(),
-                },
+                kind: device.kind.as_str().to_string(),
                 bdf: device.bdf,
-                role: device.role.map(|role| match role {
-                    NormalizedDeviceRole::DatapathIn => "datapath_in".to_string(),
-                    NormalizedDeviceRole::DatapathOut => "datapath_out".to_string(),
-                }),
+                role: device.role.map(|role| role.as_str().to_string()),
             })
             .collect(),
     }
@@ -307,7 +301,7 @@ fn compute_ipc_shared_bytes(
     queue_slots: u32,
     slot_size_bytes: u32,
 ) -> Result<ByteSize, crate::error::ConfigError> {
-    let per_slot = u64::from(slot_size_bytes) + 64;
+    let per_slot = u64::from(slot_size_bytes) + IPC_SLOT_METADATA_BYTES;
     let total = per_slot
         .checked_mul(u64::from(queue_slots))
         .ok_or_else(|| {

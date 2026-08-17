@@ -3,6 +3,9 @@
 use std::path::PathBuf;
 use std::process::Command;
 
+use hv_config::artifacts::CONFIG_SHA256;
+use hv_config::constants::{CLI_EXIT_USAGE, DEFAULT_CONFIG_OUTPUT_DIR};
+
 fn qemu_config_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../configs/qemu.yaml")
 }
@@ -21,7 +24,7 @@ fn cli_missing_subcommand_exits_with_usage_error() {
     let output = Command::new(env!("CARGO_BIN_EXE_xtask"))
         .output()
         .expect("spawn");
-    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(output.status.code(), Some(CLI_EXIT_USAGE));
 }
 
 #[test]
@@ -38,7 +41,13 @@ fn cli_config_generate_uses_default_output() {
         .status()
         .expect("spawn");
     assert!(status.success());
-    assert!(output.path().join("build/config/config.sha256").is_file());
+    assert!(
+        output
+            .path()
+            .join(DEFAULT_CONFIG_OUTPUT_DIR)
+            .join(CONFIG_SHA256)
+            .is_file()
+    );
 }
 
 #[test]

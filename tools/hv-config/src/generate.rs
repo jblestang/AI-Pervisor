@@ -3,6 +3,11 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::artifacts::{
+    BOOT_LAYOUT, BOOT_MANIFEST, BUILD_MANIFEST, CONFIG_SHA256, CORE_OWNERSHIP, CPU_TOPOLOGY,
+    GUEST_IMAGES, IPC_MAP, MEMORY_MAP, PCI_MAP, PLATFORM_REQUIREMENTS, QEMU_ARGS,
+    STATIC_INTENT_JSON, STATIC_PLATFORM_RS,
+};
 use hv_config_model::compile_config_from_path;
 
 /// Generates configuration artifacts into `output`.
@@ -33,42 +38,42 @@ fn write_artifacts(
     fs::create_dir_all(output)?;
 
     write_file(
-        output.join("platform-requirements.txt"),
+        output.join(PLATFORM_REQUIREMENTS),
         render_requirements(compiled),
     )?;
-    write_file(output.join("ipc-map.txt"), render_ipc_map(compiled))?;
-    write_file(output.join("pci-map.txt"), render_pci_map(compiled))?;
+    write_file(output.join(IPC_MAP), render_ipc_map(compiled))?;
+    write_file(output.join(PCI_MAP), render_pci_map(compiled))?;
     write_file(
-        output.join("cpu-topology.txt"),
+        output.join(CPU_TOPOLOGY),
         render_cpu_topology(compiled),
     )?;
-    write_file(output.join("memory-map.txt"), render_memory_map(compiled))?;
+    write_file(output.join(MEMORY_MAP), render_memory_map(compiled))?;
     write_file(
-        output.join("core-ownership.txt"),
+        output.join(CORE_OWNERSHIP),
         render_core_ownership(compiled),
     )?;
-    write_file(output.join("boot-layout.txt"), render_boot_layout(compiled))?;
+    write_file(output.join(BOOT_LAYOUT), render_boot_layout(compiled))?;
     write_file(
-        output.join("guest-images.txt"),
+        output.join(GUEST_IMAGES),
         render_guest_images(compiled),
     )?;
-    write_file(output.join("qemu-args.txt"), render_qemu_args(compiled))?;
+    write_file(output.join(QEMU_ARGS), render_qemu_args(compiled))?;
     write_file(
-        output.join("boot-manifest.txt"),
+        output.join(BOOT_MANIFEST),
         render_boot_manifest(compiled),
     )?;
     write_file(
-        output.join("build-manifest.txt"),
+        output.join(BUILD_MANIFEST),
         render_build_manifest(source, compiled),
     )?;
-    write_file(output.join("config.sha256"), compiled.digest.to_hex())?;
+    write_file(output.join(CONFIG_SHA256), compiled.digest.to_hex())?;
     write_file(
-        output.join("static-platform.rs"),
+        output.join(STATIC_PLATFORM_RS),
         render_static_platform_rs(compiled)?,
     )?;
 
     let intent_json = serde_json::to_string_pretty(&compiled.intent)?;
-    write_file(output.join("static-intent.json"), intent_json)?;
+    write_file(output.join(STATIC_INTENT_JSON), intent_json)?;
 
     Ok(())
 }

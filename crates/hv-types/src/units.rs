@@ -1,6 +1,7 @@
 //! Size and memory unit newtypes.
 
 use crate::arith::{checked_mul_usize, ArithmeticError};
+use crate::constants::{BYTES_PER_GIB, BYTES_PER_MIB};
 
 /// Byte size wrapper.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -44,13 +45,32 @@ impl PageCount {
     }
 }
 
+/// Mebibyte quantity used at configuration boundaries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Mebibyte(pub u64);
+
+impl Mebibyte {
+    /// Creates a mebibyte quantity from a whole MiB count.
+    pub const fn new(mib: u64) -> Self {
+        Self(mib)
+    }
+
+    /// Returns the whole mebibyte count.
+    pub const fn mib(self) -> u64 {
+        self.0
+    }
+
+    /// Converts mebibytes to bytes.
+    pub const fn to_bytes(self) -> ByteSize {
+        ByteSize::new(self.0 * BYTES_PER_MIB)
+    }
+}
+
 /// Gibibyte quantity used at configuration boundaries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Gibibyte(pub u64);
 
 impl Gibibyte {
-    const BYTES_PER_GIB: u64 = 1024 * 1024 * 1024;
-
     /// Creates a gibibyte quantity from a whole GiB count.
     pub const fn new(gib: u64) -> Self {
         Self(gib)
@@ -63,7 +83,7 @@ impl Gibibyte {
 
     /// Converts gibibytes to bytes with overflow checking.
     pub fn to_bytes(self) -> Result<ByteSize, ArithmeticError> {
-        let bytes = checked_mul_usize(self.0 as usize, Self::BYTES_PER_GIB as usize)?;
+        let bytes = checked_mul_usize(self.0 as usize, BYTES_PER_GIB as usize)?;
         Ok(ByteSize::new(bytes as u64))
     }
 }
@@ -71,6 +91,12 @@ impl Gibibyte {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mebibyte_to_bytes() {
+        assert_eq!(Mebibyte::new(1).mib(), 1);
+        assert_eq!(Mebibyte::new(512).to_bytes(), ByteSize::new(536_870_912));
+    }
 
     #[test]
     fn gib_to_bytes() {

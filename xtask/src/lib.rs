@@ -12,7 +12,11 @@ use std::ffi::OsString;
 use std::path::Path;
 use std::process::Command as ProcessCommand;
 
+mod constants;
+
 use clap::{Parser, Subcommand};
+use constants::DEFAULT_COVERAGE_MIN_LINES;
+use hv_config::constants::DEFAULT_CONFIG_OUTPUT_DIR;
 
 /// Runs `cargo test --workspace`.
 pub fn run_tests() -> i32 {
@@ -88,7 +92,7 @@ enum TaskCommandCli {
     /// Run tests and enforce minimum line coverage.
     Coverage {
         /// Minimum required line coverage percentage.
-        #[arg(long, default_value_t = 95)]
+        #[arg(long, default_value_t = DEFAULT_COVERAGE_MIN_LINES)]
         min_lines: u8,
     },
     /// Validate a configuration file.
@@ -110,7 +114,7 @@ enum ConfigActionCli {
         /// Path to YAML configuration.
         path: String,
         /// Output directory.
-        #[arg(short, long, default_value = "build/config")]
+        #[arg(short, long, default_value = DEFAULT_CONFIG_OUTPUT_DIR)]
         output: String,
     },
 }
@@ -189,6 +193,8 @@ pub fn run(program: &str, args: &[&str]) -> i32 {
 #[allow(clippy::expect_used, clippy::assertions_on_constants)]
 mod tests {
     use super::*;
+    use crate::constants::DEFAULT_COVERAGE_MIN_LINES;
+    use hv_config::constants::DEFAULT_CONFIG_OUTPUT_DIR;
 
     fn test_command_with(runner: fn(&str, &[&str]) -> i32) -> i32 {
         test_command(runner)
@@ -206,6 +212,7 @@ mod tests {
 
     fn mock_coverage_runner(program: &str, args: &[&str]) -> i32 {
         assert_eq!(program, "cargo");
+        let threshold = DEFAULT_COVERAGE_MIN_LINES.to_string();
         assert_eq!(
             args,
             &[
@@ -213,7 +220,7 @@ mod tests {
                 "--workspace",
                 "--summary-only",
                 "--fail-under-lines",
-                "95",
+                threshold.as_str(),
             ]
         );
         0
@@ -232,7 +239,10 @@ mod tests {
 
     #[test]
     fn run_coverage_passes_threshold_to_llvm_cov() {
-        assert_eq!(coverage_command_with(95, mock_coverage_runner), 0);
+        assert_eq!(
+            coverage_command_with(DEFAULT_COVERAGE_MIN_LINES, mock_coverage_runner),
+            0
+        );
     }
 
     #[test]
@@ -246,7 +256,12 @@ mod tests {
             0
         );
         assert_eq!(
-            dispatch_task_with(TaskCommand::Coverage { min_lines: 95 }, mock_coverage_runner),
+            dispatch_task_with(
+                TaskCommand::Coverage {
+                    min_lines: DEFAULT_COVERAGE_MIN_LINES,
+                },
+                mock_coverage_runner,
+            ),
             0
         );
     }
@@ -279,8 +294,16 @@ mod tests {
             TaskCommand::Build
         );
         assert_eq!(
-            parse_task_command(["xtask", "coverage", "--min-lines", "95"]).expect("parse coverage"),
-            TaskCommand::Coverage { min_lines: 95 }
+            parse_task_command([
+                "xtask",
+                "coverage",
+                "--min-lines",
+                &DEFAULT_COVERAGE_MIN_LINES.to_string(),
+            ])
+            .expect("parse coverage"),
+            TaskCommand::Coverage {
+                min_lines: DEFAULT_COVERAGE_MIN_LINES,
+            }
         );
         assert_eq!(
             parse_task_command(["xtask", "config", "validate", "cfg.yaml"]).expect("parse validate"),
@@ -292,7 +315,7 @@ mod tests {
             parse_task_command(["xtask", "config", "generate", "cfg.yaml"]).expect("parse generate"),
             TaskCommand::ConfigGenerate {
                 path: String::from("cfg.yaml"),
-                output: String::from("build/config"),
+                output: String::from(DEFAULT_CONFIG_OUTPUT_DIR),
             }
         );
     }

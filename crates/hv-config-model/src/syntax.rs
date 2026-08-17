@@ -1,5 +1,6 @@
 //! Syntax and schema validation.
 
+use crate::constants::SUPPORTED_ARCH;
 use crate::error::{ConfigError, ConfigErrorKind};
 use crate::raw::{RawConfig, SUPPORTED_SCHEMA_VERSION};
 
@@ -23,7 +24,7 @@ pub fn validate_syntax(raw: &RawConfig) -> Result<(), ConfigError> {
         );
     }
 
-    if raw.platform.requirements.arch != "x86_64" {
+    if raw.platform.requirements.arch != SUPPORTED_ARCH {
         return Err(ConfigError::new(
             ConfigErrorKind::Syntax,
             format!("unsupported arch '{}'", raw.platform.requirements.arch),

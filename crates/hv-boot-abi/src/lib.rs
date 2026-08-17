@@ -12,6 +12,8 @@
 #![deny(clippy::unimplemented)]
 #![deny(clippy::indexing_slicing)]
 
+use hv_types::SHA256_DIGEST_BYTES;
+
 /// Current boot ABI version.
 pub const BOOT_ABI_VERSION: u32 = 1;
 
@@ -29,7 +31,7 @@ pub struct BootInfoHeader {
     /// Total boot info structure size in bytes.
     pub size: u32,
     /// SHA-256 digest of the normalized configuration.
-    pub config_digest: [u8; 32],
+    pub config_digest: [u8; SHA256_DIGEST_BYTES],
     /// Offset to the descriptor table from the start of the boot info blob.
     pub descriptor_table_offset: u32,
     /// Number of descriptors in the table.

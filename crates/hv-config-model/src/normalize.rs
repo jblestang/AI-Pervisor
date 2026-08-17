@@ -10,7 +10,7 @@ use crate::raw::{
     RawConfig, RawDeviceKind, RawDeviceRole, RawFeatureLevel, RawGuestImage, RawIpcChannel,
     RawPartition, RawPlatformRequirements, RawQemu, RawSmtPolicy,
 };
-use hv_types::{ByteSize, Gibibyte, IpcChannelId, PciBdf, VmId};
+use hv_types::{ByteSize, Gibibyte, IpcChannelId, Mebibyte, PciBdf, VmId};
 
 /// Canonical normalized configuration used for hashing and IR generation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -137,6 +137,15 @@ pub enum NormalizedDeviceKind {
     NicE1000,
 }
 
+impl NormalizedDeviceKind {
+    /// Returns the canonical snake_case identifier for this device kind.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::NicE1000 => "nic_e1000",
+        }
+    }
+}
+
 /// Normalized datapath role.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -145,6 +154,16 @@ pub enum NormalizedDeviceRole {
     DatapathIn,
     /// Egress NIC.
     DatapathOut,
+}
+
+impl NormalizedDeviceRole {
+    /// Returns the canonical snake_case identifier for this datapath role.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::DatapathIn => "datapath_in",
+            Self::DatapathOut => "datapath_out",
+        }
+    }
 }
 
 /// Normalized IPC channel with deterministic ids.
@@ -386,7 +405,7 @@ fn normalize_requirements(
 }
 
 fn normalize_qemu(raw: &RawQemu) -> Result<NormalizedQemu, ConfigError> {
-    let memory_bytes = ByteSize::new(u64::from(raw.memory_mib) * 1024 * 1024);
+    let memory_bytes = Mebibyte::new(u64::from(raw.memory_mib)).to_bytes();
     Ok(NormalizedQemu {
         machine: raw.machine.clone(),
         cpus: raw.cpus,

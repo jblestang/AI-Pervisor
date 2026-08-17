@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use crate::error::{ConfigError, ConfigErrorKind, ConfigWarning, WarningKind};
 use crate::pci::parse_bdf;
 use crate::raw::{RawConfig, RawDeviceRole, RawSmtPolicy};
-use hv_types::PciBdf;
+use hv_types::{PciBdf, SHA256_HEX_LEN};
 
 /// Validates semantic constraints and returns non-fatal warnings.
 pub fn validate_semantics(raw: &RawConfig) -> Result<Vec<ConfigWarning>, ConfigError> {
@@ -145,10 +145,12 @@ fn validate_guest_images(
             )
             .with_path(format!("boot.guest_images[partition={}]", image.partition)));
         }
-        if image.sha256.len() != 64 || !image.sha256.chars().all(|c| c.is_ascii_hexdigit()) {
+        if image.sha256.len() != SHA256_HEX_LEN
+            || !image.sha256.chars().all(|c| c.is_ascii_hexdigit())
+        {
             return Err(ConfigError::new(
                 ConfigErrorKind::Semantic,
-                "guest image sha256 must be 64 hex characters",
+                format!("guest image sha256 must be {SHA256_HEX_LEN} hex characters"),
             )
             .with_path(format!(
                 "boot.guest_images[partition={}].sha256",
