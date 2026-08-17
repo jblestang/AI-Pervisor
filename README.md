@@ -9,6 +9,8 @@ cargo xtask test
 cargo xtask coverage
 cargo xtask fuzz
 cargo xtask build-efi
+cargo xtask build-boot-chain
+cargo xtask ovmf-smoke-boot
 cargo xtask build
 cargo xtask config validate configs/qemu.yaml
 cargo xtask config generate configs/qemu.yaml

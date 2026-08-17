@@ -50,7 +50,15 @@ qemu-system-x86_64 \
   -serial stdio
 ```
 
-On success the loader chain-loads the hypervisor, which verifies the published transfer blob and returns `EFI_SUCCESS`.
+On success the loader chain-loads the hypervisor, which verifies the published transfer blob and returns `EFI_SUCCESS`. OVMF then returns to the Boot Manager menu (expected for UEFI apps that exit successfully).
+
+Automated verification:
+
+```bash
+cargo xtask ovmf-smoke-boot
+```
+
+This builds the boot chain (unless `--no-build` is passed), launches OVMF/QEMU with a temporary ESP, and checks the firmware serial log for a successful boot attempt without an `Aborted` status. CI runs `cargo xtask ovmf-smoke-boot --no-build` after `build-boot-chain`.
 
 ## PCI enumeration limits (Phase 8)
 

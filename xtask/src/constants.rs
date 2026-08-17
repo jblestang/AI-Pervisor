@@ -18,6 +18,12 @@ pub const DEFAULT_HYPERVISOR_EFI_OUTPUT_PATH: &str = "build/hv-hypervisor.efi";
 /// Default output directory for boot-chain images.
 pub const DEFAULT_BOOT_CHAIN_OUTPUT_DIR: &str = "build/boot-chain";
 
+/// Default OVMF/QEMU smoke boot timeout in seconds.
+pub const DEFAULT_OVMF_SMOKE_TIMEOUT_SECS: u64 = 60;
+
+/// Working directory for OVMF smoke boot artifacts (ESP, vars copy, serial log).
+pub const OVMF_SMOKE_WORK_DIR: &str = "build/ovmf-smoke";
+
 /// libFuzzer targets built from `fuzz/Cargo.toml`.
 pub const FUZZ_TARGETS: &[&str] = &[
     "boot_info_parse",

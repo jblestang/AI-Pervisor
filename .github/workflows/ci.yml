@@ -49,3 +49,7 @@ jobs:
         run: cargo xtask build-efi
       - name: build boot chain
         run: cargo xtask build-boot-chain
+      - name: install ovmf and qemu
+        run: sudo apt-get update && sudo apt-get install -y qemu-system-x86 ovmf
+      - name: ovmf smoke boot
+        run: cargo xtask ovmf-smoke-boot --no-build
