@@ -1,0 +1,74 @@
+[package]
+name = "ai-pervisor-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+hv-acpi-walk = { path = "../crates/hv-acpi-walk" }
+hv-boot-abi = { path = "../crates/hv-boot-abi" }
+hv-config-model = { path = "../crates/hv-config-model" }
+hv-platform-model = { path = "../crates/hv-platform-model" }
+hv-types = { path = "../crates/hv-types" }
+
+[[bin]]
+name = "boot_info_parse"
+path = "fuzz_targets/boot_info_parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "acpi_rsdp_parse"
+path = "fuzz_targets/acpi_rsdp_parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "uefi_descriptor_parse"
+path = "fuzz_targets/uefi_descriptor_parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "acpi_walk"
+path = "fuzz_targets/acpi_walk.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "config_yaml"
+path = "fuzz_targets/config_yaml.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "pci_bdf_parse"
+path = "fuzz_targets/pci_bdf_parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "observed_platform_json"
+path = "fuzz_targets/observed_platform_json.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "observe_platform"
+path = "fuzz_targets/observe_platform.rs"
+test = false
+doc = false
+bench = false

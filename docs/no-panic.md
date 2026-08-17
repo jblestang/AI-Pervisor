@@ -24,6 +24,8 @@ Workspace Clippy lints (`Cargo.toml`):
 
 Critical crates repeat these denies at the crate root (`hv-types`, `hv-config-model`, ABIs, host tools).
 
+Fuzz harnesses under `fuzz/` exercise parsers with arbitrary input; see [fuzzing.md](fuzzing.md).
+
 Tests may use assertions and `expect` via `.clippy.toml` (`allow-*-in-tests`).
 
 ## Failure handling
