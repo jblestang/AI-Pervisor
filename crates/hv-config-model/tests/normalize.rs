@@ -73,11 +73,7 @@ fn normalize_sorts_devices_by_bdf() {
     validate_syntax(&raw).expect("syntax");
     validate_semantics(&raw).expect("semantic");
     let normalized = normalize(raw).expect("normalize");
-    let devices = &normalized
-        .partitions
-        .first()
-        .expect("partition")
-        .devices;
+    let devices = &normalized.partitions.first().expect("partition").devices;
     assert_eq!(devices.len(), 2);
     let first = devices.first().expect("first device");
     let second = devices.get(1).expect("second device");

@@ -33,21 +33,15 @@ fn cli_config_generate_uses_default_output() {
     let output = tempfile::tempdir().expect("tempdir");
     let status = Command::new(env!("CARGO_BIN_EXE_xtask"))
         .current_dir(output.path())
-        .args([
-            "config",
-            "generate",
-            path.to_str().expect("utf8 path"),
-        ])
+        .args(["config", "generate", path.to_str().expect("utf8 path")])
         .status()
         .expect("spawn");
     assert!(status.success());
-    assert!(
-        output
-            .path()
-            .join(DEFAULT_CONFIG_OUTPUT_DIR)
-            .join(CONFIG_SHA256)
-            .is_file()
-    );
+    assert!(output
+        .path()
+        .join(DEFAULT_CONFIG_OUTPUT_DIR)
+        .join(CONFIG_SHA256)
+        .is_file());
 }
 
 #[test]

@@ -1,10 +1,10 @@
 //! hv-types extended unit tests.
 
 use hv_types::{
-    align_down, align_up, checked_add_usize, checked_mul_usize, is_aligned, ApicId, ArithmeticError,
-    ByteSize, Gibibyte, GuestPhysAddr, HostPhysAddr, IommuDomainId, IpcChannelId, LogicalCpuId,
-    PackageId, PageCount, PciBdf, PciBus, PciDevice, PciFunction, PciSegment, PhysicalCoreId,
-    VcpuId, VmId,
+    align_down, align_up, checked_add_usize, checked_mul_usize, is_aligned, ApicId,
+    ArithmeticError, ByteSize, Gibibyte, GuestPhysAddr, HostPhysAddr, IommuDomainId, IpcChannelId,
+    LogicalCpuId, PackageId, PageCount, PciBdf, PciBus, PciDevice, PciFunction, PciSegment,
+    PhysicalCoreId, VcpuId, VmId,
 };
 
 #[test]
@@ -66,5 +66,8 @@ fn arithmetic_error_paths() {
         checked_mul_usize(usize::MAX, 2),
         Err(ArithmeticError::MulOverflow)
     );
-    assert_eq!(align_up(usize::MAX, 4096), Err(ArithmeticError::AddOverflow));
+    assert_eq!(
+        align_up(usize::MAX, 4096),
+        Err(ArithmeticError::AddOverflow)
+    );
 }

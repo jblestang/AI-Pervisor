@@ -1,7 +1,7 @@
 //! Hypervisor loader errors at the UEFI entry boundary.
 
-use core::fmt;
 use alloc::string::{String, ToString};
+use core::fmt;
 
 /// Kind of UEFI loader error.
 #[derive(Debug, Clone, PartialEq, Eq)]

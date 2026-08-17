@@ -1,8 +1,6 @@
 //! UEFI memory map structures shared across the boot path.
 
-use crate::constants::{
-    UEFI_MEMORY_DESCRIPTOR_MIN_SIZE, UEFI_MEMORY_DESCRIPTOR_OVMF_SIZE,
-};
+use crate::constants::{UEFI_MEMORY_DESCRIPTOR_MIN_SIZE, UEFI_MEMORY_DESCRIPTOR_OVMF_SIZE};
 use crate::error::{BootError, BootErrorKind};
 
 /// UEFI memory map descriptor matching the firmware layout.
@@ -54,28 +52,24 @@ impl UefiMemoryDescriptor {
 }
 
 fn read_u32(bytes: &[u8], start: usize) -> Result<u32, BootError> {
-    let slice = bytes
-        .get(start..start + 4)
-        .ok_or(BootError::new(
-            BootErrorKind::Parse,
-            "UEFI descriptor u32 truncated",
-        ))?;
-    let chunk: [u8; 4] = slice.try_into().map_err(|_| {
-        BootError::new(BootErrorKind::Parse, "UEFI descriptor u32 truncated")
-    })?;
+    let slice = bytes.get(start..start + 4).ok_or(BootError::new(
+        BootErrorKind::Parse,
+        "UEFI descriptor u32 truncated",
+    ))?;
+    let chunk: [u8; 4] = slice
+        .try_into()
+        .map_err(|_| BootError::new(BootErrorKind::Parse, "UEFI descriptor u32 truncated"))?;
     Ok(u32::from_le_bytes(chunk))
 }
 
 fn read_u64(bytes: &[u8], start: usize) -> Result<u64, BootError> {
-    let slice = bytes
-        .get(start..start + 8)
-        .ok_or(BootError::new(
-            BootErrorKind::Parse,
-            "UEFI descriptor u64 truncated",
-        ))?;
-    let chunk: [u8; 8] = slice.try_into().map_err(|_| {
-        BootError::new(BootErrorKind::Parse, "UEFI descriptor u64 truncated")
-    })?;
+    let slice = bytes.get(start..start + 8).ok_or(BootError::new(
+        BootErrorKind::Parse,
+        "UEFI descriptor u64 truncated",
+    ))?;
+    let chunk: [u8; 8] = slice
+        .try_into()
+        .map_err(|_| BootError::new(BootErrorKind::Parse, "UEFI descriptor u64 truncated"))?;
     Ok(u64::from_le_bytes(chunk))
 }
 

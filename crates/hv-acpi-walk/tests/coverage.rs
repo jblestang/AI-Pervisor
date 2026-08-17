@@ -6,7 +6,7 @@ use hv_acpi_walk::{
     collect_acpi_tables, AcpiWalkErrorKind, FirmwareMemoryImage, PhysicalMemory,
     ACPI_TABLE_HEADER_LENGTH, ACPI_TABLE_MAX_LENGTH,
 };
-use hv_boot_abi::{finalize_acpi_table_checksum, AcpiRsdp, encode_reference_dmar_with_intr_remap};
+use hv_boot_abi::{encode_reference_dmar_with_intr_remap, finalize_acpi_table_checksum, AcpiRsdp};
 
 #[test]
 fn physical_memory_rejects_read_below_image_base() {
@@ -22,9 +22,7 @@ fn physical_memory_rejects_read_below_image_base() {
 fn physical_memory_rejects_read_past_image_end() {
     let memory = FirmwareMemoryImage::new(0, vec![0u8; 8]);
     let mut buffer = [0u8; 16];
-    let err = memory
-        .read_physical(0, &mut buffer)
-        .expect_err("must fail");
+    let err = memory.read_physical(0, &mut buffer).expect_err("must fail");
     assert_eq!(err.kind, AcpiWalkErrorKind::Memory);
 }
 
@@ -86,7 +84,8 @@ fn collect_acpi_tables_skips_null_xsdt_entries() {
     let dmar = encode_reference_dmar_with_intr_remap();
     let mut xsdt = vec![0u8; ACPI_TABLE_HEADER_LENGTH + 16];
     xsdt[0..4].copy_from_slice(b"XSDT");
-    xsdt[ACPI_TABLE_HEADER_LENGTH..ACPI_TABLE_HEADER_LENGTH + 8].copy_from_slice(&0u64.to_le_bytes());
+    xsdt[ACPI_TABLE_HEADER_LENGTH..ACPI_TABLE_HEADER_LENGTH + 8]
+        .copy_from_slice(&0u64.to_le_bytes());
     xsdt[ACPI_TABLE_HEADER_LENGTH + 8..ACPI_TABLE_HEADER_LENGTH + 16]
         .copy_from_slice(&dmar_address.to_le_bytes());
     let length = xsdt.len() as u32;

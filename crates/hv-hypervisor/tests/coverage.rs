@@ -10,7 +10,11 @@ use hv_platform_model::{observe_platform, PlatformError, PlatformErrorKind};
 use hv_types::SHA256_DIGEST_BYTES;
 
 fn rsdp_from_firmware(firmware: &hv_loader::FirmwareMemoryImage) -> Vec<u8> {
-    firmware.bytes.get(0x1000..0x1000 + 36).expect("rsdp").to_vec()
+    firmware
+        .bytes
+        .get(0x1000..0x1000 + 36)
+        .expect("rsdp")
+        .to_vec()
 }
 
 fn reference_cpuid() -> CpuidSnapshot {
@@ -141,11 +145,8 @@ fn boot_check_error_display_covers_all_kinds() {
     assert!(BootCheckError::new(BootCheckErrorKind::Platform, "x")
         .to_string()
         .contains("boot platform error"));
-    let platform_err: BootCheckError = PlatformError::new(
-        PlatformErrorKind::Validation,
-        "missing vmx",
-    )
-    .into();
+    let platform_err: BootCheckError =
+        PlatformError::new(PlatformErrorKind::Validation, "missing vmx").into();
     assert_eq!(platform_err.kind, BootCheckErrorKind::Platform);
     let observed = observe_platform(&ObservationInputs {
         cpuid: CpuidSnapshot {

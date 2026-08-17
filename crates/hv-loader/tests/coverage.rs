@@ -9,7 +9,11 @@ use hv_observation_types::CpuidSnapshot;
 use hv_types::SHA256_DIGEST_BYTES;
 
 fn rsdp_from_firmware(firmware: &hv_loader::FirmwareMemoryImage) -> Vec<u8> {
-    firmware.bytes.get(0x1000..0x1000 + 36).expect("rsdp").to_vec()
+    firmware
+        .bytes
+        .get(0x1000..0x1000 + 36)
+        .expect("rsdp")
+        .to_vec()
 }
 
 fn empty_cpuid() -> CpuidSnapshot {

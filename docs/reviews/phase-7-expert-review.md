@@ -44,3 +44,7 @@ Multi-domain review of UEFI `.efi` loader build and OVMF integration (`cursor/ph
 - `cargo clippy --all-targets --all-features -- -D warnings` — pass
 - `cargo xtask coverage` — pass (95.20% line coverage; manual threshold enforcement in xtask because `cargo-llvm-cov` 0.6.21 ignores `--fail-under-lines`)
 - `cargo xtask build-efi` — produces `build/hv-loader.efi`
+
+## Review status
+
+All MUST and SHOULD items above are applied. Deferred items are documented with explicit phase ownership. PR **#6** is ready for human review.

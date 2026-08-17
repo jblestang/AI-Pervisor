@@ -20,9 +20,7 @@ mod handoff;
 
 pub use build::{build_boot_info_blob, BootInfoSection};
 
-pub use constants::{
-    DEFAULT_MEMORY_DESCRIPTOR_SIZE, MEMORY_MAP_KIND, RSDP_KIND,
-};
+pub use constants::{DEFAULT_MEMORY_DESCRIPTOR_SIZE, MEMORY_MAP_KIND, RSDP_KIND};
 pub use error::{LoaderError, LoaderErrorKind};
 #[cfg(any(test, feature = "std"))]
 pub use firmware::{encode_empty_acpi_firmware, encode_qemu_reference_firmware};

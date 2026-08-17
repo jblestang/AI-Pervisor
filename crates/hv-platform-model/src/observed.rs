@@ -55,7 +55,9 @@ impl ObservedPlatform {
 }
 
 /// Parses an observed platform snapshot from JSON text.
-pub fn parse_observed_platform_json(contents: &str) -> Result<ObservedPlatform, crate::error::PlatformError> {
+pub fn parse_observed_platform_json(
+    contents: &str,
+) -> Result<ObservedPlatform, crate::error::PlatformError> {
     serde_json::from_str(contents).map_err(|err| {
         crate::error::PlatformError::new(
             crate::error::PlatformErrorKind::Parse,

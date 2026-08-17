@@ -33,9 +33,8 @@ pub fn boot_check(
     }
 
     let observed = observe_platform(observation)?;
-    let (validated, warnings) = validate_platform(requirements, &observed).map_err(|err| {
-        BootCheckError::new(BootCheckErrorKind::Platform, err.to_string())
-    })?;
+    let (validated, warnings) = validate_platform(requirements, &observed)
+        .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.to_string()))?;
     Ok((validated, warnings))
 }
 
@@ -78,9 +77,7 @@ mod tests {
                 leaf1_ebx: (4 << 16) | 4,
                 leaf80000007_edx: Some(1 << CPUID_80000007_EDX_INVARIANT_TSC_BIT),
                 leaf80000008_ecx: Some(3),
-                leaf480_ecx: Some(
-                    (1 << CPUID_480_ECX_EPT_BIT) | (1 << CPUID_480_ECX_VPID_BIT),
-                ),
+                leaf480_ecx: Some((1 << CPUID_480_ECX_EPT_BIT) | (1 << CPUID_480_ECX_VPID_BIT)),
                 leaf480_ebx: Some(1 << CPUID_480_EBX_PREEMPTION_TIMER_BIT),
             },
             vec![

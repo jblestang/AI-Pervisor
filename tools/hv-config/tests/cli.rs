@@ -59,11 +59,9 @@ fn cli_generate_uses_default_output_directory() {
         .status()
         .expect("spawn");
     assert!(status.success());
-    assert!(
-        output
-            .path()
-            .join(DEFAULT_CONFIG_OUTPUT_DIR)
-            .join(CONFIG_SHA256)
-            .is_file()
-    );
+    assert!(output
+        .path()
+        .join(DEFAULT_CONFIG_OUTPUT_DIR)
+        .join(CONFIG_SHA256)
+        .is_file());
 }

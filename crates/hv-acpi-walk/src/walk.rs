@@ -37,12 +37,10 @@ fn root_table_address(rsdp: &AcpiRsdp) -> Result<u64, AcpiWalkError> {
 }
 
 fn validate_root_signature(root_table: &[u8]) -> Result<(), AcpiWalkError> {
-    let signature = root_table
-        .get(0..4)
-        .ok_or(AcpiWalkError::new(
-            AcpiWalkErrorKind::Parse,
-            "root table signature unavailable",
-        ))?;
+    let signature = root_table.get(0..4).ok_or(AcpiWalkError::new(
+        AcpiWalkErrorKind::Parse,
+        "root table signature unavailable",
+    ))?;
     if signature != XSDT_SIGNATURE && signature != RSDT_SIGNATURE {
         return Err(AcpiWalkError::new(
             AcpiWalkErrorKind::Parse,
@@ -57,12 +55,10 @@ fn append_nested_tables(
     root_table: &[u8],
     output: &mut alloc::vec::Vec<u8>,
 ) -> Result<(), AcpiWalkError> {
-    let signature = root_table
-        .get(0..4)
-        .ok_or(AcpiWalkError::new(
-            AcpiWalkErrorKind::Parse,
-            "root table signature unavailable",
-        ))?;
+    let signature = root_table.get(0..4).ok_or(AcpiWalkError::new(
+        AcpiWalkErrorKind::Parse,
+        "root table signature unavailable",
+    ))?;
     let entry_size = if signature == XSDT_SIGNATURE {
         XSDT_ENTRY_SIZE
     } else {
@@ -103,12 +99,10 @@ fn append_nested_tables(
                 "ACPI root table entry count exceeds limit",
             ));
         }
-        entries_processed = entries_processed
-            .checked_add(1)
-            .ok_or(AcpiWalkError::new(
-                AcpiWalkErrorKind::Bounds,
-                "ACPI root entry count overflow",
-            ))?;
+        entries_processed = entries_processed.checked_add(1).ok_or(AcpiWalkError::new(
+            AcpiWalkErrorKind::Bounds,
+            "ACPI root entry count overflow",
+        ))?;
 
         let pointer = read_entry_pointer(root_table, entry_offset, entry_size)?;
         if pointer != 0 {
@@ -126,9 +120,10 @@ fn append_nested_tables(
                     "ACPI table length exceeds buffer",
                 ));
             }
-            validate_table_checksum(table.get(0..table_length).ok_or(
-                AcpiWalkError::new(AcpiWalkErrorKind::Bounds, "table bounded slice unavailable"),
-            )?)?;
+            validate_table_checksum(table.get(0..table_length).ok_or(AcpiWalkError::new(
+                AcpiWalkErrorKind::Bounds,
+                "table bounded slice unavailable",
+            ))?)?;
             let next_len = output
                 .len()
                 .checked_add(table_length)
@@ -142,9 +137,10 @@ fn append_nested_tables(
                     "collected ACPI table bytes exceed limit",
                 ));
             }
-            output.extend_from_slice(table.get(0..table_length).ok_or(
-                AcpiWalkError::new(AcpiWalkErrorKind::Bounds, "table append slice unavailable"),
-            )?);
+            output.extend_from_slice(table.get(0..table_length).ok_or(AcpiWalkError::new(
+                AcpiWalkErrorKind::Bounds,
+                "table append slice unavailable",
+            ))?);
         }
         entry_offset = entry_offset
             .checked_add(entry_size)
@@ -157,7 +153,10 @@ fn append_nested_tables(
     Ok(())
 }
 
-fn read_table(memory: &impl PhysicalMemory, address: u64) -> Result<alloc::vec::Vec<u8>, AcpiWalkError> {
+fn read_table(
+    memory: &impl PhysicalMemory,
+    address: u64,
+) -> Result<alloc::vec::Vec<u8>, AcpiWalkError> {
     let mut header = [0u8; ACPI_TABLE_HEADER_LENGTH];
     memory.read_physical(address, &mut header)?;
     let length = read_u32(&header, 4)? as usize;
@@ -189,32 +188,33 @@ fn read_entry_pointer(
             AcpiWalkErrorKind::Bounds,
             "entry slice overflow",
         ))?;
-    let entry = root_table.get(entry_offset..entry_end).ok_or(
-        AcpiWalkError::new(AcpiWalkErrorKind::Bounds, "entry slice unavailable"),
-    )?;
+    let entry = root_table
+        .get(entry_offset..entry_end)
+        .ok_or(AcpiWalkError::new(
+            AcpiWalkErrorKind::Bounds,
+            "entry slice unavailable",
+        ))?;
     if entry_size == XSDT_ENTRY_SIZE {
-        let chunk: [u8; 8] = entry.try_into().map_err(|_| {
-            AcpiWalkError::new(AcpiWalkErrorKind::Parse, "XSDT entry truncated")
-        })?;
+        let chunk: [u8; 8] = entry
+            .try_into()
+            .map_err(|_| AcpiWalkError::new(AcpiWalkErrorKind::Parse, "XSDT entry truncated"))?;
         Ok(u64::from_le_bytes(chunk))
     } else {
-        let chunk: [u8; 4] = entry.try_into().map_err(|_| {
-            AcpiWalkError::new(AcpiWalkErrorKind::Parse, "RSDT entry truncated")
-        })?;
+        let chunk: [u8; 4] = entry
+            .try_into()
+            .map_err(|_| AcpiWalkError::new(AcpiWalkErrorKind::Parse, "RSDT entry truncated"))?;
         Ok(u64::from(u32::from_le_bytes(chunk)))
     }
 }
 
 fn read_u32(bytes: &[u8], start: usize) -> Result<u32, AcpiWalkError> {
-    let slice = bytes
-        .get(start..start + 4)
-        .ok_or(AcpiWalkError::new(
-            AcpiWalkErrorKind::Parse,
-            "u32 field truncated",
-        ))?;
-    let chunk: [u8; 4] = slice.try_into().map_err(|_| {
-        AcpiWalkError::new(AcpiWalkErrorKind::Parse, "u32 field truncated")
-    })?;
+    let slice = bytes.get(start..start + 4).ok_or(AcpiWalkError::new(
+        AcpiWalkErrorKind::Parse,
+        "u32 field truncated",
+    ))?;
+    let chunk: [u8; 4] = slice
+        .try_into()
+        .map_err(|_| AcpiWalkError::new(AcpiWalkErrorKind::Parse, "u32 field truncated"))?;
     Ok(u32::from_le_bytes(chunk))
 }
 
@@ -263,7 +263,8 @@ mod tests {
         let mut image_bytes = alloc::vec![0u8; 0x4000];
         image_bytes[rsdp_address as usize..rsdp_address as usize + rsdp.len()]
             .copy_from_slice(&rsdp);
-        image_bytes[xsdt_address as usize..xsdt_address as usize + xsdt.len()].copy_from_slice(&xsdt);
+        image_bytes[xsdt_address as usize..xsdt_address as usize + xsdt.len()]
+            .copy_from_slice(&xsdt);
         image_bytes[dmar_address as usize..dmar_address as usize + dmar.len()]
             .copy_from_slice(&dmar);
 
@@ -283,7 +284,10 @@ mod tests {
         rsdp_v1[15] = 0;
         rsdp_v1[16..20].copy_from_slice(&(rsdt_address as u32).to_le_bytes());
         rsdp_v1[20..24].copy_from_slice(&36u32.to_le_bytes());
-        let sum = rsdp_v1.iter().take(20).fold(0u8, |acc, b| acc.wrapping_add(*b));
+        let sum = rsdp_v1
+            .iter()
+            .take(20)
+            .fold(0u8, |acc, b| acc.wrapping_add(*b));
         rsdp_v1[8] = 0u8.wrapping_sub(sum);
         let parsed = AcpiRsdp::parse(&rsdp_v1).expect("parse v1");
         let mut rsdt = alloc::vec![0u8; ACPI_TABLE_HEADER_LENGTH + 4];

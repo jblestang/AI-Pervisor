@@ -1,8 +1,8 @@
 //! CPUID snapshot interpretation for runtime platform observation.
 
 use hv_boot_abi::{
-    DMAR_FLAG_INTR_REMAP, DMAR_FLAGS_OFFSET, DMAR_MIN_LENGTH, DMAR_SIGNATURE,
-    EFI_MEMORY_CONVENTIONAL, UEFI_MEMORY_DESCRIPTOR_MIN_SIZE, UEFI_PAGE_SIZE, UefiMemoryDescriptor,
+    UefiMemoryDescriptor, DMAR_FLAGS_OFFSET, DMAR_FLAG_INTR_REMAP, DMAR_MIN_LENGTH, DMAR_SIGNATURE,
+    EFI_MEMORY_CONVENTIONAL, UEFI_MEMORY_DESCRIPTOR_MIN_SIZE, UEFI_PAGE_SIZE,
 };
 use hv_config_model::SUPPORTED_ARCH;
 use hv_observation_types::ObservationInputs;
@@ -53,10 +53,11 @@ fn sum_conventional_ram(map: &[u8], descriptor_size: usize) -> Result<ByteSize, 
         if end > map.len() {
             break;
         }
-        let descriptor_bytes = map.get(offset..end).ok_or_else(|| {
-            observation_error("memory map descriptor slice unavailable")
-        })?;
-        let descriptor = UefiMemoryDescriptor::parse(descriptor_bytes).map_err(boot_to_observation)?;
+        let descriptor_bytes = map
+            .get(offset..end)
+            .ok_or_else(|| observation_error("memory map descriptor slice unavailable"))?;
+        let descriptor =
+            UefiMemoryDescriptor::parse(descriptor_bytes).map_err(boot_to_observation)?;
         if descriptor.typ == EFI_MEMORY_CONVENTIONAL {
             let bytes = descriptor
                 .number_of_pages
@@ -81,9 +82,9 @@ fn scan_acpi_capabilities(tables: &[u8]) -> Result<(bool, bool), PlatformError> 
         let length_bytes = tables
             .get(offset + 4..offset + 8)
             .ok_or_else(|| observation_error("ACPI length truncated"))?;
-        let chunk: [u8; 4] = length_bytes.try_into().map_err(|_| {
-            observation_error("ACPI length truncated")
-        })?;
+        let chunk: [u8; 4] = length_bytes
+            .try_into()
+            .map_err(|_| observation_error("ACPI length truncated"))?;
         let length = u32::from_le_bytes(chunk) as usize;
         if length == 0 {
             break;
@@ -95,7 +96,9 @@ fn scan_acpi_capabilities(tables: &[u8]) -> Result<(bool, bool), PlatformError> 
             return Err(observation_error("ACPI table exceeds provided buffer"));
         }
 
-        if header.get(0..4).ok_or_else(|| observation_error("ACPI signature missing"))?
+        if header
+            .get(0..4)
+            .ok_or_else(|| observation_error("ACPI signature missing"))?
             == DMAR_SIGNATURE
         {
             if length < DMAR_MIN_LENGTH {

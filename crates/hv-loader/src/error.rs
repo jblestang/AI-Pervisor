@@ -1,7 +1,7 @@
 //! Loader handoff errors.
 
-use core::fmt;
 use alloc::string::{String, ToString};
+use core::fmt;
 
 /// Kind of loader error.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -72,7 +72,11 @@ mod tests {
     fn loader_error_display_includes_kind() {
         let err = LoaderError::new(LoaderErrorKind::BootInfo, "bad blob");
         assert!(err.to_string().contains("loader boot info error"));
-        assert!(LoaderErrorKind::Observation.to_string().contains("loader observation error"));
-        assert!(LoaderErrorKind::AcpiWalk.to_string().contains("loader acpi walk error"));
+        assert!(LoaderErrorKind::Observation
+            .to_string()
+            .contains("loader observation error"));
+        assert!(LoaderErrorKind::AcpiWalk
+            .to_string()
+            .contains("loader acpi walk error"));
     }
 }

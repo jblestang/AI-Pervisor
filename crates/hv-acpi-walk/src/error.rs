@@ -51,6 +51,9 @@ mod tests {
     fn acpi_walk_error_display_includes_kind() {
         let err = AcpiWalkError::new(AcpiWalkErrorKind::Memory, "read failed");
         assert!(format!("{err}").contains("acpi memory error"));
-        assert_eq!(format!("{}", AcpiWalkErrorKind::Bounds), "acpi bounds error");
+        assert_eq!(
+            format!("{}", AcpiWalkErrorKind::Bounds),
+            "acpi bounds error"
+        );
     }
 }

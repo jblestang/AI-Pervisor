@@ -4,7 +4,9 @@ use core::mem::size_of;
 
 use alloc::vec::Vec;
 
-use hv_boot_abi::{BootError, BootErrorKind, BootInfoDescriptor, BOOT_ABI_VERSION, BOOT_INFO_MAGIC};
+use hv_boot_abi::{
+    BootError, BootErrorKind, BootInfoDescriptor, BOOT_ABI_VERSION, BOOT_INFO_MAGIC,
+};
 use hv_types::SHA256_DIGEST_BYTES;
 
 /// One payload section stored inside a boot info blob.
@@ -121,7 +123,6 @@ mod tests {
         .expect("build");
         let view = BootInfoView::parse(&blob).expect("parse");
         view.verify_config_digest(&digest).expect("digest");
-        validate_rsdp_section(view.rsdp_section().expect("rsdp").expect("present"))
-            .expect("rsdp");
+        validate_rsdp_section(view.rsdp_section().expect("rsdp").expect("present")).expect("rsdp");
     }
 }

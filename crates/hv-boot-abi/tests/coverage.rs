@@ -58,10 +58,7 @@ fn boot_info_view_exposes_sections_and_bounded_bytes() {
     let descriptor = view.descriptor(0).expect("descriptor");
     assert_eq!(descriptor.kind, descriptor_kind::MEMORY_MAP);
     assert_eq!(view.section(&descriptor).expect("section"), &[0xAB; 8]);
-    assert!(view
-        .memory_map_section()
-        .expect("memory map")
-        .is_some());
+    assert!(view.memory_map_section().expect("memory map").is_some());
     assert!(view.rsdp_section().expect("rsdp").is_some());
     assert!(view
         .find_descriptor(descriptor_kind::CONFIG)

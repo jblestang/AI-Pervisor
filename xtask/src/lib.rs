@@ -15,7 +15,9 @@ use std::process::Command as ProcessCommand;
 mod constants;
 
 use clap::{Parser, Subcommand};
-use constants::{DEFAULT_COVERAGE_MIN_LINES, DEFAULT_EFI_CONFIG_PATH, DEFAULT_EFI_OUTPUT_PATH, DEFAULT_FUZZ_RUNS};
+use constants::{
+    DEFAULT_COVERAGE_MIN_LINES, DEFAULT_EFI_CONFIG_PATH, DEFAULT_EFI_OUTPUT_PATH, DEFAULT_FUZZ_RUNS,
+};
 use hv_config::constants::DEFAULT_CONFIG_OUTPUT_DIR;
 
 /// Runs `cargo test --workspace`.
@@ -86,7 +88,12 @@ fn run_build_efi_with(
         .join("config.sha256")
         .canonicalize()
         .map(|path| path.to_string_lossy().into_owned())
-        .unwrap_or_else(|_| build_dir.join("config.sha256").to_string_lossy().into_owned());
+        .unwrap_or_else(|_| {
+            build_dir
+                .join("config.sha256")
+                .to_string_lossy()
+                .into_owned()
+        });
 
     if build(&workspace, &digest_path) != 0 {
         return 1;
@@ -148,9 +155,8 @@ fn run_command(mut command: ProcessCommand) -> i32 {
 }
 
 fn copy_efi_artifact(output_path: &str) -> i32 {
-    let source = workspace_root().join(
-        "crates/hv-loader-efi-bin/target/x86_64-unknown-uefi/release/hv-loader.efi",
-    );
+    let source = workspace_root()
+        .join("crates/hv-loader-efi-bin/target/x86_64-unknown-uefi/release/hv-loader.efi");
     match std::fs::copy(&source, output_path) {
         Ok(_) => {
             eprintln!("built UEFI loader: {output_path}");
@@ -215,9 +221,7 @@ pub fn run_coverage(min_lines: u8) -> i32 {
 fn evaluate_coverage_output(min_lines: u8, stdout: &str, success: bool) -> i32 {
     if let Some(coverage) = parse_summary_line_coverage(stdout) {
         if coverage < f64::from(min_lines) {
-            eprintln!(
-                "line coverage {coverage:.2}% is below minimum {min_lines}%"
-            );
+            eprintln!("line coverage {coverage:.2}% is below minimum {min_lines}%");
             return 1;
         }
     } else {
@@ -306,10 +310,7 @@ fn dispatch_task_with(task: TaskCommand, runner: fn(&str, &[&str]) -> i32) -> i3
         TaskCommand::Build => runner("cargo", &["build", "--workspace"]),
         TaskCommand::Coverage { min_lines } => coverage_command(min_lines),
         TaskCommand::Fuzz { runs } => fuzz_command(runs, run_with_cxx_gpp),
-        TaskCommand::BuildEfi {
-            config,
-            output,
-        } => run_build_efi(&config, &output),
+        TaskCommand::BuildEfi { config, output } => run_build_efi(&config, &output),
         TaskCommand::ConfigValidate { path } => run_config_validate(&path),
         TaskCommand::ConfigGenerate { path, output } => run_config_generate(&path, &output),
     }
@@ -383,7 +384,9 @@ pub(crate) fn map_cli_command(command: TaskCommandCli) -> TaskCommand {
         TaskCommandCli::BuildEfi { config, output } => TaskCommand::BuildEfi { config, output },
         TaskCommandCli::Config { action } => match action {
             ConfigActionCli::Validate { path } => TaskCommand::ConfigValidate { path },
-            ConfigActionCli::Generate { path, output } => TaskCommand::ConfigGenerate { path, output },
+            ConfigActionCli::Generate { path, output } => {
+                TaskCommand::ConfigGenerate { path, output }
+            }
         },
     }
 }
@@ -461,7 +464,10 @@ pub fn run(program: &str, args: &[&str]) -> i32 {
 #[allow(clippy::expect_used, clippy::assertions_on_constants)]
 mod tests {
     use super::*;
-    use crate::constants::{DEFAULT_COVERAGE_MIN_LINES, DEFAULT_EFI_CONFIG_PATH, DEFAULT_EFI_OUTPUT_PATH, DEFAULT_FUZZ_RUNS};
+    use crate::constants::{
+        DEFAULT_COVERAGE_MIN_LINES, DEFAULT_EFI_CONFIG_PATH, DEFAULT_EFI_OUTPUT_PATH,
+        DEFAULT_FUZZ_RUNS,
+    };
     use hv_config::constants::DEFAULT_CONFIG_OUTPUT_DIR;
 
     fn mock_test_runner(program: &str, args: &[&str]) -> i32 {
@@ -575,9 +581,9 @@ mod tests {
     #[test]
     fn spawn_llvm_cov_summary_with_mock_command_reads_output() {
         let mut command = ProcessCommand::new("sh");
-        command.arg("-c").arg(
-            "echo 'TOTAL  2018  290  85.63%  457  55  87.96%  4088  204  95.01%  0  0  -'",
-        );
+        command
+            .arg("-c")
+            .arg("echo 'TOTAL  2018  290  85.63%  457  55  87.96%  4088  204  95.01%  0  0  -'");
         let (stdout, stderr, success) =
             spawn_llvm_cov_summary_with(95, &mut command).expect("spawn");
         assert!(stdout.contains("TOTAL"));
@@ -642,14 +648,8 @@ mod tests {
 
     #[test]
     fn dispatch_task_routes_test_build_and_coverage() {
-        assert_eq!(
-            dispatch_task_with(TaskCommand::Test, mock_test_runner),
-            0
-        );
-        assert_eq!(
-            dispatch_task_with(TaskCommand::Build, mock_build_runner),
-            0
-        );
+        assert_eq!(dispatch_task_with(TaskCommand::Test, mock_test_runner), 0);
+        assert_eq!(dispatch_task_with(TaskCommand::Build, mock_build_runner), 0);
     }
 
     #[test]
@@ -661,9 +661,7 @@ mod tests {
     fn dispatch_task_routes_config_commands() {
         let path = format!("{}/../configs/qemu.yaml", env!("CARGO_MANIFEST_DIR"));
         assert_eq!(
-            dispatch_task(TaskCommand::ConfigValidate {
-                path: path.clone()
-            }),
+            dispatch_task(TaskCommand::ConfigValidate { path: path.clone() }),
             0
         );
         let dir = tempfile::tempdir().expect("tempdir");
@@ -697,13 +695,15 @@ mod tests {
             }
         );
         assert_eq!(
-            parse_task_command(["xtask", "config", "validate", "cfg.yaml"]).expect("parse validate"),
+            parse_task_command(["xtask", "config", "validate", "cfg.yaml"])
+                .expect("parse validate"),
             TaskCommand::ConfigValidate {
                 path: String::from("cfg.yaml")
             }
         );
         assert_eq!(
-            parse_task_command(["xtask", "config", "generate", "cfg.yaml"]).expect("parse generate"),
+            parse_task_command(["xtask", "config", "generate", "cfg.yaml"])
+                .expect("parse generate"),
             TaskCommand::ConfigGenerate {
                 path: String::from("cfg.yaml"),
                 output: String::from(DEFAULT_CONFIG_OUTPUT_DIR),
@@ -754,7 +754,10 @@ mod tests {
             .iter()
             .any(|arg| *arg == "crates/hv-loader-efi-bin/Cargo.toml"));
         assert!(args.iter().any(|arg| *arg == "x86_64-unknown-uefi"));
-        let env_keys: Vec<_> = command.get_envs().map(|(key, _)| key.to_string_lossy()).collect();
+        let env_keys: Vec<_> = command
+            .get_envs()
+            .map(|(key, _)| key.to_string_lossy())
+            .collect();
         assert!(env_keys.iter().any(|key| key == "HV_CONFIG_DIGEST_PATH"));
         assert!(env_keys.iter().any(|key| key == "CXX"));
     }
@@ -784,15 +787,33 @@ mod tests {
         assert!(output.is_file());
 
         assert_ne!(
-            run_build_efi_with("configs/qemu.yaml", "build/out.efi", |_, _| 1, |_, _| 0, |_, _| 0),
+            run_build_efi_with(
+                "configs/qemu.yaml",
+                "build/out.efi",
+                |_, _| 1,
+                |_, _| 0,
+                |_, _| 0
+            ),
             0
         );
         assert_ne!(
-            run_build_efi_with("configs/qemu.yaml", "build/out.efi", |_, _| 0, |_, _| 1, |_, _| 0),
+            run_build_efi_with(
+                "configs/qemu.yaml",
+                "build/out.efi",
+                |_, _| 0,
+                |_, _| 1,
+                |_, _| 0
+            ),
             0
         );
         assert_ne!(
-            run_build_efi_with("configs/qemu.yaml", "build/out.efi", |_, _| 0, |_, _| 0, |_, _| 1),
+            run_build_efi_with(
+                "configs/qemu.yaml",
+                "build/out.efi",
+                |_, _| 0,
+                |_, _| 0,
+                |_, _| 1
+            ),
             0
         );
     }

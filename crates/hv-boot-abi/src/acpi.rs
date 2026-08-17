@@ -2,9 +2,7 @@
 
 use core::mem::size_of;
 
-use crate::constants::{
-    RSDP_REVISION_ACPI2, RSDP_SIGNATURE, RSDP_V1_CHECKSUM_LENGTH,
-};
+use crate::constants::{RSDP_REVISION_ACPI2, RSDP_SIGNATURE, RSDP_V1_CHECKSUM_LENGTH};
 use crate::error::{BootError, BootErrorKind};
 
 /// ACPI Root System Description Pointer (ACPI 2.0+).
@@ -65,12 +63,10 @@ impl AcpiRsdp {
             ));
         }
 
-        let signature = bytes
-            .get(0..RSDP_SIGNATURE.len())
-            .ok_or(BootError::new(
-                BootErrorKind::Parse,
-                "RSDP signature unavailable",
-            ))?;
+        let signature = bytes.get(0..RSDP_SIGNATURE.len()).ok_or(BootError::new(
+            BootErrorKind::Parse,
+            "RSDP signature unavailable",
+        ))?;
         if signature != RSDP_SIGNATURE {
             return Err(BootError::new(
                 BootErrorKind::Parse,
@@ -78,18 +74,20 @@ impl AcpiRsdp {
             ));
         }
 
-        if !acpi_bytes_sum_to_zero(bytes.get(0..RSDP_V1_CHECKSUM_LENGTH).ok_or(
-            BootError::new(BootErrorKind::Parse, "RSDP v1 checksum range unavailable"),
-        )?) {
+        if !acpi_bytes_sum_to_zero(bytes.get(0..RSDP_V1_CHECKSUM_LENGTH).ok_or(BootError::new(
+            BootErrorKind::Parse,
+            "RSDP v1 checksum range unavailable",
+        ))?) {
             return Err(BootError::new(
                 BootErrorKind::Parse,
                 "invalid RSDP v1 checksum",
             ));
         }
 
-        let revision = *bytes
-            .get(15)
-            .ok_or(BootError::new(BootErrorKind::Parse, "RSDP revision missing"))?;
+        let revision = *bytes.get(15).ok_or(BootError::new(
+            BootErrorKind::Parse,
+            "RSDP revision missing",
+        ))?;
         let length = read_u32(bytes, 20)?;
         if revision >= RSDP_REVISION_ACPI2 {
             if length as usize > bytes.len() {
@@ -104,9 +102,10 @@ impl AcpiRsdp {
                     "RSDP declared length too small",
                 ));
             }
-            if !acpi_bytes_sum_to_zero(bytes.get(0..length as usize).ok_or(
-                BootError::new(BootErrorKind::Parse, "RSDP extended checksum range unavailable"),
-            )?) {
+            if !acpi_bytes_sum_to_zero(bytes.get(0..length as usize).ok_or(BootError::new(
+                BootErrorKind::Parse,
+                "RSDP extended checksum range unavailable",
+            ))?) {
                 return Err(BootError::new(
                     BootErrorKind::Parse,
                     "invalid RSDP extended checksum",
@@ -154,52 +153,57 @@ impl AcpiRsdp {
 }
 
 fn read_signature(bytes: &[u8]) -> Result<[u8; 8], BootError> {
-    let slice = bytes
-        .get(0..8)
-        .ok_or(BootError::new(BootErrorKind::Parse, "RSDP signature truncated"))?;
-    let chunk: [u8; 8] = slice.try_into().map_err(|_| {
-        BootError::new(BootErrorKind::Parse, "RSDP signature truncated")
-    })?;
+    let slice = bytes.get(0..8).ok_or(BootError::new(
+        BootErrorKind::Parse,
+        "RSDP signature truncated",
+    ))?;
+    let chunk: [u8; 8] = slice
+        .try_into()
+        .map_err(|_| BootError::new(BootErrorKind::Parse, "RSDP signature truncated"))?;
     Ok(chunk)
 }
 
 fn read_oem_id(bytes: &[u8]) -> Result<[u8; 6], BootError> {
-    let slice = bytes
-        .get(9..15)
-        .ok_or(BootError::new(BootErrorKind::Parse, "RSDP OEM ID truncated"))?;
-    let chunk: [u8; 6] = slice.try_into().map_err(|_| {
-        BootError::new(BootErrorKind::Parse, "RSDP OEM ID truncated")
-    })?;
+    let slice = bytes.get(9..15).ok_or(BootError::new(
+        BootErrorKind::Parse,
+        "RSDP OEM ID truncated",
+    ))?;
+    let chunk: [u8; 6] = slice
+        .try_into()
+        .map_err(|_| BootError::new(BootErrorKind::Parse, "RSDP OEM ID truncated"))?;
     Ok(chunk)
 }
 
 fn read_reserved(bytes: &[u8]) -> Result<[u8; 3], BootError> {
-    let slice = bytes
-        .get(33..36)
-        .ok_or(BootError::new(BootErrorKind::Parse, "RSDP reserved truncated"))?;
-    let chunk: [u8; 3] = slice.try_into().map_err(|_| {
-        BootError::new(BootErrorKind::Parse, "RSDP reserved truncated")
-    })?;
+    let slice = bytes.get(33..36).ok_or(BootError::new(
+        BootErrorKind::Parse,
+        "RSDP reserved truncated",
+    ))?;
+    let chunk: [u8; 3] = slice
+        .try_into()
+        .map_err(|_| BootError::new(BootErrorKind::Parse, "RSDP reserved truncated"))?;
     Ok(chunk)
 }
 
 fn read_u32(bytes: &[u8], start: usize) -> Result<u32, BootError> {
-    let slice = bytes
-        .get(start..start + 4)
-        .ok_or(BootError::new(BootErrorKind::Parse, "RSDP u32 field truncated"))?;
-    let chunk: [u8; 4] = slice.try_into().map_err(|_| {
-        BootError::new(BootErrorKind::Parse, "RSDP u32 field truncated")
-    })?;
+    let slice = bytes.get(start..start + 4).ok_or(BootError::new(
+        BootErrorKind::Parse,
+        "RSDP u32 field truncated",
+    ))?;
+    let chunk: [u8; 4] = slice
+        .try_into()
+        .map_err(|_| BootError::new(BootErrorKind::Parse, "RSDP u32 field truncated"))?;
     Ok(u32::from_le_bytes(chunk))
 }
 
 fn read_u64(bytes: &[u8], start: usize) -> Result<u64, BootError> {
-    let slice = bytes
-        .get(start..start + 8)
-        .ok_or(BootError::new(BootErrorKind::Parse, "RSDP u64 field truncated"))?;
-    let chunk: [u8; 8] = slice.try_into().map_err(|_| {
-        BootError::new(BootErrorKind::Parse, "RSDP u64 field truncated")
-    })?;
+    let slice = bytes.get(start..start + 8).ok_or(BootError::new(
+        BootErrorKind::Parse,
+        "RSDP u64 field truncated",
+    ))?;
+    let chunk: [u8; 8] = slice
+        .try_into()
+        .map_err(|_| BootError::new(BootErrorKind::Parse, "RSDP u64 field truncated"))?;
     Ok(u64::from_le_bytes(chunk))
 }
 
