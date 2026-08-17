@@ -10,6 +10,7 @@ members = [
     "crates/hv-guest-abi",
     "crates/hv-loader",
     "crates/hv-loader-efi",
+    "crates/hv-hypervisor-efi",
     "crates/hv-hypervisor",
     "tools/hv-config",
     "xtask",
@@ -30,6 +31,7 @@ hv-acpi-walk = { path = "crates/hv-acpi-walk" }
 hv-observation-types = { path = "crates/hv-observation-types" }
 hv-loader = { path = "crates/hv-loader" }
 hv-loader-efi = { path = "crates/hv-loader-efi" }
+hv-hypervisor-efi = { path = "crates/hv-hypervisor-efi" }
 hv-hypervisor = { path = "crates/hv-hypervisor" }
 hv-guest-abi = { path = "crates/hv-guest-abi" }
 serde = { version = "1.0.217", features = ["derive"] }

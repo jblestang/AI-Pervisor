@@ -1,0 +1,36 @@
+[package]
+name = "hv-hypervisor-efi-bin"
+description = "UEFI hypervisor application binary for Gate B transfer verification"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[workspace]
+
+[dependencies]
+hv-boot-abi = { path = "../hv-boot-abi" }
+hv-hypervisor-efi = { path = "../hv-hypervisor-efi", default-features = false }
+hv-types = { path = "../hv-types" }
+log = { version = "0.4", default-features = false }
+uefi = { version = "0.31", features = ["global_allocator", "logger", "panic_handler"] }
+
+[build-dependencies]
+hex = "0.4.3"
+hv-boot-abi = { path = "../hv-boot-abi" }
+hv-config-model = { path = "../hv-config-model" }
+hv-hypervisor = { path = "../hv-hypervisor" }
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1
+
+[[bin]]
+name = "hv-hypervisor"
+path = "src/main.rs"
+test = false
+bench = false

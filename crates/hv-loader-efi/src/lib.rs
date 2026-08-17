@@ -12,6 +12,7 @@
 extern crate alloc;
 
 mod error;
+mod transfer;
 
 use hv_acpi_walk::PhysicalMemory;
 use hv_loader::{build_loader_handoff, LoaderHandoff, LoaderHandoffInput};
@@ -21,6 +22,7 @@ use hv_types::{PciBdf, SHA256_DIGEST_BYTES};
 pub use error::{LoaderEfiError, LoaderEfiErrorKind};
 #[cfg(any(test, feature = "std"))]
 pub use hv_loader::FirmwareMemoryImage;
+pub use transfer::build_hypervisor_transfer_from_entry;
 
 /// Inputs available to the UEFI loader application entry point.
 #[derive(Debug, Clone, PartialEq, Eq)]

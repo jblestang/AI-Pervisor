@@ -12,12 +12,16 @@
 #![deny(clippy::unimplemented)]
 #![deny(clippy::indexing_slicing)]
 
+extern crate alloc;
+
 use hv_types::SHA256_DIGEST_BYTES;
 
 mod acpi;
 mod boot_info;
 mod constants;
 mod error;
+mod requirements_snapshot;
+mod transfer;
 mod uefi;
 
 pub use acpi::{
@@ -30,6 +34,18 @@ pub use constants::{
     UEFI_MEMORY_DESCRIPTOR_MIN_SIZE, UEFI_MEMORY_DESCRIPTOR_OVMF_SIZE, UEFI_PAGE_SIZE,
 };
 pub use error::{BootError, BootErrorKind};
+pub use requirements_snapshot::{
+    ExpectedPciSnapshot, RequirementsSnapshot, FEATURE_DISABLED, FEATURE_OPTIONAL,
+    FEATURE_PREFERRED, FEATURE_REQUIRED, MAX_REQUIREMENTS_PAGE_SIZES, MAX_REQUIREMENTS_PCI_DEVICES,
+    REQUIREMENTS_ARCH_X86_64, SMT_POLICY_ALLOW_CROSS_PARTITION, SMT_POLICY_DISABLED,
+    SMT_POLICY_EXCLUSIVE_CORE, SMT_POLICY_SAME_PARTITION_SIBLINGS,
+};
+pub use transfer::{
+    build_hypervisor_transfer_blob, decode_observation_transfer, CpuidTransferSnapshot, Guid,
+    HypervisorTransferHeader, HypervisorTransferView, ObservationTransferHeader,
+    ObservationTransferParts, ObservationTransferPartsOwned, PciBdfTransfer,
+    HV_TRANSFER_TABLE_GUID, TRANSFER_ABI_VERSION, TRANSFER_MAGIC,
+};
 pub use uefi::UefiMemoryDescriptor;
 
 /// Current boot ABI version.

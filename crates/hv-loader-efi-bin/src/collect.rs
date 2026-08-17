@@ -3,7 +3,7 @@
 use alloc::vec::Vec;
 
 use hv_observation_types::CpuidSnapshot;
-use hv_types::PciBdf;
+use hv_types::{PciBdf, PciBus, PciDevice, PciFunction, PciSegment};
 use uefi::boot;
 use uefi::mem::memory_map::MemoryMap;
 use uefi::system::with_config_table;
@@ -20,7 +20,7 @@ pub struct FirmwareInputs {
     pub rsdp: Vec<u8>,
     /// CPUID snapshot collected at boot.
     pub cpuid: CpuidSnapshot,
-    /// PCI devices discovered by firmware (Phase 7: not yet enumerated).
+    /// PCI devices discovered by firmware.
     pub pci_devices: Vec<PciBdf>,
 }
 
@@ -29,12 +29,13 @@ pub fn collect_firmware_inputs() -> Result<FirmwareInputs, &'static str> {
     let memory = collect_memory_map()?;
     let rsdp = locate_rsdp()?;
     let cpuid = collect_cpuid_snapshot();
+    let pci_devices = enumerate_pci_devices();
     Ok(FirmwareInputs {
         memory_map: memory.bytes,
         memory_descriptor_size: memory.descriptor_size,
         rsdp,
         cpuid,
-        pci_devices: Vec::new(),
+        pci_devices,
     })
 }
 
@@ -105,6 +106,77 @@ fn collect_cpuid_snapshot() -> CpuidSnapshot {
     }
 }
 
+/// Maximum PCI devices recorded during firmware enumeration.
+const MAX_PCI_DEVICES: usize = 256;
+
+fn enumerate_pci_devices() -> Vec<PciBdf> {
+    let mut devices = Vec::new();
+    for bus in 0u8..=255 {
+        if !scan_pci_bus(bus, &mut devices) {
+            break;
+        }
+        if devices.len() >= MAX_PCI_DEVICES {
+            break;
+        }
+    }
+    devices
+}
+
+fn scan_pci_bus(bus: u8, devices: &mut Vec<PciBdf>) -> bool {
+    let mut bus_present = false;
+    for device in 0u8..=31 {
+        let header = pci_config_read32(bus, device, 0, 0);
+        let vendor = header & 0xFFFF;
+        if vendor == 0xFFFF {
+            continue;
+        }
+        bus_present = true;
+        let header_type = ((pci_config_read32(bus, device, 0, 0x0C) >> 16) & 0xFF) as u8;
+        let multifunction = header_type & 0x80 != 0;
+        let max_function = if multifunction { 7 } else { 0 };
+        for function in 0u8..=max_function {
+            let id = pci_config_read32(bus, device, function, 0);
+            if (id & 0xFFFF) == 0xFFFF {
+                continue;
+            }
+            devices.push(PciBdf::new(
+                PciSegment::new(0),
+                PciBus::new(bus),
+                PciDevice::new(device),
+                PciFunction::new(function),
+            ));
+            if devices.len() >= MAX_PCI_DEVICES {
+                return bus_present;
+            }
+        }
+    }
+    bus_present
+}
+
+fn pci_config_read32(bus: u8, device: u8, function: u8, offset: u8) -> u32 {
+    let address = 0x8000_0000u32
+        | u32::from(bus) << 16
+        | u32::from(device & 0x1F) << 11
+        | u32::from(function & 0x7) << 8
+        | u32::from(offset & 0xFC);
+    unsafe {
+        core::arch::asm!(
+            "out dx, eax",
+            in("dx") 0xCF8u16,
+            in("eax") address,
+            options(nomem, nostack, preserves_flags)
+        );
+        let mut value: u32;
+        core::arch::asm!(
+            "in eax, dx",
+            in("dx") 0xCFCu16,
+            out("eax") value,
+            options(nomem, nostack, preserves_flags)
+        );
+        value
+    }
+}
+
 fn cpuid(leaf: u32, subleaf: u32) -> (u32, u32, u32, u32) {
     let mut eax = leaf;
     let mut ecx = subleaf;
@@ -114,7 +186,7 @@ fn cpuid(leaf: u32, subleaf: u32) -> (u32, u32, u32, u32) {
         core::arch::asm!(
             "push rbx",
             "cpuid",
-            "mov {ebx_out}, ebx",
+            "mov {ebx_out:e}, ebx",
             "pop rbx",
             ebx_out = lateout(reg) ebx,
             inout("eax") eax,

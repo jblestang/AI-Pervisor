@@ -72,3 +72,10 @@ path = "fuzz_targets/observe_platform.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "transfer_parse"
+path = "fuzz_targets/transfer_parse.rs"
+test = false
+doc = false
+bench = false

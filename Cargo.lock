@@ -301,6 +301,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "hv-hypervisor-efi"
+version = "0.1.0"
+dependencies = [
+ "hv-boot-abi",
+ "hv-config-model",
+ "hv-hypervisor",
+ "hv-loader",
+ "hv-observation-types",
+ "hv-types",
+]
+
+[[package]]
 name = "hv-loader"
 version = "0.1.0"
 dependencies = [

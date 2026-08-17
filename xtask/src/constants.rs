@@ -12,6 +12,12 @@ pub const DEFAULT_EFI_CONFIG_PATH: &str = "configs/qemu.yaml";
 /// Default output path for the built UEFI loader image.
 pub const DEFAULT_EFI_OUTPUT_PATH: &str = "build/hv-loader.efi";
 
+/// Default output path for the built UEFI hypervisor image.
+pub const DEFAULT_HYPERVISOR_EFI_OUTPUT_PATH: &str = "build/hv-hypervisor.efi";
+
+/// Default output directory for boot-chain images.
+pub const DEFAULT_BOOT_CHAIN_OUTPUT_DIR: &str = "build/boot-chain";
+
 /// libFuzzer targets built from `fuzz/Cargo.toml`.
 pub const FUZZ_TARGETS: &[&str] = &[
     "boot_info_parse",
@@ -22,4 +28,5 @@ pub const FUZZ_TARGETS: &[&str] = &[
     "pci_bdf_parse",
     "observed_platform_json",
     "observe_platform",
+    "transfer_parse",
 ];

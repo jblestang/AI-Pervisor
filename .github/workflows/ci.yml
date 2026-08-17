@@ -47,3 +47,5 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y build-essential g++-14 libstdc++-14-dev
       - name: build efi loader
         run: cargo xtask build-efi
+      - name: build boot chain
+        run: cargo xtask build-boot-chain

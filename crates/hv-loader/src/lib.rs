@@ -17,6 +17,7 @@ mod error;
 #[cfg(any(test, feature = "std"))]
 mod firmware;
 mod handoff;
+mod transfer;
 
 pub use build::{build_boot_info_blob, BootInfoSection};
 
@@ -25,5 +26,6 @@ pub use error::{LoaderError, LoaderErrorKind};
 #[cfg(any(test, feature = "std"))]
 pub use firmware::{encode_empty_acpi_firmware, encode_qemu_reference_firmware};
 pub use handoff::{build_loader_handoff, LoaderHandoff, LoaderHandoffInput};
+pub use transfer::build_hypervisor_transfer;
 
 pub use hv_acpi_walk::{collect_acpi_tables, FirmwareMemoryImage, PhysicalMemory};

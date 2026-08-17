@@ -10,11 +10,12 @@ publish = false
 
 [dependencies]
 hv-acpi-walk = { path = "../hv-acpi-walk" }
+hv-boot-abi = { path = "../hv-boot-abi" }
 hv-loader-efi = { path = "../hv-loader-efi", default-features = false }
 hv-observation-types = { path = "../hv-observation-types" }
 hv-types = { path = "../hv-types" }
 log = { version = "0.4", default-features = false }
-uefi = { version = "0.31", features = ["alloc", "logger"] }
+uefi = { version = "0.31", features = ["global_allocator", "logger"] }
 
 [build-dependencies]
 hex = "0.4.3"

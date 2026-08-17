@@ -15,6 +15,7 @@ std = ["hv-loader/std"]
 
 [dependencies]
 hv-acpi-walk = { workspace = true }
+hv-boot-abi = { workspace = true }
 hv-loader = { workspace = true }
 hv-observation-types = { workspace = true }
 hv-types = { workspace = true }
