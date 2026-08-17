@@ -4,6 +4,13 @@
 //! metadata cross this boundary.
 
 #![no_std]
+#![deny(clippy::unwrap_used)]
+#![deny(clippy::expect_used)]
+#![deny(clippy::panic)]
+#![deny(clippy::unreachable)]
+#![deny(clippy::todo)]
+#![deny(clippy::unimplemented)]
+#![deny(clippy::indexing_slicing)]
 
 /// Current boot ABI version.
 pub const BOOT_ABI_VERSION: u32 = 1;

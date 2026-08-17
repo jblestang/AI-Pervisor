@@ -3,6 +3,13 @@
 //! All address and identifier newtypes are intentionally not interchangeable.
 
 #![no_std]
+#![deny(clippy::unwrap_used)]
+#![deny(clippy::expect_used)]
+#![deny(clippy::panic)]
+#![deny(clippy::unreachable)]
+#![deny(clippy::todo)]
+#![deny(clippy::unimplemented)]
+#![deny(clippy::indexing_slicing)]
 
 mod arith;
 mod ids;

@@ -1,5 +1,13 @@
 //! Configuration compiler CLI.
 
+#![deny(clippy::unwrap_used)]
+#![deny(clippy::expect_used)]
+#![deny(clippy::panic)]
+#![deny(clippy::unreachable)]
+#![deny(clippy::todo)]
+#![deny(clippy::unimplemented)]
+#![deny(clippy::indexing_slicing)]
+
 mod generate;
 
 use std::path::{Path, PathBuf};
@@ -33,7 +41,13 @@ enum Command {
 }
 
 fn main() {
-    let cli = Cli::parse();
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(err) => {
+            let _ = err.print();
+            process::exit(2);
+        }
+    };
     let status = match cli.command {
         Command::Validate { path } => validate(&path),
         Command::Generate { path, output } => generate::generate(&path, &output),

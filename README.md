@@ -18,3 +18,4 @@ cargo clippy --all-targets --all-features -- -D warnings
 - [Configuration](docs/configuration.md)
 - [Platform contract](docs/platform-contract.md)
 - [Proof levels](docs/proof-levels.md)
+- [No-panic policy](docs/no-panic.md)

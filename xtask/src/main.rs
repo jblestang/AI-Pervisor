@@ -1,5 +1,13 @@
 //! Workspace task runner.
 
+#![deny(clippy::unwrap_used)]
+#![deny(clippy::expect_used)]
+#![deny(clippy::panic)]
+#![deny(clippy::unreachable)]
+#![deny(clippy::todo)]
+#![deny(clippy::unimplemented)]
+#![deny(clippy::indexing_slicing)]
+
 use std::process::{self, Command as ProcessCommand};
 
 use clap::{Parser, Subcommand};
@@ -42,7 +50,13 @@ enum ConfigAction {
 }
 
 fn main() {
-    let cli = Cli::parse();
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(err) => {
+            let _ = err.print();
+            process::exit(2);
+        }
+    };
     let status = match cli.command {
         TaskCommand::Test => run("cargo", &["test", "--workspace"]),
         TaskCommand::Build => run("cargo", &["build", "--workspace"]),
@@ -77,7 +91,10 @@ fn run(program: &str, args: &[&str]) -> i32 {
             if status.success() {
                 0
             } else {
-                status.code().unwrap_or(1)
+                match status.code() {
+                    Some(code) => code,
+                    None => 1,
+                }
             }
         }
         Err(err) => {

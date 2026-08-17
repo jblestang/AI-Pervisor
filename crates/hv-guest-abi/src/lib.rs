@@ -3,6 +3,13 @@
 //! Guests discover their resources exclusively through the boot info blob.
 
 #![no_std]
+#![deny(clippy::unwrap_used)]
+#![deny(clippy::expect_used)]
+#![deny(clippy::panic)]
+#![deny(clippy::unreachable)]
+#![deny(clippy::todo)]
+#![deny(clippy::unimplemented)]
+#![deny(clippy::indexing_slicing)]
 
 use hv_types::{GuestPhysAddr, VcpuId, VmId};
 

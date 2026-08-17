@@ -38,3 +38,7 @@ The runtime must consume only compiled artifacts. Partition names such as `in`, 
 - **Gate D (before optimization):** end-to-end datapath and malicious tests
 
 Phases 0–3 complete Gate A.
+
+## No-panic policy
+
+Production code must not panic. See [no-panic.md](no-panic.md). Enforced by workspace and crate-level Clippy denies plus explicit error propagation in CLIs.
