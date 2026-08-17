@@ -1,6 +1,6 @@
 [package]
-name = "hv-loader"
-description = "UEFI loader handoff builder for the static hypervisor boot path"
+name = "hv-acpi-walk"
+description = "ACPI table discovery by walking RSDP, XSDT, and RSDT in firmware memory"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,10 +10,7 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
-hv-acpi-walk = { workspace = true }
 hv-boot-abi = { workspace = true }
-hv-platform-model = { workspace = true }
-hv-types = { workspace = true }
 
 [dev-dependencies]
 hv-boot-abi = { workspace = true }

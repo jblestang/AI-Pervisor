@@ -5,6 +5,8 @@
 pub enum LoaderErrorKind {
     /// Boot info construction failed.
     BootInfo,
+    /// ACPI table walk failed.
+    AcpiWalk,
     /// Observation input assembly failed.
     Observation,
 }
@@ -40,6 +42,7 @@ impl std::fmt::Display for LoaderErrorKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::BootInfo => write!(f, "loader boot info error"),
+            Self::AcpiWalk => write!(f, "loader acpi walk error"),
             Self::Observation => write!(f, "loader observation error"),
         }
     }
@@ -48,6 +51,12 @@ impl std::fmt::Display for LoaderErrorKind {
 impl From<hv_boot_abi::BootError> for LoaderError {
     fn from(err: hv_boot_abi::BootError) -> Self {
         Self::new(LoaderErrorKind::BootInfo, err.to_string())
+    }
+}
+
+impl From<hv_acpi_walk::AcpiWalkError> for LoaderError {
+    fn from(err: hv_acpi_walk::AcpiWalkError) -> Self {
+        Self::new(LoaderErrorKind::AcpiWalk, err.to_string())
     }
 }
 
@@ -60,5 +69,6 @@ mod tests {
         let err = LoaderError::new(LoaderErrorKind::BootInfo, "bad blob");
         assert!(err.to_string().contains("loader boot info error"));
         assert!(LoaderErrorKind::Observation.to_string().contains("loader observation error"));
+        assert!(LoaderErrorKind::AcpiWalk.to_string().contains("loader acpi walk error"));
     }
 }
