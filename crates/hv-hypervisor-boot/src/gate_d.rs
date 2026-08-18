@@ -221,7 +221,7 @@ pub fn boot_check_and_init_gate_d_datapath_live<A: PageAllocator>(
 }
 
 #[cfg(feature = "datapath-live")]
-fn init_gate_d_datapath_live_from_validated<A: PageAllocator>(
+pub(crate) fn init_gate_d_datapath_live_from_validated<A: PageAllocator>(
     requirements: &PlatformRequirements,
     layout: &StaticPlatformIR,
     validated: &ValidatedPlatform,
@@ -276,4 +276,111 @@ fn init_gate_d_datapath_live_from_validated<A: PageAllocator>(
 #[cfg(feature = "datapath-live")]
 fn map_cpu_seam_error(err: hv_x86_cpu::CpuSeamError) -> BootCheckError {
     BootCheckError::new(BootCheckErrorKind::Platform, err.message)
+}
+
+/// Result of Gate D datapath malicious init atop datapath live.
+#[cfg(feature = "datapath-malicious")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GateDDatapathMaliciousResult {
+    /// Datapath live output including synthetic frame traversal.
+    pub live: GateDDatapathLiveResult,
+    /// Whether clean IPC queues passed integrity scans.
+    pub integrity_checks_passed: bool,
+    /// Number of reference compromised-guest scenarios blocked.
+    pub compromised_scenarios_blocked: u32,
+}
+
+/// Runs transfer boot checks and Gate D datapath malicious init using embedded snapshots.
+#[cfg(feature = "datapath-malicious")]
+pub fn boot_from_transfer_and_init_gate_d_datapath_malicious_from_snapshots<A: PageAllocator>(
+    transfer: &[u8],
+    requirements: &RequirementsSnapshot,
+    layout: &LayoutSnapshot,
+    allocator: &mut A,
+) -> Result<GateDDatapathMaliciousResult, BootCheckError> {
+    let platform_requirements = platform_requirements_from_snapshot(requirements)?;
+    let static_layout = static_platform_ir_from_layout_snapshot(layout, requirements)?;
+    let (validated, warnings) =
+        boot_from_transfer(transfer, &requirements.config_digest, &platform_requirements)?;
+    init_gate_d_datapath_malicious_from_validated(
+        &platform_requirements,
+        &static_layout,
+        &validated,
+        warnings,
+        allocator,
+    )
+}
+
+/// Runs transfer boot checks and Gate D datapath malicious init using snapshot + layout metadata.
+#[cfg(feature = "datapath-malicious")]
+pub fn boot_from_transfer_and_init_gate_d_datapath_malicious<A: PageAllocator>(
+    transfer: &[u8],
+    snapshot: &RequirementsSnapshot,
+    layout: &StaticPlatformIR,
+    allocator: &mut A,
+) -> Result<GateDDatapathMaliciousResult, BootCheckError> {
+    let requirements = platform_requirements_from_snapshot(snapshot)?;
+    let (validated, warnings) =
+        boot_from_transfer(transfer, &snapshot.config_digest, &requirements)?;
+    init_gate_d_datapath_malicious_from_validated(
+        &requirements,
+        layout,
+        &validated,
+        warnings,
+        allocator,
+    )
+}
+
+/// Runs boot checks from raw inputs and Gate D datapath malicious init.
+#[cfg(feature = "datapath-malicious")]
+pub fn boot_check_and_init_gate_d_datapath_malicious<A: PageAllocator>(
+    boot_info_bytes: &[u8],
+    expected_config_digest: &[u8; SHA256_DIGEST_BYTES],
+    requirements: &PlatformRequirements,
+    observation: &hv_platform_model::ObservationInputs,
+    layout: &StaticPlatformIR,
+    allocator: &mut A,
+) -> Result<GateDDatapathMaliciousResult, BootCheckError> {
+    let (validated, warnings) = boot_check(
+        boot_info_bytes,
+        expected_config_digest,
+        requirements,
+        observation,
+    )?;
+    init_gate_d_datapath_malicious_from_validated(
+        requirements,
+        layout,
+        &validated,
+        warnings,
+        allocator,
+    )
+}
+
+#[cfg(feature = "datapath-malicious")]
+fn init_gate_d_datapath_malicious_from_validated<A: PageAllocator>(
+    requirements: &PlatformRequirements,
+    layout: &StaticPlatformIR,
+    validated: &ValidatedPlatform,
+    warnings: alloc::vec::Vec<PlatformWarning>,
+    allocator: &mut A,
+) -> Result<GateDDatapathMaliciousResult, BootCheckError> {
+    let live = init_gate_d_datapath_live_from_validated(
+        requirements,
+        layout,
+        validated,
+        warnings,
+        allocator,
+    )?;
+
+    let (integrity_checks_passed, compromised_scenarios_blocked) =
+        hv_datapath::run_reference_compromised_scenarios(|| {
+            hv_datapath::plan_datapath_forward(layout)
+        })
+        .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
+
+    Ok(GateDDatapathMaliciousResult {
+        live,
+        integrity_checks_passed,
+        compromised_scenarios_blocked,
+    })
 }

@@ -24,6 +24,7 @@ use constants::{
     DEFAULT_OVMF_SMOKE_CONFIG_PATH, DEFAULT_OVMF_SMOKE_TIMEOUT_SECS,
     HYPERVISOR_EFI_REAL_HW_FEATURE, HYPERVISOR_EFI_VMX_LAUNCH_FEATURE,
     HYPERVISOR_EFI_DATAPATH_FOUNDATION_FEATURE, HYPERVISOR_EFI_DATAPATH_LIVE_FEATURE,
+    HYPERVISOR_EFI_DATAPATH_MALICIOUS_FEATURE,
 };
 use hv_config::constants::DEFAULT_CONFIG_OUTPUT_DIR;
 
@@ -331,7 +332,7 @@ fn build_hypervisor_efi_image_live(
         workspace,
         digest_path,
         config_path,
-        &[HYPERVISOR_EFI_REAL_HW_FEATURE, HYPERVISOR_EFI_VMX_LAUNCH_FEATURE, HYPERVISOR_EFI_DATAPATH_FOUNDATION_FEATURE, HYPERVISOR_EFI_DATAPATH_LIVE_FEATURE],
+        &[HYPERVISOR_EFI_REAL_HW_FEATURE, HYPERVISOR_EFI_VMX_LAUNCH_FEATURE, HYPERVISOR_EFI_DATAPATH_FOUNDATION_FEATURE, HYPERVISOR_EFI_DATAPATH_LIVE_FEATURE, HYPERVISOR_EFI_DATAPATH_MALICIOUS_FEATURE],
         run_command,
     )
 }
@@ -613,9 +614,25 @@ fn spawn_llvm_cov_summary_with(
     }
     if !pass_runner(&[
         "-p",
+        "hv-hypervisor-boot",
+        "--features",
+        "datapath-malicious",
+    ]) {
+        return Ok((String::new(), String::new(), false));
+    }
+    if !pass_runner(&[
+        "-p",
         "hv-hypervisor-efi",
         "--features",
         "datapath-live",
+    ]) {
+        return Ok((String::new(), String::new(), false));
+    }
+    if !pass_runner(&[
+        "-p",
+        "hv-hypervisor-efi",
+        "--features",
+        "datapath-malicious",
     ]) {
         return Ok((String::new(), String::new(), false));
     }

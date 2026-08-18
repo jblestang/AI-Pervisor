@@ -368,6 +368,7 @@ version = "0.1.0"
 dependencies = [
  "hv-boot-abi",
  "hv-config-model",
+ "hv-datapath",
  "hv-guest-boot",
  "hv-hypervisor",
  "hv-hypervisor-boot",

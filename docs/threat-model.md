@@ -12,7 +12,7 @@ Phases 0–3 establish documentation scaffolding only. This stub defines trust b
 
 - Malformed or hostile YAML
 - Corrupted guest images (future)
-- Compromised guest partitions (future)
+- Compromised guest partitions (Phase 19: host-simulated IPC integrity tests)
 - Malicious PCI DMA (future)
 - Malformed network data (future)
 - Malformed ACPI/firmware tables (future)

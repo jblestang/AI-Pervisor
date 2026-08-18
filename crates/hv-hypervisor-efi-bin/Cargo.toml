@@ -21,6 +21,7 @@ real-hw-execution = ["hv-hypervisor-efi/real-hw-execution"]
 vmx-launch = ["hv-hypervisor-efi/vmx-launch"]
 datapath-foundation = ["hv-hypervisor-efi/datapath-foundation"]
 datapath-live = ["hv-hypervisor-efi/datapath-live"]
+datapath-malicious = ["hv-hypervisor-efi/datapath-malicious"]
 
 [profile.dev]
 panic = "abort"

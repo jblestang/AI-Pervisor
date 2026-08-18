@@ -1,43 +1,21 @@
 //! Synthetic in→mid→out datapath forwarding over IPC queues.
 
 use alloc::vec;
-use alloc::vec::Vec;
 
 use hv_platform_model::StaticPlatformIR;
 use hv_types::VmId;
 
+use crate::compromised::apply_compromised_guest_write;
+use crate::compromised::{enforce_forward_integrity, CompromisedGuestAction};
 use crate::e1000::{handle_e1000_mmio_write, E1000MmioState, E1000_REG_TDT};
 use crate::error::{DatapathError, DatapathErrorKind};
 use crate::ipc::{
     queue_storage_bytes, IpcQueueView, REFERENCE_IPC_QUEUE_SLOTS, REFERENCE_IPC_SLOT_SIZE_BYTES,
 };
+use crate::topology::{DatapathForwardPlan, IpcChannelRuntime};
 
 /// Synthetic frame payload used for host-side datapath smoke.
 pub const SYNTHETIC_FRAME_PAYLOAD: &[u8] = b"HVDP18FR";
-
-/// Runtime IPC channel backing store for mock datapath execution.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct IpcChannelRuntime {
-    /// Shared queue backing bytes.
-    pub bytes: Vec<u8>,
-    /// Producer VM id.
-    pub producer_vm_id: VmId,
-    /// Consumer VM id.
-    pub consumer_vm_id: VmId,
-}
-
-/// Planned in→mid→out forwarding topology.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DatapathForwardPlan {
-    /// chan_a: in → mid.
-    pub chan_a: IpcChannelRuntime,
-    /// chan_b: mid → out.
-    pub chan_b: IpcChannelRuntime,
-    /// IN partition e1000 MMIO state.
-    pub in_e1000: E1000MmioState,
-    /// OUT partition e1000 MMIO state.
-    pub out_e1000: E1000MmioState,
-}
 
 /// Builds a mock forward plan from static platform layout.
 pub fn plan_datapath_forward(layout: &StaticPlatformIR) -> Result<DatapathForwardPlan, DatapathError> {
@@ -69,6 +47,7 @@ pub fn plan_datapath_forward(layout: &StaticPlatformIR) -> Result<DatapathForwar
 /// Forwards one synthetic frame in→mid→out through IPC queues.
 pub fn forward_synthetic_frame(plan: &mut DatapathForwardPlan) -> Result<(), DatapathError> {
     validate_reference_topology(plan)?;
+    enforce_forward_integrity(plan)?;
     handle_e1000_mmio_write(&mut plan.in_e1000, E1000_REG_TDT, 1)?;
 
     let mut chan_a = IpcQueueView::open(
@@ -105,6 +84,43 @@ pub fn forward_synthetic_frame(plan: &mut DatapathForwardPlan) -> Result<(), Dat
     }
     plan.out_e1000.rdh = plan.out_e1000.rdh.saturating_add(1);
     Ok(())
+}
+
+/// Returns whether a compromised action is blocked by integrity enforcement or forwarding.
+pub fn is_compromised_action_blocked(
+    plan: &mut DatapathForwardPlan,
+    action: CompromisedGuestAction,
+) -> bool {
+    if apply_compromised_guest_write(plan, action).is_err() {
+        return true;
+    }
+    if enforce_forward_integrity(plan).is_err() {
+        return true;
+    }
+    forward_synthetic_frame(plan).is_err()
+}
+
+/// Runs the reference compromised-guest scenario suite against a fresh forward plan factory.
+pub fn run_reference_compromised_scenarios(
+    make_plan: impl Fn() -> Result<DatapathForwardPlan, DatapathError>,
+) -> Result<(bool, u32), DatapathError> {
+    use crate::compromised::REFERENCE_COMPROMISED_SCENARIOS;
+
+    let mut blocked = 0u32;
+    for &action in REFERENCE_COMPROMISED_SCENARIOS {
+        let mut plan = make_plan()?;
+        if is_compromised_action_blocked(&mut plan, action) {
+            blocked = blocked.saturating_add(1);
+        } else {
+            return Err(DatapathError::new(
+                DatapathErrorKind::IpcViolation,
+                "compromised guest scenario was not blocked",
+            ));
+        }
+    }
+    let clean = make_plan()?;
+    let integrity_checks_passed = enforce_forward_integrity(&clean).is_ok();
+    Ok((integrity_checks_passed, blocked))
 }
 
 fn validate_reference_topology(plan: &DatapathForwardPlan) -> Result<(), DatapathError> {
