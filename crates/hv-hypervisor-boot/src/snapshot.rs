@@ -3,12 +3,12 @@
 use alloc::string::String;
 
 use hv_boot_abi::{
-    ExpectedPciSnapshot, LayoutPciSnapshot, LayoutSnapshot, PlannedRegionSnapshot,
-    RequirementsSnapshot, FEATURE_DISABLED, FEATURE_OPTIONAL, FEATURE_PREFERRED, FEATURE_REQUIRED,
-    MAX_LAYOUT_GUEST_REGIONS, MAX_LAYOUT_IPC_REGIONS, MAX_LAYOUT_PCI_DEVICES,
-    MAX_REQUIREMENTS_PAGE_SIZES, MAX_REQUIREMENTS_PCI_DEVICES, REQUIREMENTS_ARCH_X86_64,
-    SMT_POLICY_ALLOW_CROSS_PARTITION, SMT_POLICY_DISABLED, SMT_POLICY_EXCLUSIVE_CORE,
-    SMT_POLICY_SAME_PARTITION_SIBLINGS,
+    ExpectedPciSnapshot, LayoutGuestRegionSnapshot, LayoutIpcRegionSnapshot, LayoutPciSnapshot,
+    LayoutSnapshot, LAYOUT_DEVICE_KIND_NIC_E1000, MAX_LAYOUT_GUEST_REGIONS, MAX_LAYOUT_IPC_REGIONS,
+    MAX_LAYOUT_PCI_DEVICES, RequirementsSnapshot, FEATURE_DISABLED, FEATURE_OPTIONAL,
+    FEATURE_PREFERRED, FEATURE_REQUIRED, MAX_REQUIREMENTS_PAGE_SIZES, MAX_REQUIREMENTS_PCI_DEVICES,
+    REQUIREMENTS_ARCH_X86_64, SMT_POLICY_ALLOW_CROSS_PARTITION, SMT_POLICY_DISABLED,
+    SMT_POLICY_EXCLUSIVE_CORE, SMT_POLICY_SAME_PARTITION_SIBLINGS,
 };
 use hv_config_model::{
     ExpectedPciDevice, FeatureRequirement, PageSizeSet, PlatformRequirements, SmtPolicy,
@@ -242,23 +242,37 @@ pub fn layout_snapshot_from_platform_ir(
         ));
     }
 
-    let mut guest_regions = [PlannedRegionSnapshot {
+    let mut guest_regions = [LayoutGuestRegionSnapshot {
+        vm_id: 0,
         host_phys: 0,
         size_bytes: 0,
     }; MAX_LAYOUT_GUEST_REGIONS];
     for (index, region) in layout.guest_memory.iter().enumerate() {
         if let Some(slot) = guest_regions.get_mut(index) {
-            *slot = planned_region_to_snapshot(region.host_phys.raw(), region.size.bytes());
+            *slot = LayoutGuestRegionSnapshot {
+                vm_id: region.vm_id.raw(),
+                host_phys: region.host_phys.raw(),
+                size_bytes: region.size.bytes(),
+            };
         }
     }
 
-    let mut ipc_regions = [PlannedRegionSnapshot {
+    let mut ipc_regions = [LayoutIpcRegionSnapshot {
+        channel_id: 0,
+        producer_vm_id: 0,
+        consumer_vm_id: 0,
         host_phys: 0,
         size_bytes: 0,
     }; MAX_LAYOUT_IPC_REGIONS];
     for (index, region) in layout.ipc_memory.iter().enumerate() {
         if let Some(slot) = ipc_regions.get_mut(index) {
-            *slot = planned_region_to_snapshot(region.host_phys.raw(), region.size.bytes());
+            *slot = LayoutIpcRegionSnapshot {
+                channel_id: region.channel_id.raw(),
+                producer_vm_id: region.producer_vm_id.raw(),
+                consumer_vm_id: region.consumer_vm_id.raw(),
+                host_phys: region.host_phys.raw(),
+                size_bytes: region.size.bytes(),
+            };
         }
     }
 
@@ -268,7 +282,7 @@ pub fn layout_snapshot_from_platform_ir(
         bus: 0,
         device: 0,
         function: 0,
-        reserved: [0; 3],
+        device_kind: 0,
     }; MAX_LAYOUT_PCI_DEVICES];
     for (index, device) in layout.pci_devices.iter().enumerate() {
         if let Some(slot) = pci_devices.get_mut(index) {
@@ -307,7 +321,7 @@ pub fn static_platform_ir_from_layout_snapshot(
     {
         guest_memory.push(PlannedGuestMemory {
             partition_id: String::new(),
-            vm_id: VmId::new(0),
+            vm_id: VmId::new(region.vm_id),
             host_phys: HostPhysAddr::new(region.host_phys),
             size: ByteSize::new(region.size_bytes),
         });
@@ -324,7 +338,9 @@ pub fn static_platform_ir_from_layout_snapshot(
     {
         ipc_memory.push(PlannedIpcMemory {
             channel_name: String::new(),
-            channel_id: hv_types::IpcChannelId::new(0),
+            channel_id: hv_types::IpcChannelId::new(region.channel_id),
+            producer_vm_id: VmId::new(region.producer_vm_id),
+            consumer_vm_id: VmId::new(region.consumer_vm_id),
             host_phys: HostPhysAddr::new(region.host_phys),
             size: ByteSize::new(region.size_bytes),
         });
@@ -395,13 +411,6 @@ fn validate_layout_reserve_matches_requirements(
     Ok(())
 }
 
-fn planned_region_to_snapshot(host_phys: u64, size_bytes: u64) -> PlannedRegionSnapshot {
-    PlannedRegionSnapshot {
-        host_phys,
-        size_bytes,
-    }
-}
-
 fn layout_pci_to_snapshot(device: &PlannedPciDevice) -> LayoutPciSnapshot {
     LayoutPciSnapshot {
         vm_id: device.vm_id.raw(),
@@ -409,7 +418,7 @@ fn layout_pci_to_snapshot(device: &PlannedPciDevice) -> LayoutPciSnapshot {
         bus: device.bdf.bus.raw(),
         device: device.bdf.device.raw(),
         function: device.bdf.function.raw(),
-        reserved: [0; 3],
+        device_kind: device_kind_to_snapshot(&device.kind),
     }
 }
 
@@ -422,7 +431,23 @@ fn planned_pci_from_layout_snapshot(device: &LayoutPciSnapshot) -> PlannedPciDev
             PciFunction::new(device.function),
         ),
         vm_id: VmId::new(device.vm_id),
-        kind: String::new(),
+        kind: device_kind_from_snapshot(device.device_kind),
+    }
+}
+
+fn device_kind_to_snapshot(kind: &str) -> u32 {
+    if kind == "nic_e1000" {
+        LAYOUT_DEVICE_KIND_NIC_E1000
+    } else {
+        0
+    }
+}
+
+fn device_kind_from_snapshot(kind: u32) -> String {
+    if kind == LAYOUT_DEVICE_KIND_NIC_E1000 {
+        String::from("nic_e1000")
+    } else {
+        String::new()
     }
 }
 
@@ -583,12 +608,24 @@ mod tests {
         assert_eq!(restored.ipc_memory.len(), layout.ipc_memory.len());
         assert_eq!(restored.pci_devices.len(), layout.pci_devices.len());
         assert_eq!(
-            restored.guest_memory.iter().map(|region| (region.host_phys, region.size)).collect::<Vec<_>>(),
-            layout
-                .guest_memory
+            restored.guest_memory.iter().map(|region| region.vm_id).collect::<Vec<_>>(),
+            layout.guest_memory.iter().map(|region| region.vm_id).collect::<Vec<_>>()
+        );
+        assert_eq!(
+            restored
+                .ipc_memory
                 .iter()
-                .map(|region| (region.host_phys, region.size))
+                .map(|region| (region.channel_id, region.producer_vm_id, region.consumer_vm_id))
+                .collect::<Vec<_>>(),
+            layout
+                .ipc_memory
+                .iter()
+                .map(|region| (region.channel_id, region.producer_vm_id, region.consumer_vm_id))
                 .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            restored.pci_devices.iter().map(|device| (device.vm_id, device.kind.as_str())).collect::<Vec<_>>(),
+            layout.pci_devices.iter().map(|device| (device.vm_id, device.kind.as_str())).collect::<Vec<_>>()
         );
     }
 

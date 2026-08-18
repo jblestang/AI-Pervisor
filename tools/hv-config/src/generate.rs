@@ -382,8 +382,13 @@ fn render_embedded_config_rs(
         layout_snapshot.guest_region_count
     ));
     rendered.push_str("    guest_regions: [\n");
-    for region in &layout_snapshot.guest_regions {
-        rendered.push_str("        hv_boot_abi::PlannedRegionSnapshot {\n");
+    for region in layout_snapshot
+        .guest_regions
+        .iter()
+        .take(layout_snapshot.guest_region_count as usize)
+    {
+        rendered.push_str("        hv_boot_abi::LayoutGuestRegionSnapshot {\n");
+        rendered.push_str(&format!("            vm_id: {},\n", region.vm_id));
         rendered.push_str(&format!("            host_phys: {},\n", region.host_phys));
         rendered.push_str(&format!("            size_bytes: {},\n", region.size_bytes));
         rendered.push_str("        },\n");
@@ -394,8 +399,15 @@ fn render_embedded_config_rs(
         layout_snapshot.ipc_region_count
     ));
     rendered.push_str("    ipc_regions: [\n");
-    for region in &layout_snapshot.ipc_regions {
-        rendered.push_str("        hv_boot_abi::PlannedRegionSnapshot {\n");
+    for region in layout_snapshot
+        .ipc_regions
+        .iter()
+        .take(layout_snapshot.ipc_region_count as usize)
+    {
+        rendered.push_str("        hv_boot_abi::LayoutIpcRegionSnapshot {\n");
+        rendered.push_str(&format!("            channel_id: {},\n", region.channel_id));
+        rendered.push_str(&format!("            producer_vm_id: {},\n", region.producer_vm_id));
+        rendered.push_str(&format!("            consumer_vm_id: {},\n", region.consumer_vm_id));
         rendered.push_str(&format!("            host_phys: {},\n", region.host_phys));
         rendered.push_str(&format!("            size_bytes: {},\n", region.size_bytes));
         rendered.push_str("        },\n");
@@ -406,17 +418,18 @@ fn render_embedded_config_rs(
         layout_snapshot.pci_device_count
     ));
     rendered.push_str("    pci_devices: [\n");
-    for device in &layout_snapshot.pci_devices {
+    for device in layout_snapshot
+        .pci_devices
+        .iter()
+        .take(layout_snapshot.pci_device_count as usize)
+    {
         rendered.push_str("        hv_boot_abi::LayoutPciSnapshot {\n");
         rendered.push_str(&format!("            vm_id: {},\n", device.vm_id));
         rendered.push_str(&format!("            segment: {},\n", device.segment));
         rendered.push_str(&format!("            bus: {},\n", device.bus));
         rendered.push_str(&format!("            device: {},\n", device.device));
         rendered.push_str(&format!("            function: {},\n", device.function));
-        rendered.push_str(&format!(
-            "            reserved: [{}, {}, {}],\n",
-            device.reserved[0], device.reserved[1], device.reserved[2]
-        ));
+        rendered.push_str(&format!("            device_kind: {},\n", device.device_kind));
         rendered.push_str("        },\n");
     }
     rendered.push_str("    ],\n");

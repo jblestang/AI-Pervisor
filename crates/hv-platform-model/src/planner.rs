@@ -38,6 +38,8 @@ pub fn plan_static_platform_ir(intent: &StaticIntentIR) -> Result<StaticPlatform
         let region = PlannedIpcMemory {
             channel_name: channel.id.clone(),
             channel_id: channel.channel_id,
+            producer_vm_id: channel.producer_vm_id,
+            consumer_vm_id: channel.consumer_vm_id,
             host_phys: HostPhysAddr::new(cursor),
             size: channel.shared_bytes,
         };

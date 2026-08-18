@@ -403,7 +403,7 @@ pub fn boot_check_and_init_gate_c_vmx_launch<A: PageAllocator>(
 }
 
 #[cfg(feature = "vmx-launch")]
-fn init_gate_c_vmx_launch_from_validated<A: PageAllocator>(
+pub(crate) fn init_gate_c_vmx_launch_from_validated<A: PageAllocator>(
     requirements: &PlatformRequirements,
     layout: &StaticPlatformIR,
     validated: &ValidatedPlatform,

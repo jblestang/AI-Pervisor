@@ -16,12 +16,14 @@ cpu-seams = ["dep:hv-x86-cpu"]
 live-execution = ["cpu-seams", "hv-x86-cpu/execute-instructions", "hv-x86-cpu/std"]
 real-hw-execution = ["live-execution", "hv-x86-cpu/firmware-live-execution"]
 vmx-launch = ["real-hw-execution", "dep:hv-guest-boot", "hv-vmx/launch", "hv-x86-cpu/vmx-launch"]
+datapath-foundation = ["vmx-launch", "dep:hv-datapath"]
 
 [dependencies]
 hv-boot-abi = { path = "../hv-boot-abi" }
 hv-config-model = { path = "../hv-config-model", default-features = false, features = [] }
 hv-ept = { path = "../hv-ept", default-features = false, features = [] }
 hv-guest-boot = { path = "../hv-guest-boot", optional = true }
+hv-datapath = { path = "../hv-datapath", optional = true }
 hv-observation-types = { path = "../hv-observation-types" }
 hv-platform-model = { path = "../hv-platform-model", default-features = false, features = [] }
 hv-types = { path = "../hv-types" }
@@ -31,6 +33,7 @@ hv-x86-cpu = { path = "../hv-x86-cpu", optional = true }
 
 [dev-dependencies]
 hv-config-model = { workspace = true, features = ["std"] }
+hv-guest-abi = { workspace = true }
 hv-loader = { workspace = true }
 hv-platform-model = { workspace = true, features = ["std"] }
 hv-ept = { workspace = true }
@@ -57,3 +60,8 @@ required-features = ["real-hw-execution"]
 name = "vmx_launch"
 path = "tests/vmx_launch.rs"
 required-features = ["vmx-launch"]
+
+[[test]]
+name = "datapath_foundation"
+path = "tests/datapath_foundation.rs"
+required-features = ["datapath-foundation"]

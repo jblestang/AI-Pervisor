@@ -290,6 +290,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "hv-datapath"
+version = "0.1.0"
+dependencies = [
+ "hv-config-model",
+ "hv-guest-abi",
+ "hv-platform-model",
+ "hv-types",
+]
+
+[[package]]
 name = "hv-ept"
 version = "0.1.0"
 dependencies = [
@@ -311,6 +321,7 @@ name = "hv-guest-boot"
 version = "0.1.0"
 dependencies = [
  "hv-config-model",
+ "hv-datapath",
  "hv-guest-abi",
  "hv-platform-model",
  "hv-types",
@@ -337,7 +348,9 @@ version = "0.1.0"
 dependencies = [
  "hv-boot-abi",
  "hv-config-model",
+ "hv-datapath",
  "hv-ept",
+ "hv-guest-abi",
  "hv-guest-boot",
  "hv-loader",
  "hv-observation-types",
