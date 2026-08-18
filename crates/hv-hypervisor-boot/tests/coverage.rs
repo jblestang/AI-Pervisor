@@ -35,6 +35,33 @@ fn reference_handoff_snapshot_and_layout() -> (
 }
 
 #[test]
+fn boot_from_transfer_and_init_gate_c_programming_accepts_reference_transfer() {
+    let (transfer, snapshot, _, layout) = reference_handoff_snapshot_and_layout();
+    let result =
+        hv_hypervisor_boot::boot_from_transfer_and_init_gate_c_programming(&transfer, &snapshot, &layout)
+            .expect("gate c programming");
+    assert!(result.init.validated.observed.vmx);
+    assert!(result.vmxon_region.is_some());
+    assert!(result.ept_tables.is_some());
+    assert!(result.vtd_tables.is_some());
+}
+
+#[test]
+fn boot_from_transfer_and_init_gate_c_programming_from_snapshots_accepts_reference_transfer() {
+    let (transfer, snapshot, _, layout) = reference_handoff_snapshot_and_layout();
+    let layout_snapshot =
+        hv_hypervisor_boot::layout_snapshot_from_platform_ir(&layout).expect("layout snapshot");
+    let result = hv_hypervisor_boot::boot_from_transfer_and_init_gate_c_programming_from_snapshots(
+        &transfer,
+        &snapshot,
+        &layout_snapshot,
+    )
+    .expect("gate c programming snapshots");
+    assert!(result.init.validated.observed.vtd);
+    assert!(result.vtd_tables.is_some());
+}
+
+#[test]
 fn boot_from_transfer_and_init_gate_c_from_snapshots_accepts_reference_transfer() {
     let (transfer, snapshot, _, layout) = reference_handoff_snapshot_and_layout();
     let layout_snapshot =

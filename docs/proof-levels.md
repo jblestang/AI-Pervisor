@@ -33,7 +33,8 @@ Each critical requirement declares its validation level using these categories:
 | No-panic policy (production code) | REVIEW + CI + FUZZ (parsers) |
 | ObservedPlatform | QEMU + REAL_HW (future) |
 | VMX / EPT / VT-d init planning | UNIT + REVIEW (Phase 9–10 mock backends) |
-| VMX / EPT / VT-d hardware | QEMU + REAL_HW (future) |
+| VMX / EPT / VT-d structure programming | UNIT + REVIEW (Phase 12 programming backends) |
+| VMX / EPT / VT-d CPU instructions | QEMU + REAL_HW (future) |
 | 200 Mbit/s datapath | PERFORMANCE (future) |
 
 QEMU is not sufficient proof for silicon-specific properties.

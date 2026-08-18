@@ -13,8 +13,11 @@ mod vmx;
 pub use boot::boot_check;
 pub use error::{BootCheckError, BootCheckErrorKind};
 pub use gate_c::{
-    boot_check_and_init_gate_c, boot_from_transfer_and_init_gate_c,
-    boot_from_transfer_and_init_gate_c_from_snapshots, GateCInitResult,
+    boot_check_and_init_gate_c, boot_check_and_init_gate_c_programming,
+    boot_from_transfer_and_init_gate_c, boot_from_transfer_and_init_gate_c_from_snapshots,
+    boot_from_transfer_and_init_gate_c_programming,
+    boot_from_transfer_and_init_gate_c_programming_from_snapshots, GateCInitResult,
+    GateCProgrammingResult,
 };
 pub use snapshot::{
     layout_snapshot_from_platform_ir, platform_requirements_from_snapshot,
