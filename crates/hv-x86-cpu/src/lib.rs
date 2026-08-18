@@ -36,18 +36,20 @@ pub use constants::{
 pub use error::{CpuSeamError, CpuSeamErrorKind};
 pub use instructions::{
     current_privilege_level, execute_ept_pointer_load, execute_vmxon, execute_vtd_enable,
-    execute_vmcs_prepare, firmware_live_execution_enabled, last_vtd_enable_intent,
+    execute_vmcs_prepare, execute_vmcs_field_programming, execute_vmlaunch,
+    firmware_live_execution_enabled, last_vtd_enable_intent,
     live_execution_environment_ready, live_execution_runtime_enabled, read_vmx_basic_msr,
     vmx_revision_from_basic_msr, VtdEnableIntent, IA32_VMX_BASIC,
 };
 pub use resident::{
-    install_ept_tables, install_vmxon_region, install_vmcs_region, resolve_vmxon_revision,
-    MockPageAllocator, PageAllocator, VMCS_REGION_BYTES,
+    install_ept_tables, install_guest_image, install_vmxon_region, install_vmcs_region,
+    resolve_vmxon_revision, MockPageAllocator, PageAllocator, VMCS_REGION_BYTES,
 };
 pub use resident_backends::{
     ResidentCpuSeamEptBackend, ResidentCpuSeamVmxBackend, ResidentCpuSeamVtdBackend,
 };
 pub use seams::{
-    run_ept_pointer_cpu_seam, run_vmxon_cpu_seam, run_vtd_enable_cpu_seam, CpuInstructionDisposition,
-    EptCpuSeamOutcome, VmxCpuSeamOutcome, VtdCpuSeamOutcome,
+    run_ept_pointer_cpu_seam, run_vmxon_cpu_seam, run_vtd_enable_cpu_seam,
+    run_vmx_launch_cpu_seam, CpuInstructionDisposition, EptCpuSeamOutcome, VmxCpuSeamOutcome,
+    VmxLaunchCpuSeamOutcome, VtdCpuSeamOutcome,
 };

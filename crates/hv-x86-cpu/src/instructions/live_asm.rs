@@ -91,7 +91,7 @@ pub fn vmptrld(vmcs_phys: u64) -> Result<(), CpuSeamError> {
     Ok(())
 }
 
-pub fn vmwrite_ept_pointer(value: u64) -> Result<(), CpuSeamError> {
+pub fn vmwrite(field: u32, value: u64) -> Result<(), CpuSeamError> {
     let mut cf: u8;
     let mut zf: u8;
     // SAFETY: VMWRITE is defined when executing in VMX root operation with a valid VMCS.
@@ -100,7 +100,7 @@ pub fn vmwrite_ept_pointer(value: u64) -> Result<(), CpuSeamError> {
             "vmwrite {field}, {value}",
             "setc {cf}",
             "setz {zf}",
-            field = in(reg) u64::from(VMCS_EPT_POINTER_FIELD),
+            field = in(reg) u64::from(field),
             value = in(reg) value,
             cf = out(reg_byte) cf,
             zf = out(reg_byte) zf,
@@ -110,7 +110,34 @@ pub fn vmwrite_ept_pointer(value: u64) -> Result<(), CpuSeamError> {
     if cf != 0 || zf != 0 {
         return Err(CpuSeamError::new(
             CpuSeamErrorKind::ExecutionFailed,
-            "VMWRITE EPT pointer failed (CF/ZF set)",
+            "VMWRITE failed (CF/ZF set)",
+        ));
+    }
+    Ok(())
+}
+
+pub fn vmwrite_ept_pointer(value: u64) -> Result<(), CpuSeamError> {
+    vmwrite(VMCS_EPT_POINTER_FIELD, value)
+}
+
+pub fn vmlaunch() -> Result<(), CpuSeamError> {
+    let mut cf: u8;
+    let mut zf: u8;
+    // SAFETY: VMLAUNCH is defined when VMX root operation has a valid current VMCS.
+    unsafe {
+        core::arch::asm!(
+            "vmlaunch",
+            "setc {cf}",
+            "setz {zf}",
+            cf = out(reg_byte) cf,
+            zf = out(reg_byte) zf,
+            options(nostack),
+        );
+    }
+    if cf != 0 || zf != 0 {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::ExecutionFailed,
+            "VMLAUNCH failed (CF/ZF set)",
         ));
     }
     Ok(())

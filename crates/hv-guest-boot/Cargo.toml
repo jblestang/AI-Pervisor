@@ -1,6 +1,6 @@
 [package]
-name = "hv-vmx"
-description = "VMX initialization planning and backend abstraction for Gate C entry"
+name = "hv-guest-boot"
+description = "Guest boot info and smoke image helpers for Gate C/D bring-up"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,11 +9,8 @@ rust-version.workspace = true
 [lints]
 workspace = true
 
-[features]
-launch = []
-
 [dependencies]
-hv-config-model = { path = "../hv-config-model", default-features = false }
+hv-guest-abi = { workspace = true }
 hv-platform-model = { path = "../hv-platform-model", default-features = false }
 hv-types = { workspace = true }
 

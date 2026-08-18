@@ -7,7 +7,13 @@
 extern crate alloc;
 
 use hv_boot_abi::HypervisorTransferHeader;
-#[cfg(feature = "real-hw-execution")]
+#[cfg(feature = "vmx-launch")]
+use hv_hypervisor_efi::{
+    boot_hypervisor_from_transfer_vmx_launch, RealHwBootMarkers, VmxLaunchBootMarkers,
+    REAL_HW_BOOT_SUCCESS_MARKER, REAL_HW_EPT_EXECUTED_MARKER, REAL_HW_VMLAUNCH_EXECUTED_MARKER,
+    REAL_HW_VMXON_EXECUTED_MARKER, UefiPageAllocator,
+};
+#[cfg(all(feature = "real-hw-execution", not(feature = "vmx-launch")))]
 use hv_hypervisor_efi::{
     boot_hypervisor_from_transfer_real_hw, RealHwBootMarkers, REAL_HW_BOOT_SUCCESS_MARKER,
     REAL_HW_EPT_EXECUTED_MARKER, REAL_HW_VMXON_EXECUTED_MARKER, UefiPageAllocator,
@@ -38,7 +44,24 @@ fn efi_main() -> Status {
 
 fn run_hypervisor() -> Result<(), &'static str> {
     let transfer = locate_transfer_blob()?;
-    #[cfg(feature = "real-hw-execution")]
+    #[cfg(feature = "vmx-launch")]
+    {
+        let mut allocator = UefiPageAllocator::new();
+        let markers = boot_hypervisor_from_transfer_vmx_launch(
+            transfer,
+            &CONFIG_DIGEST,
+            &REQUIREMENTS_SNAPSHOT,
+            &LAYOUT_SNAPSHOT,
+            &mut allocator,
+        )
+        .map_err(|err| {
+            log::error!("hypervisor VMX launch boot failed: {err}");
+            "hypervisor VMX launch boot and Gate C init failed"
+        })?;
+        log_vmx_launch_markers(&markers);
+        log::info!("{REAL_HW_BOOT_SUCCESS_MARKER}");
+    }
+    #[cfg(all(feature = "real-hw-execution", not(feature = "vmx-launch")))]
     {
         let mut allocator = UefiPageAllocator::new();
         let markers = boot_hypervisor_from_transfer_real_hw(
@@ -72,13 +95,26 @@ fn run_hypervisor() -> Result<(), &'static str> {
     Ok(())
 }
 
-#[cfg(feature = "real-hw-execution")]
+#[cfg(all(feature = "real-hw-execution", not(feature = "vmx-launch")))]
 fn log_real_hw_markers(markers: &RealHwBootMarkers) {
     if markers.vmxon_executed {
         log::info!("{REAL_HW_VMXON_EXECUTED_MARKER}");
     }
     if markers.ept_executed {
         log::info!("{REAL_HW_EPT_EXECUTED_MARKER}");
+    }
+}
+
+#[cfg(feature = "vmx-launch")]
+fn log_vmx_launch_markers(markers: &VmxLaunchBootMarkers) {
+    if markers.real_hw.vmxon_executed {
+        log::info!("{REAL_HW_VMXON_EXECUTED_MARKER}");
+    }
+    if markers.real_hw.ept_executed {
+        log::info!("{REAL_HW_EPT_EXECUTED_MARKER}");
+    }
+    if markers.vmlaunch_executed {
+        log::info!("{REAL_HW_VMLAUNCH_EXECUTED_MARKER}");
     }
 }
 

@@ -32,6 +32,14 @@ pub const HV_X86_LIVE_VMXON_UNAVAILABLE: &str =
 pub const HV_X86_LIVE_VTD_UNAVAILABLE: &str =
     "live VT-d enable requires HV_X86_LIVE_INSTRUCTIONS=1 in ring 0";
 
+/// Error when live VMCS field programming is unavailable in the current environment.
+pub const HV_X86_LIVE_VMCS_FIELDS_UNAVAILABLE: &str =
+    "live VMCS field programming requires HV_X86_LIVE_INSTRUCTIONS=1 in ring 0";
+
+/// Error when live VMLAUNCH is unavailable in the current environment.
+pub const HV_X86_LIVE_VMLAUNCH_UNAVAILABLE: &str =
+    "live VMLAUNCH requires HV_X86_LIVE_INSTRUCTIONS=1 in ring 0";
+
 #[cfg(test)]
 mod tests {
     use super::*;

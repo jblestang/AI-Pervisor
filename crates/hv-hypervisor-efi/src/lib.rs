@@ -24,11 +24,15 @@ use hv_types::SHA256_DIGEST_BYTES;
 use hv_x86_cpu::{CpuInstructionDisposition, PageAllocator};
 #[cfg(feature = "real-hw-execution")]
 use hv_hypervisor_boot::boot_from_transfer_and_init_gate_c_real_hw_from_snapshots;
+#[cfg(feature = "vmx-launch")]
+use hv_hypervisor_boot::boot_from_transfer_and_init_gate_c_vmx_launch_from_snapshots;
 
 pub use error::{HypervisorEfiError, HypervisorEfiErrorKind};
 pub use hv_hypervisor_boot::{
-    REAL_HW_BOOT_SUCCESS_MARKER, REAL_HW_EPT_EXECUTED_MARKER, REAL_HW_VMXON_EXECUTED_MARKER,
+    REAL_HW_BOOT_SUCCESS_MARKER, REAL_HW_EPT_EXECUTED_MARKER, REAL_HW_VMLAUNCH_EXECUTED_MARKER,
+    REAL_HW_VMXON_EXECUTED_MARKER,
 };
+pub use hv_guest_boot::GUEST_SMOKE_RUNNING_MARKER;
 
 #[cfg(feature = "real-hw-execution")]
 pub use allocator::UefiPageAllocator;
@@ -41,6 +45,16 @@ pub struct RealHwBootMarkers {
     pub vmxon_executed: bool,
     /// Whether the EPT pointer was loaded live.
     pub ept_executed: bool,
+}
+
+/// VMX launch boot outcome markers for serial-log verification.
+#[cfg(feature = "vmx-launch")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VmxLaunchBootMarkers {
+    /// REAL_HW boot markers from Gate C init.
+    pub real_hw: RealHwBootMarkers,
+    /// Whether VMLAUNCH was executed live.
+    pub vmlaunch_executed: bool,
 }
 
 /// Runs full Gate B validation and mock-backed Gate C init from a transfer blob.
@@ -98,6 +112,55 @@ pub fn boot_hypervisor_from_transfer_real_hw<A: PageAllocator>(
     Ok(RealHwBootMarkers {
         vmxon_executed,
         ept_executed,
+    })
+}
+
+/// Runs Gate B validation and VMX launch Gate C init with resident page installation.
+#[cfg(feature = "vmx-launch")]
+pub fn boot_hypervisor_from_transfer_vmx_launch<A: PageAllocator>(
+    transfer: &[u8],
+    expected_config_digest: &[u8; SHA256_DIGEST_BYTES],
+    requirements: &RequirementsSnapshot,
+    layout: &LayoutSnapshot,
+    allocator: &mut A,
+) -> Result<VmxLaunchBootMarkers, HypervisorEfiError> {
+    if requirements.config_digest != *expected_config_digest {
+        return Err(HypervisorEfiError::new(
+            HypervisorEfiErrorKind::Requirements,
+            "requirements snapshot digest mismatch",
+        ));
+    }
+    let result = boot_from_transfer_and_init_gate_c_vmx_launch_from_snapshots(
+        transfer,
+        requirements,
+        layout,
+        allocator,
+    )
+    .map_err(HypervisorEfiError::from)?;
+    let vmxon_executed = result
+        .real_hw
+        .live
+        .cpu_seam
+        .vmx_seam
+        .as_ref()
+        .is_some_and(|seam| seam.disposition == CpuInstructionDisposition::Executed);
+    let ept_executed = result
+        .real_hw
+        .live
+        .cpu_seam
+        .ept_seam
+        .as_ref()
+        .is_some_and(|seam| seam.disposition == CpuInstructionDisposition::Executed);
+    let vmlaunch_executed = result
+        .launch_seam
+        .as_ref()
+        .is_some_and(|seam| seam.disposition == CpuInstructionDisposition::Executed);
+    Ok(VmxLaunchBootMarkers {
+        real_hw: RealHwBootMarkers {
+            vmxon_executed,
+            ept_executed,
+        },
+        vmlaunch_executed,
     })
 }
 

@@ -62,7 +62,7 @@ This builds the boot chain (unless `--no-build` is passed), launches OVMF/QEMU w
 
 ## REAL_HW live smoke boot (KVM)
 
-Build the REAL_HW boot chain (hypervisor with `real-hw-execution`):
+Build the REAL_HW boot chain (hypervisor with `real-hw-execution,vmx-launch`):
 
 ```bash
 cargo xtask build-boot-chain-live
@@ -74,7 +74,7 @@ Run a KVM-backed smoke boot (requires `/dev/kvm`, host VMX, OVMF, and QEMU). Exi
 cargo xtask live-qemu-smoke
 ```
 
-On success the serial log includes `hypervisor Gate C REAL_HW boot succeeded` and optional `REAL_HW: VMXON Executed` / `REAL_HW: EPT pointer Executed` markers when live execution succeeds under firmware.
+On success the serial log includes `hypervisor Gate C REAL_HW boot succeeded` and optional `REAL_HW: VMXON Executed`, `REAL_HW: EPT pointer Executed`, and `REAL_HW: VMLAUNCH Executed` markers when live execution succeeds under firmware. A smoke guest may emit `GUEST: smoke partition running` on COM1 when launch reaches guest code.
 
 ## PCI enumeration limits (Phase 8)
 

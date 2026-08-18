@@ -12,7 +12,8 @@ mod vmx;
 
 pub use boot::boot_check;
 pub use hv_boot_abi::{
-    REAL_HW_BOOT_SUCCESS_MARKER, REAL_HW_EPT_EXECUTED_MARKER, REAL_HW_VMXON_EXECUTED_MARKER,
+    REAL_HW_BOOT_SUCCESS_MARKER, REAL_HW_EPT_EXECUTED_MARKER, REAL_HW_VMLAUNCH_EXECUTED_MARKER,
+    REAL_HW_VMXON_EXECUTED_MARKER,
 };
 pub use error::{BootCheckError, BootCheckErrorKind};
 pub use gate_c::{
@@ -37,6 +38,11 @@ pub use gate_c::{
 pub use gate_c::{
     boot_check_and_init_gate_c_real_hw, boot_from_transfer_and_init_gate_c_real_hw,
     boot_from_transfer_and_init_gate_c_real_hw_from_snapshots, GateCRealHwResult,
+};
+#[cfg(feature = "vmx-launch")]
+pub use gate_c::{
+    boot_check_and_init_gate_c_vmx_launch, boot_from_transfer_and_init_gate_c_vmx_launch,
+    boot_from_transfer_and_init_gate_c_vmx_launch_from_snapshots, GateCVmxLaunchResult,
 };
 pub use snapshot::{
     layout_snapshot_from_platform_ir, platform_requirements_from_snapshot,

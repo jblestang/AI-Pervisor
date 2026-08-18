@@ -4,7 +4,7 @@ use hv_ept::{
     EptProgrammedTables, EPT_POINTER_MEMORY_TYPE_SHIFT, EPT_POINTER_MEMORY_TYPE_WB,
     EPT_POINTER_PAGE_WALK_LENGTH, EPT_POINTER_PAGE_WALK_LENGTH_SHIFT, EPT_ROOT_TABLE_BYTES,
 };
-use hv_vmx::{VmxonProgrammedRegion, VMXON_REGION_MIN_BYTES};
+use hv_vmx::{VmxonProgrammedRegion, VmcsProgrammedFields, VMXON_REGION_MIN_BYTES};
 use hv_vtd::VtdProgrammedTables;
 
 use crate::constants::VMXON_REVISION_PREFIX_BYTES;
@@ -48,6 +48,15 @@ pub struct VtdCpuSeamOutcome {
     pub disposition: CpuInstructionDisposition,
     /// Whether interrupt remapping was part of the programmed tables.
     pub interrupt_remapping: bool,
+}
+
+/// Outcome of a VMX launch CPU seam.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VmxLaunchCpuSeamOutcome {
+    /// How the seam completed.
+    pub disposition: CpuInstructionDisposition,
+    /// Guest VM identifier targeted by the launch.
+    pub guest_vm_id: hv_types::VmId,
 }
 
 /// Validates (and optionally executes) a VMXON instruction seam.
@@ -107,6 +116,66 @@ pub fn run_vtd_enable_cpu_seam(
         disposition,
         interrupt_remapping: tables.interrupt_remapping,
     })
+}
+
+/// Validates (and optionally executes) a VMX launch seam.
+pub fn run_vmx_launch_cpu_seam(
+    vmcs_phys: u64,
+    fields: &VmcsProgrammedFields,
+    guest_vm_id: hv_types::VmId,
+) -> Result<VmxLaunchCpuSeamOutcome, CpuSeamError> {
+    validate_vmx_launch_inputs(vmcs_phys, fields)?;
+    if !cpuid_vmx_available() || !cpuid_ept_available() {
+        return Ok(VmxLaunchCpuSeamOutcome {
+            disposition: CpuInstructionDisposition::SkippedNoHardware,
+            guest_vm_id,
+        });
+    }
+    let disposition = execute_vmx_launch_if_enabled(vmcs_phys, fields)?;
+    Ok(VmxLaunchCpuSeamOutcome {
+        disposition,
+        guest_vm_id,
+    })
+}
+
+fn validate_vmx_launch_inputs(
+    vmcs_phys: u64,
+    fields: &VmcsProgrammedFields,
+) -> Result<(), CpuSeamError> {
+    if vmcs_phys == 0 {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "VMX launch requires a non-zero VMCS address",
+        ));
+    }
+    if fields.fields.is_empty() {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "VMX launch requires programmed VMCS fields",
+        ));
+    }
+    Ok(())
+}
+
+fn execute_vmx_launch_if_enabled(
+    vmcs_phys: u64,
+    fields: &VmcsProgrammedFields,
+) -> Result<CpuInstructionDisposition, CpuSeamError> {
+    #[cfg(feature = "execute-instructions")]
+    {
+        match crate::instructions::vmcs_fields::execute_vmcs_field_programming(vmcs_phys, fields) {
+            Ok(()) => {}
+            Err(err) if err.kind == CpuSeamErrorKind::Unavailable => {}
+            Err(err) => return Err(err),
+        }
+        match crate::instructions::vmlaunch::execute_vmlaunch(vmcs_phys) {
+            Ok(()) => return Ok(CpuInstructionDisposition::Executed),
+            Err(err) if err.kind == CpuSeamErrorKind::Unavailable => {}
+            Err(err) => return Err(err),
+        }
+    }
+    let _ = (vmcs_phys, fields);
+    Ok(CpuInstructionDisposition::SeamValidated)
 }
 
 fn validate_vmxon_region(region: &VmxonProgrammedRegion) -> Result<(), CpuSeamError> {
