@@ -22,7 +22,10 @@ workspace = true
 clap = { workspace = true }
 hv-config = { path = "../tools/hv-config", package = "hv-config" }
 hv-boot-abi = { workspace = true }
+hv-config-model = { workspace = true, features = ["std"] }
+hv-datapath = { workspace = true }
 hv-guest-boot = { workspace = true }
+hv-platform-model = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"

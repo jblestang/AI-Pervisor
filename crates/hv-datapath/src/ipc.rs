@@ -100,6 +100,7 @@ impl<'a> IpcQueueView<'a> {
         }
         let slot_index = self.header.tail;
         let payload_len = read_slot(self.bytes, &self.header, slot_index, out)?;
+        invalidate_slot(self.bytes, &self.header, slot_index)?;
         self.header.tail = self
             .header
             .tail
@@ -206,6 +207,17 @@ fn read_slot(
         target.copy_from_slice(slice);
     }
     Ok(payload_len)
+}
+
+fn invalidate_slot(
+    bytes: &mut [u8],
+    header: &IpcQueueHeader,
+    slot_index: u32,
+) -> Result<(), DatapathError> {
+    let offset = slot_offset(header, slot_index)?;
+    write_u32(bytes, offset, 0)?;
+    write_u32(bytes, offset + 4, 0)?;
+    Ok(())
 }
 
 fn slot_offset(header: &IpcQueueHeader, slot_index: u32) -> Result<usize, DatapathError> {

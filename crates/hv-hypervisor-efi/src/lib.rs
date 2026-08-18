@@ -34,11 +34,14 @@ use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_live_from_sn
 use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_malicious_from_snapshots;
 #[cfg(feature = "datapath-guests")]
 use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_guests_from_snapshots;
+#[cfg(feature = "datapath-benchmark")]
+use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_benchmark_from_snapshots;
 
 pub use error::{HypervisorEfiError, HypervisorEfiErrorKind};
 pub use hv_hypervisor_boot::{
     GATE_D_BOOT_INFO_BUILT_MARKER, GATE_D_DATAPATH_FOUNDATION_MARKER, GATE_D_DATAPATH_LIVE_MARKER,
-    GATE_D_DATAPATH_MALICIOUS_MARKER, GATE_D_DATAPATH_GUESTS_MARKER, GATE_D_E1000_MMIO_MARKER,
+    GATE_D_DATAPATH_MALICIOUS_MARKER, GATE_D_DATAPATH_GUESTS_MARKER, GATE_D_DATAPATH_BENCHMARK_MARKER,
+    GATE_D_BENCHMARK_TARGET_MET_MARKER, GATE_D_E1000_MMIO_MARKER,
     GATE_D_GUEST_ELF_INSTALLED_MARKER, GATE_D_IPC_FORWARD_MARKER, GATE_D_IPC_INTEGRITY_MARKER,
     GATE_D_MULTI_VMLAUNCH_MARKER, REAL_HW_BOOT_SUCCESS_MARKER, REAL_HW_EPT_EXECUTED_MARKER,
     REAL_HW_VMLAUNCH_EXECUTED_MARKER, REAL_HW_VMXON_EXECUTED_MARKER,
@@ -112,6 +115,18 @@ pub struct DatapathGuestsBootMarkers {
     pub elf_images_installed: u32,
     /// Whether multi-partition VMLAUNCH seams completed for all reference partitions.
     pub multi_partition_vmlaunch: bool,
+}
+
+/// Gate D datapath benchmark boot outcome markers for serial-log verification.
+#[cfg(feature = "datapath-benchmark")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DatapathBenchmarkBootMarkers {
+    /// Datapath guests boot markers.
+    pub guests: DatapathGuestsBootMarkers,
+    /// Whether the official 200 Mbit/s benchmark target was met.
+    pub benchmark_target_met: bool,
+    /// Minimum observed throughput across benchmark runs (Mbit/s).
+    pub benchmark_min_mbit_per_sec: u64,
 }
 
 /// Runs full Gate B validation and mock-backed Gate C init from a transfer blob.
@@ -415,6 +430,43 @@ pub fn boot_hypervisor_from_transfer_datapath_guests<A: PageAllocator>(
         elf_images_installed: result.elf_images_installed,
         multi_partition_vmlaunch: result.multi_launch_seam.launches.len()
             == REFERENCE_GUEST_PARTITION_IDS.len(),
+    })
+}
+
+/// Runs Gate B validation and Gate D datapath benchmark init with resident page installation.
+#[cfg(feature = "datapath-benchmark")]
+pub fn boot_hypervisor_from_transfer_datapath_benchmark<A: PageAllocator>(
+    transfer: &[u8],
+    expected_config_digest: &[u8; SHA256_DIGEST_BYTES],
+    requirements: &RequirementsSnapshot,
+    layout: &LayoutSnapshot,
+    allocator: &mut A,
+) -> Result<DatapathBenchmarkBootMarkers, HypervisorEfiError> {
+    if requirements.config_digest != *expected_config_digest {
+        return Err(HypervisorEfiError::new(
+            HypervisorEfiErrorKind::Requirements,
+            "requirements snapshot digest mismatch",
+        ));
+    }
+    let result = boot_from_transfer_and_init_gate_d_datapath_benchmark_from_snapshots(
+        transfer,
+        requirements,
+        layout,
+        allocator,
+    )
+    .map_err(HypervisorEfiError::from)?;
+    use hv_guest_boot::REFERENCE_GUEST_PARTITION_IDS;
+    Ok(DatapathBenchmarkBootMarkers {
+        guests: DatapathGuestsBootMarkers {
+            malicious: boot_hypervisor_from_transfer_datapath_malicious_markers(
+                &result.guests.malicious,
+            ),
+            elf_images_installed: result.guests.elf_images_installed,
+            multi_partition_vmlaunch: result.guests.multi_launch_seam.launches.len()
+                == REFERENCE_GUEST_PARTITION_IDS.len(),
+        },
+        benchmark_target_met: result.benchmark.target_met,
+        benchmark_min_mbit_per_sec: result.benchmark.stats.min_mbit_per_sec,
     })
 }
 
