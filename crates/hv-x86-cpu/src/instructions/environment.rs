@@ -27,15 +27,31 @@ pub fn current_privilege_level() -> u8 {
 /// Returns whether live privileged instruction execution is enabled at runtime.
 #[cfg(all(feature = "execute-instructions", feature = "std"))]
 pub fn live_execution_runtime_enabled() -> bool {
+    if firmware_live_execution_enabled() {
+        return true;
+    }
     match std::env::var("HV_X86_LIVE_INSTRUCTIONS") {
         Ok(value) => value == "1",
         Err(_) => false,
     }
 }
 
-/// Without `std`, runtime opt-in is unavailable.
+/// Firmware builds opt in at compile time via `firmware-live-execution`.
 #[cfg(all(feature = "execute-instructions", not(feature = "std")))]
 pub fn live_execution_runtime_enabled() -> bool {
+    firmware_live_execution_enabled()
+}
+
+/// Compile-time firmware opt-in for ring-0 live execution without env vars.
+/// Returns whether this build opted into firmware ring-0 live execution.
+#[cfg(feature = "firmware-live-execution")]
+pub fn firmware_live_execution_enabled() -> bool {
+    true
+}
+
+/// Returns whether this build opted into firmware ring-0 live execution.
+#[cfg(not(feature = "firmware-live-execution"))]
+pub fn firmware_live_execution_enabled() -> bool {
     false
 }
 
@@ -78,7 +94,40 @@ mod tests {
 
     #[test]
     fn live_execution_runtime_disabled_without_env_var() {
+        if cfg!(feature = "firmware-live-execution") {
+            assert!(live_execution_runtime_enabled());
+            return;
+        }
         assert!(!live_execution_runtime_enabled());
+    }
+
+    #[test]
+    fn live_execution_runtime_rejects_zero_env_var() {
+        if cfg!(feature = "firmware-live-execution") {
+            return;
+        }
+        std::env::set_var("HV_X86_LIVE_INSTRUCTIONS", "0");
+        assert!(!live_execution_runtime_enabled());
+        std::env::remove_var("HV_X86_LIVE_INSTRUCTIONS");
+    }
+
+    #[test]
+    fn firmware_live_execution_enabled_reflects_feature() {
+        if cfg!(feature = "firmware-live-execution") {
+            assert!(firmware_live_execution_enabled());
+        } else {
+            assert!(!firmware_live_execution_enabled());
+        }
+    }
+
+    #[test]
+    fn live_execution_runtime_honors_env_var_when_set() {
+        if cfg!(feature = "firmware-live-execution") {
+            return;
+        }
+        std::env::set_var("HV_X86_LIVE_INSTRUCTIONS", "1");
+        assert!(live_execution_runtime_enabled());
+        std::env::remove_var("HV_X86_LIVE_INSTRUCTIONS");
     }
 
     #[test]

@@ -30,6 +30,11 @@ pub use gate_c::{
     boot_from_transfer_and_init_gate_c_live_execution,
     boot_from_transfer_and_init_gate_c_live_execution_from_snapshots, GateCLiveExecutionResult,
 };
+#[cfg(feature = "real-hw-execution")]
+pub use gate_c::{
+    boot_check_and_init_gate_c_real_hw, boot_from_transfer_and_init_gate_c_real_hw,
+    boot_from_transfer_and_init_gate_c_real_hw_from_snapshots, GateCRealHwResult,
+};
 pub use snapshot::{
     layout_snapshot_from_platform_ir, platform_requirements_from_snapshot,
     requirements_snapshot_from_platform, static_platform_ir_from_layout_snapshot,

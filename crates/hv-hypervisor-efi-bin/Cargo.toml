@@ -15,6 +15,10 @@ hv-types = { path = "../hv-types" }
 log = { version = "0.4", default-features = false }
 uefi = { version = "0.31", features = ["global_allocator", "logger", "panic_handler"] }
 
+[features]
+default = []
+real-hw-execution = ["hv-hypervisor-efi/real-hw-execution"]
+
 [profile.dev]
 panic = "abort"
 

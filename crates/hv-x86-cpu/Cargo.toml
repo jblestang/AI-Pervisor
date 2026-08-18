@@ -13,6 +13,7 @@ workspace = true
 default = []
 execute-instructions = []
 std = []
+firmware-live-execution = ["execute-instructions"]
 
 [dependencies]
 hv-ept = { path = "../hv-ept" }

@@ -24,6 +24,10 @@ use hv_x86_cpu::{
 };
 #[cfg(feature = "live-execution")]
 use hv_x86_cpu::live_execution_environment_ready;
+#[cfg(feature = "real-hw-execution")]
+use hv_x86_cpu::{
+    PageAllocator, ResidentCpuSeamEptBackend, ResidentCpuSeamVmxBackend, ResidentCpuSeamVtdBackend,
+};
 
 use crate::boot::boot_check;
 use crate::error::{BootCheckError, BootCheckErrorKind};
@@ -177,6 +181,147 @@ fn wrap_gate_c_live_execution(cpu_seam: GateCCpuSeamResult) -> GateCLiveExecutio
         live_environment_ready: live_execution_environment_ready(),
         cpu_seam,
     }
+}
+
+/// Result of Gate C init with REAL_HW resident page installation and live execution.
+#[cfg(feature = "real-hw-execution")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GateCRealHwResult {
+    /// Live execution output including CPU seam dispositions.
+    pub live: GateCLiveExecutionResult,
+    /// Host physical address of the installed VMCS region when EPT init ran.
+    pub vmcs_phys: Option<u64>,
+}
+
+/// Runs transfer boot checks and REAL_HW Gate C init using embedded snapshots.
+#[cfg(feature = "real-hw-execution")]
+pub fn boot_from_transfer_and_init_gate_c_real_hw_from_snapshots<A: PageAllocator>(
+    transfer: &[u8],
+    requirements: &RequirementsSnapshot,
+    layout: &LayoutSnapshot,
+    allocator: &mut A,
+) -> Result<GateCRealHwResult, BootCheckError> {
+    let platform_requirements = platform_requirements_from_snapshot(requirements)?;
+    let static_layout = static_platform_ir_from_layout_snapshot(layout, requirements)?;
+    let (validated, warnings) =
+        boot_from_transfer(transfer, &requirements.config_digest, &platform_requirements)?;
+    init_gate_c_real_hw_from_validated(
+        &platform_requirements,
+        &static_layout,
+        &validated,
+        warnings,
+        allocator,
+    )
+}
+
+/// Runs transfer boot checks and REAL_HW Gate C init using snapshot + layout metadata.
+#[cfg(feature = "real-hw-execution")]
+pub fn boot_from_transfer_and_init_gate_c_real_hw<A: PageAllocator>(
+    transfer: &[u8],
+    snapshot: &RequirementsSnapshot,
+    layout: &StaticPlatformIR,
+    allocator: &mut A,
+) -> Result<GateCRealHwResult, BootCheckError> {
+    let requirements = platform_requirements_from_snapshot(snapshot)?;
+    let (validated, warnings) =
+        boot_from_transfer(transfer, &snapshot.config_digest, &requirements)?;
+    init_gate_c_real_hw_from_validated(&requirements, layout, &validated, warnings, allocator)
+}
+
+/// Runs boot checks from raw inputs and REAL_HW Gate C init.
+#[cfg(feature = "real-hw-execution")]
+pub fn boot_check_and_init_gate_c_real_hw<A: PageAllocator>(
+    boot_info_bytes: &[u8],
+    expected_config_digest: &[u8; SHA256_DIGEST_BYTES],
+    requirements: &PlatformRequirements,
+    observation: &hv_platform_model::ObservationInputs,
+    layout: &StaticPlatformIR,
+    allocator: &mut A,
+) -> Result<GateCRealHwResult, BootCheckError> {
+    let (validated, warnings) = boot_check(
+        boot_info_bytes,
+        expected_config_digest,
+        requirements,
+        observation,
+    )?;
+    init_gate_c_real_hw_from_validated(requirements, layout, &validated, warnings, allocator)
+}
+
+#[cfg(feature = "real-hw-execution")]
+fn init_gate_c_real_hw_from_validated<A: PageAllocator>(
+    requirements: &PlatformRequirements,
+    layout: &StaticPlatformIR,
+    validated: &ValidatedPlatform,
+    warnings: alloc::vec::Vec<PlatformWarning>,
+    allocator: &mut A,
+) -> Result<GateCRealHwResult, BootCheckError> {
+    let vmx_plan = plan_vmx_init(&layout.hypervisor_reserve).map_err(map_vmx_error)?;
+    let ept_plan = plan_ept_init(layout, &vmx_plan).map_err(map_ept_error)?;
+    let interrupt_remapping = matches!(
+        requirements.interrupt_remapping,
+        FeatureRequirement::Required | FeatureRequirement::Preferred
+    );
+    let vtd_plan = plan_vtd_init(layout, interrupt_remapping).map_err(map_vtd_error)?;
+
+    let (vmxon_region, vmx_seam) = {
+        let mut vmx_backend = ResidentCpuSeamVmxBackend::new(allocator);
+        init_vmx_if_required(
+            &mut vmx_backend,
+            &vmx_plan,
+            validated,
+            requirements.vmx,
+        )?;
+        (vmx_backend.last_region, vmx_backend.last_seam)
+    };
+
+    let (ept_tables, ept_seam, vmcs_phys) = {
+        let mut ept_backend = ResidentCpuSeamEptBackend::new(allocator);
+        init_ept_if_required(
+            &mut ept_backend,
+            &ept_plan,
+            validated,
+            requirements.ept,
+        )?;
+        (
+            ept_backend.last_tables,
+            ept_backend.last_seam,
+            ept_backend.last_vmcs_phys,
+        )
+    };
+
+    let (vtd_tables, vtd_seam) = {
+        let mut vtd_backend = ResidentCpuSeamVtdBackend::default();
+        init_vtd_if_required(
+            &mut vtd_backend,
+            &vtd_plan,
+            validated,
+            requirements.vtd,
+        )?;
+        (vtd_backend.last_tables, vtd_backend.last_seam)
+    };
+
+    let cpu_seam = GateCCpuSeamResult {
+        programming: GateCProgrammingResult {
+            init: GateCInitResult {
+                validated: validated.clone(),
+                warnings,
+                vmx_plan,
+                ept_plan,
+                vtd_plan,
+            },
+            vmxon_region,
+            ept_tables,
+            vtd_tables,
+        },
+        vmx_seam,
+        ept_seam,
+        vtd_seam,
+    };
+
+    Ok(GateCRealHwResult {
+        live: wrap_gate_c_live_execution(cpu_seam),
+        vmcs_phys,
+    })
 }
 
 /// Runs transfer boot checks and mock-backed Gate C init using embedded snapshots.
@@ -481,5 +626,55 @@ mod gate_c_map_tests {
         assert!(vmx.message.contains("vmx backend"));
         assert!(ept.message.contains("ept plan"));
         assert!(vtd.message.contains("vtd backend"));
+    }
+
+    #[test]
+    fn init_vmx_if_required_skips_when_feature_optional() {
+        use hv_config_model::compile_config_from_str;
+        use hv_config_model::FeatureRequirement;
+        use hv_ept::{plan_ept_init, MockEptBackend};
+        use hv_platform_model::{plan_static_platform_ir, validate_platform};
+        use hv_vmx::{plan_vmx_init, MockVmxBackend};
+        use hv_vtd::{plan_vtd_init, MockVtdBackend};
+
+        let observed =
+            include_str!("../../hv-platform-model/tests/fixtures/observed/qemu_reference.json");
+        let observed = hv_platform_model::parse_observed_platform_json(observed).expect("parse");
+        let yaml = include_str!("../../../configs/qemu.yaml");
+        let compiled = compile_config_from_str(yaml).expect("compile");
+        let validated = validate_platform(&compiled.requirements, &observed)
+            .expect("validate")
+            .0;
+        let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
+        let vmx_plan = plan_vmx_init(&layout.hypervisor_reserve).expect("vmx");
+        let ept_plan = plan_ept_init(&layout, &vmx_plan).expect("ept");
+        let vtd_plan = plan_vtd_init(&layout, true).expect("vtd");
+        let mut vmx_backend = MockVmxBackend::default();
+        init_vmx_if_required(
+            &mut vmx_backend,
+            &vmx_plan,
+            &validated,
+            FeatureRequirement::Optional,
+        )
+        .expect("skip vmx");
+        assert_eq!(vmx_backend.enable_calls, 0);
+        let mut ept_backend = MockEptBackend::default();
+        init_ept_if_required(
+            &mut ept_backend,
+            &ept_plan,
+            &validated,
+            FeatureRequirement::Optional,
+        )
+        .expect("skip ept");
+        assert_eq!(ept_backend.install_calls, 0);
+        let mut vtd_backend = MockVtdBackend::default();
+        init_vtd_if_required(
+            &mut vtd_backend,
+            &vtd_plan,
+            &validated,
+            FeatureRequirement::Optional,
+        )
+        .expect("skip vtd");
+        assert_eq!(vtd_backend.enable_calls, 0);
     }
 }

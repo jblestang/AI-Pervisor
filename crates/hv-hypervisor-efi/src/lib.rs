@@ -11,13 +11,41 @@
 
 extern crate alloc;
 
+#[cfg(feature = "real-hw-execution")]
+mod allocator;
+
 mod error;
 
 use hv_boot_abi::{LayoutSnapshot, RequirementsSnapshot};
 use hv_hypervisor_boot::boot_from_transfer_and_init_gate_c_from_snapshots;
 use hv_types::SHA256_DIGEST_BYTES;
 
+#[cfg(feature = "real-hw-execution")]
+use hv_x86_cpu::{CpuInstructionDisposition, PageAllocator};
+#[cfg(feature = "real-hw-execution")]
+use hv_hypervisor_boot::boot_from_transfer_and_init_gate_c_real_hw_from_snapshots;
+
 pub use error::{HypervisorEfiError, HypervisorEfiErrorKind};
+
+/// Serial log marker emitted after successful REAL_HW Gate C init.
+pub const REAL_HW_BOOT_SUCCESS_MARKER: &str = "hypervisor Gate C REAL_HW boot succeeded";
+/// Serial log marker emitted when VMXON executes under REAL_HW Gate C.
+pub const REAL_HW_VMXON_EXECUTED_MARKER: &str = "REAL_HW: VMXON Executed";
+/// Serial log marker emitted when EPT pointer load executes under REAL_HW Gate C.
+pub const REAL_HW_EPT_EXECUTED_MARKER: &str = "REAL_HW: EPT pointer Executed";
+
+#[cfg(feature = "real-hw-execution")]
+pub use allocator::UefiPageAllocator;
+
+/// REAL_HW boot outcome markers for serial-log verification.
+#[cfg(feature = "real-hw-execution")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RealHwBootMarkers {
+    /// Whether VMXON was executed live.
+    pub vmxon_executed: bool,
+    /// Whether the EPT pointer was loaded live.
+    pub ept_executed: bool,
+}
 
 /// Runs full Gate B validation and mock-backed Gate C init from a transfer blob.
 pub fn boot_hypervisor_from_transfer(
@@ -35,6 +63,46 @@ pub fn boot_hypervisor_from_transfer(
     boot_from_transfer_and_init_gate_c_from_snapshots(transfer, requirements, layout)
         .map(|_| ())
         .map_err(HypervisorEfiError::from)
+}
+
+/// Runs Gate B validation and REAL_HW Gate C init with resident page installation.
+#[cfg(feature = "real-hw-execution")]
+pub fn boot_hypervisor_from_transfer_real_hw<A: PageAllocator>(
+    transfer: &[u8],
+    expected_config_digest: &[u8; SHA256_DIGEST_BYTES],
+    requirements: &RequirementsSnapshot,
+    layout: &LayoutSnapshot,
+    allocator: &mut A,
+) -> Result<RealHwBootMarkers, HypervisorEfiError> {
+    if requirements.config_digest != *expected_config_digest {
+        return Err(HypervisorEfiError::new(
+            HypervisorEfiErrorKind::Requirements,
+            "requirements snapshot digest mismatch",
+        ));
+    }
+    let result = boot_from_transfer_and_init_gate_c_real_hw_from_snapshots(
+        transfer,
+        requirements,
+        layout,
+        allocator,
+    )
+    .map_err(HypervisorEfiError::from)?;
+    let vmxon_executed = result
+        .live
+        .cpu_seam
+        .vmx_seam
+        .as_ref()
+        .is_some_and(|seam| seam.disposition == CpuInstructionDisposition::Executed);
+    let ept_executed = result
+        .live
+        .cpu_seam
+        .ept_seam
+        .as_ref()
+        .is_some_and(|seam| seam.disposition == CpuInstructionDisposition::Executed);
+    Ok(RealHwBootMarkers {
+        vmxon_executed,
+        ept_executed,
+    })
 }
 
 #[cfg(test)]

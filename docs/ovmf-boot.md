@@ -60,6 +60,22 @@ cargo xtask ovmf-smoke-boot
 
 This builds the boot chain (unless `--no-build` is passed), launches OVMF/QEMU with a temporary ESP, and checks the firmware serial log for a successful boot attempt without an `Aborted` status. CI runs `cargo xtask ovmf-smoke-boot --no-build` after `build-boot-chain`.
 
+## REAL_HW live smoke boot (KVM)
+
+Build the REAL_HW boot chain (hypervisor with `real-hw-execution`):
+
+```bash
+cargo xtask build-boot-chain-live
+```
+
+Run a KVM-backed smoke boot (requires `/dev/kvm`, host VMX, OVMF, and QEMU). Exits 0 with a skip message when nested KVM or VMX is unavailable:
+
+```bash
+cargo xtask live-qemu-smoke
+```
+
+On success the serial log includes `hypervisor Gate C REAL_HW boot succeeded` and optional `REAL_HW: VMXON Executed` / `REAL_HW: EPT pointer Executed` markers when live execution succeeds under firmware.
+
 ## PCI enumeration limits (Phase 8)
 
 Firmware PCI discovery uses legacy CF8/CFC config ports on segment 0. It walks bus numbers starting at 0 and stops at the first bus with no responding devices. It does not recurse PCI-to-PCI bridges or enumerate ECAM/MMCONFIG. This is sufficient for the reference QEMU q35 topology (`0000:00:03.0`, `0000:00:04.0`) but is not production-complete firmware discovery.
@@ -91,9 +107,9 @@ Firmware PCI discovery uses legacy CF8/CFC config ports on segment 0. It walks b
 | `hv-loader-efi-bin` | UEFI loader application (`hv-loader.efi`) |
 | `hv-loader-efi` | Portable handoff + transfer helpers used by host tests and firmware |
 | `hv-hypervisor-efi-bin` | UEFI hypervisor application (`hv-hypervisor.efi`) |
-| `hv-hypervisor-efi` | Portable Gate C boot + mock VMX/EPT/VT-d init entry used by host tests and firmware |
+| `hv-hypervisor-efi` | Portable Gate C boot + mock or REAL_HW init entry (`real-hw-execution` feature) |
 | `hv-hypervisor-boot` | Portable observe/validate/Gate C orchestration (`no_std` + `alloc`) |
 | `hv-vmx` | VMX init plan and backend abstraction (mock backend) |
 | `hv-ept` | EPT init plan and backend abstraction (mock backend) |
 | `hv-vtd` | VT-d init plan and backend abstraction (mock backend) |
-| `hv-x86-cpu` | Host-only CPUID probes, CPU instruction seams, and live instruction modules (not linked into UEFI images) |
+| `hv-x86-cpu` | Host-only CPUID probes, CPU instruction seams, resident install, live asm (not linked into default UEFI images) |

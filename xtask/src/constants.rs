@@ -27,6 +27,15 @@ pub const DEFAULT_OVMF_SMOKE_TIMEOUT_SECS: u64 = 60;
 /// Working directory for OVMF smoke boot artifacts (ESP, vars copy, serial log).
 pub const OVMF_SMOKE_WORK_DIR: &str = "build/ovmf-smoke";
 
+/// Working directory for KVM live QEMU smoke boot artifacts.
+pub const LIVE_QEMU_SMOKE_WORK_DIR: &str = "build/live-qemu-smoke";
+
+/// Default output directory for REAL_HW boot-chain images.
+pub const DEFAULT_LIVE_BOOT_CHAIN_OUTPUT_DIR: &str = "build/live-boot-chain";
+
+/// Default live QEMU smoke boot timeout in seconds.
+pub const DEFAULT_LIVE_QEMU_SMOKE_TIMEOUT_SECS: u64 = 90;
+
 /// libFuzzer targets built from `fuzz/Cargo.toml`.
 pub const FUZZ_TARGETS: &[&str] = &[
     "boot_info_parse",

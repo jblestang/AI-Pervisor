@@ -1,6 +1,6 @@
 # AI-Pervisor
 
-Static x86-64 hypervisor workspace (Phases 0–14: config pipeline, platform validation, boot path, UEFI Gate C, hardware programming, CPU seams, live instruction modules).
+Static x86-64 hypervisor workspace (Phases 0–15: config pipeline, platform validation, boot path, UEFI Gate C, hardware programming, CPU seams, live instructions, REAL_HW resident install).
 
 ## Commands
 
@@ -10,7 +10,9 @@ cargo xtask coverage
 cargo xtask fuzz
 cargo xtask build-efi
 cargo xtask build-boot-chain
+cargo xtask build-boot-chain-live
 cargo xtask ovmf-smoke-boot
+cargo xtask live-qemu-smoke
 cargo xtask build
 cargo xtask config validate configs/qemu.yaml
 cargo xtask config generate configs/qemu.yaml
@@ -34,6 +36,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 - [Phase 12 expert review](docs/reviews/phase-12-expert-review.md)
 - [Phase 13 expert review](docs/reviews/phase-13-expert-review.md)
 - [Phase 14 expert review](docs/reviews/phase-14-expert-review.md)
+- [Phase 15 expert review](docs/reviews/phase-15-expert-review.md)
 - [OVMF boot](docs/ovmf-boot.md)
 - [Fuzzing](docs/fuzzing.md)
 - [No-panic policy](docs/no-panic.md)

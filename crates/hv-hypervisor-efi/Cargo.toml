@@ -10,15 +10,27 @@ publish = false
 [lints]
 workspace = true
 
+[features]
+default = []
+real-hw-execution = ["hv-hypervisor-boot/real-hw-execution", "dep:uefi", "dep:hv-x86-cpu"]
+
 [dependencies]
 hv-boot-abi = { path = "../hv-boot-abi" }
 hv-hypervisor-boot = { path = "../hv-hypervisor-boot", default-features = false, features = [] }
 hv-types = { path = "../hv-types" }
+hv-x86-cpu = { path = "../hv-x86-cpu", optional = true }
+uefi = { version = "0.31", optional = true }
 
 [dev-dependencies]
 hv-config-model = { workspace = true }
 hv-hypervisor = { workspace = true }
-hv-hypervisor-boot = { workspace = true }
+hv-hypervisor-boot = { workspace = true, features = ["real-hw-execution"] }
 hv-loader = { workspace = true }
 hv-observation-types = { workspace = true }
 hv-platform-model = { workspace = true }
+hv-x86-cpu = { workspace = true, features = ["execute-instructions", "std", "firmware-live-execution"] }
+
+[[test]]
+name = "real_hw"
+path = "tests/real_hw.rs"
+required-features = ["real-hw-execution"]

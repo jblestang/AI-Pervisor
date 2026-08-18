@@ -64,4 +64,6 @@ If observed hardware does not satisfy `PlatformRequirements`, boot must be refus
 | Gate C hardware programming (host) | Implemented (Phase 12: `Programming*Backend`, structure encoding without CPU instructions) |
 | Gate C CPU instruction seams (host) | Implemented (Phase 13: `hv-x86-cpu`, `CpuSeam*Backend`, validate-only disposition via `cpu-seams` feature) |
 | Gate C live instruction execution (host) | Implemented (Phase 14: `execute-instructions`, runtime + ring-0 gates, `boot_*_gate_c_live_execution*`) |
-| REAL_HW VMX launch / DMAR MMIO | Not started (future Gate C–D hardware phase) |
+| REAL_HW resident install + VMCS prepare | Implemented (Phase 15: `PageAllocator`, `ResidentCpuSeam*Backend`, `execute_vmcs_prepare`, `real-hw-execution`) |
+| REAL_HW VMX launch under KVM/OVMF | Partial (Phase 15: `build-boot-chain-live`, `live-qemu-smoke`; skips without nested KVM) |
+| DMAR MMIO / guest datapath | Not started (Gate D) |

@@ -14,6 +14,7 @@ default = ["std"]
 std = ["hv-config-model/std", "hv-platform-model/std"]
 cpu-seams = ["dep:hv-x86-cpu"]
 live-execution = ["cpu-seams", "hv-x86-cpu/execute-instructions", "hv-x86-cpu/std"]
+real-hw-execution = ["live-execution", "hv-x86-cpu/firmware-live-execution"]
 
 [dependencies]
 hv-boot-abi = { path = "../hv-boot-abi" }
@@ -44,3 +45,8 @@ required-features = ["cpu-seams"]
 name = "live_execution"
 path = "tests/live_execution.rs"
 required-features = ["live-execution"]
+
+[[test]]
+name = "real_hw_execution"
+path = "tests/real_hw_execution.rs"
+required-features = ["real-hw-execution"]

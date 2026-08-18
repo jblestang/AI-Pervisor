@@ -1,7 +1,7 @@
 //! CPU instruction seams for Gate C hardware bring-up.
 
 use hv_ept::EptProgrammedTables;
-use hv_vmx::{VmxonProgrammedRegion, REFERENCE_VMXON_REVISION};
+use hv_vmx::VmxonProgrammedRegion;
 use hv_vtd::VtdProgrammedTables;
 
 use crate::cpuid::{cpuid_ept_available, cpuid_vmx_available, cpuid_vtd_available};
@@ -64,6 +64,7 @@ pub fn run_vmxon_cpu_seam(region: &VmxonProgrammedRegion) -> Result<VmxCpuSeamOu
 /// Validates (and optionally executes) an EPT pointer load seam.
 pub fn run_ept_pointer_cpu_seam(
     tables: &EptProgrammedTables,
+    vmcs_phys: Option<u64>,
 ) -> Result<EptCpuSeamOutcome, CpuSeamError> {
     validate_ept_tables(tables)?;
     if !cpuid_ept_available() {
@@ -73,7 +74,7 @@ pub fn run_ept_pointer_cpu_seam(
         });
     }
     let ept_pointer = encode_ept_pointer(tables.root_table_phys);
-    let disposition = execute_ept_pointer_if_enabled(ept_pointer)?;
+    let disposition = execute_ept_pointer_if_enabled(ept_pointer, vmcs_phys)?;
     Ok(EptCpuSeamOutcome {
         disposition,
         ept_pointer,
@@ -127,10 +128,10 @@ fn validate_vmxon_region(region: &VmxonProgrammedRegion) -> Result<(), CpuSeamEr
             )
         })
         .map(u32::from_le_bytes)?;
-    if revision != REFERENCE_VMXON_REVISION {
+    if revision == 0 {
         return Err(CpuSeamError::new(
             CpuSeamErrorKind::InvalidInput,
-            "VMXON revision prefix mismatch",
+            "VMXON revision prefix must be non-zero",
         ));
     }
     Ok(())
@@ -172,16 +173,19 @@ fn execute_vmxon_if_enabled(host_phys: u64) -> Result<CpuInstructionDisposition,
     Ok(CpuInstructionDisposition::SeamValidated)
 }
 
-fn execute_ept_pointer_if_enabled(ept_pointer: u64) -> Result<CpuInstructionDisposition, CpuSeamError> {
+fn execute_ept_pointer_if_enabled(
+    ept_pointer: u64,
+    vmcs_phys: Option<u64>,
+) -> Result<CpuInstructionDisposition, CpuSeamError> {
     #[cfg(feature = "execute-instructions")]
-    {
-        match crate::instructions::ept::execute_ept_pointer_load(ept_pointer) {
+    if let Some(vmcs_phys) = vmcs_phys {
+        match crate::instructions::ept::execute_ept_pointer_load(ept_pointer, vmcs_phys) {
             Ok(()) => return Ok(CpuInstructionDisposition::Executed),
             Err(err) if err.kind == CpuSeamErrorKind::Unavailable => {}
             Err(err) => return Err(err),
         }
     }
-    let _ = ept_pointer;
+    let _ = (ept_pointer, vmcs_phys);
     Ok(CpuInstructionDisposition::SeamValidated)
 }
 
@@ -252,10 +256,54 @@ mod tests {
     }
 
     #[test]
-    fn run_vmxon_cpu_seam_rejects_invalid_revision() {
+    fn run_ept_pointer_cpu_seam_with_vmcs_phys_covers_execute_path() {
+        let tables = reference_ept_tables();
+        let outcome = run_ept_pointer_cpu_seam(&tables, Some(0x4000)).expect("seam");
+        if cpuid_ept_available() {
+            assert_eq!(outcome.disposition, CpuInstructionDisposition::SeamValidated);
+        } else {
+            assert_eq!(
+                outcome.disposition,
+                CpuInstructionDisposition::SkippedNoHardware
+            );
+        }
+    }
+
+    #[cfg(feature = "execute-instructions")]
+    #[test]
+    fn run_ept_pointer_cpu_seam_propagates_execution_failure_with_live_env() {
+        use crate::instructions::environment::test_force_live_environment_ready;
+        let tables = reference_ept_tables();
+        test_force_live_environment_ready(true);
+        let result = run_ept_pointer_cpu_seam(&tables, Some(0x5000));
+        test_force_live_environment_ready(false);
+        if cpuid_ept_available() {
+            assert!(result.is_err());
+        } else {
+            assert!(result.is_ok());
+        }
+    }
+
+    #[cfg(feature = "execute-instructions")]
+    #[test]
+    fn run_vmxon_cpu_seam_propagates_execution_failure_in_live_env() {
+        use crate::instructions::environment::test_force_live_environment_ready;
+        let region = reference_vmxon_region();
+        test_force_live_environment_ready(true);
+        let result = run_vmxon_cpu_seam(&region);
+        test_force_live_environment_ready(false);
+        if cpuid_vmx_available() {
+            assert!(result.is_err());
+        } else {
+            assert!(result.is_ok());
+        }
+    }
+
+    #[test]
+    fn run_vmxon_cpu_seam_rejects_zero_revision() {
         let mut region = reference_vmxon_region();
         if let Some(prefix) = region.bytes.get_mut(0..4) {
-            prefix.copy_from_slice(&0xDEAD_BEEFu32.to_le_bytes());
+            prefix.copy_from_slice(&0u32.to_le_bytes());
         }
         assert!(run_vmxon_cpu_seam(&region).is_err());
     }
@@ -263,7 +311,7 @@ mod tests {
     #[test]
     fn run_ept_pointer_cpu_seam_validates_reference_tables() {
         let tables = reference_ept_tables();
-        let outcome = run_ept_pointer_cpu_seam(&tables).expect("seam");
+        let outcome = run_ept_pointer_cpu_seam(&tables, None).expect("seam");
         if cpuid_ept_available() {
             assert_eq!(outcome.disposition, CpuInstructionDisposition::SeamValidated);
             assert_ne!(outcome.ept_pointer & 0xFFF, 0);
@@ -306,7 +354,7 @@ mod tests {
             root_table: alloc::vec![0u8; 4096],
             mappings: alloc::vec::Vec::new(),
         };
-        assert!(run_ept_pointer_cpu_seam(&tables).is_err());
+        assert!(run_ept_pointer_cpu_seam(&tables, None).is_err());
     }
 
     #[test]
@@ -321,7 +369,7 @@ mod tests {
                 encoded_entry: 1,
             }],
         };
-        assert!(run_ept_pointer_cpu_seam(&tables).is_err());
+        assert!(run_ept_pointer_cpu_seam(&tables, None).is_err());
     }
 
     #[test]
@@ -347,7 +395,7 @@ mod tests {
 
         let tables = reference_ept_tables();
         test_force_ept_unavailable(true);
-        let ept = run_ept_pointer_cpu_seam(&tables).expect("ept seam");
+        let ept = run_ept_pointer_cpu_seam(&tables, None).expect("ept seam");
         assert_eq!(ept.disposition, CpuInstructionDisposition::SkippedNoHardware);
         test_force_ept_unavailable(false);
 
@@ -369,7 +417,7 @@ mod tests {
         let vtd_plan = plan_vtd_init(&layout, true).expect("vtd");
         let vtd_tables = program_vtd_tables(&vtd_plan).expect("program vtd");
 
-        let ept = run_ept_pointer_cpu_seam(&ept_tables).expect("ept seam");
+        let ept = run_ept_pointer_cpu_seam(&ept_tables, None).expect("ept seam");
         if cpuid_ept_available() {
             assert_eq!(ept.disposition, CpuInstructionDisposition::SeamValidated);
         } else {

@@ -10,7 +10,13 @@ use hv_x86_cpu::{
 
 #[test]
 fn live_execution_runtime_stays_disabled_without_env_var() {
-    assert!(!live_execution_runtime_enabled());
+    if cfg!(feature = "firmware-live-execution")
+        || std::env::var("HV_X86_LIVE_INSTRUCTIONS").ok().as_deref() == Some("1")
+    {
+        assert!(live_execution_runtime_enabled());
+    } else {
+        assert!(!live_execution_runtime_enabled());
+    }
     assert!(!live_execution_environment_ready());
 }
 
