@@ -3,15 +3,18 @@
 use hv_boot_abi::{LayoutSnapshot, RequirementsSnapshot};
 use hv_config_model::{FeatureRequirement, PlatformRequirements};
 use hv_ept::{
-    ept_init_required, init_ept, plan_ept_init, EptBackend, EptInitPlan, EptError, MockEptBackend,
+    ept_init_required, init_ept, plan_ept_init, EptBackend, EptInitPlan, EptError, EptProgrammedTables,
+    MockEptBackend, ProgrammingEptBackend,
 };
 use hv_platform_model::{PlatformWarning, StaticPlatformIR, ValidatedPlatform};
 use hv_types::SHA256_DIGEST_BYTES;
 use hv_vmx::{
-    init_vmx, plan_vmx_init, vmx_init_required, MockVmxBackend, VmxBackend, VmxError, VmxInitPlan,
+    init_vmx, plan_vmx_init, vmx_init_required, MockVmxBackend, ProgrammingVmxBackend, VmxBackend,
+    VmxError, VmxInitPlan, VmxonProgrammedRegion,
 };
 use hv_vtd::{
-    init_vtd, plan_vtd_init, vtd_init_required, MockVtdBackend, VtdBackend, VtdError, VtdInitPlan,
+    init_vtd, plan_vtd_init, vtd_init_required, MockVtdBackend, ProgrammingVtdBackend, VtdBackend,
+    VtdError, VtdInitPlan, VtdProgrammedTables,
 };
 
 use crate::boot::boot_check;
@@ -36,6 +39,19 @@ pub struct GateCInitResult {
     pub vtd_plan: VtdInitPlan,
 }
 
+/// Result of Gate C init using hardware programming backends (structure encoding, no CPU instructions).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GateCProgrammingResult {
+    /// Shared Gate C init output (plans + validated platform).
+    pub init: GateCInitResult,
+    /// Programmed VMXON region when VMX init ran.
+    pub vmxon_region: Option<VmxonProgrammedRegion>,
+    /// Programmed EPT tables when EPT init ran.
+    pub ept_tables: Option<EptProgrammedTables>,
+    /// Programmed VT-d tables when VT-d init ran.
+    pub vtd_tables: Option<VtdProgrammedTables>,
+}
+
 /// Runs transfer boot checks and mock-backed Gate C init using embedded snapshots.
 pub fn boot_from_transfer_and_init_gate_c_from_snapshots(
     transfer: &[u8],
@@ -47,6 +63,48 @@ pub fn boot_from_transfer_and_init_gate_c_from_snapshots(
     let (validated, warnings) =
         boot_from_transfer(transfer, &requirements.config_digest, &platform_requirements)?;
     init_gate_c_from_validated(&platform_requirements, &static_layout, &validated, warnings)
+}
+
+/// Runs transfer boot checks and Gate C hardware programming init using snapshot + layout metadata.
+pub fn boot_from_transfer_and_init_gate_c_programming(
+    transfer: &[u8],
+    snapshot: &RequirementsSnapshot,
+    layout: &StaticPlatformIR,
+) -> Result<GateCProgrammingResult, BootCheckError> {
+    let requirements = platform_requirements_from_snapshot(snapshot)?;
+    let (validated, warnings) =
+        boot_from_transfer(transfer, &snapshot.config_digest, &requirements)?;
+    init_gate_c_programming_from_validated(&requirements, layout, &validated, warnings)
+}
+
+/// Runs transfer boot checks and Gate C hardware programming init using embedded snapshots.
+pub fn boot_from_transfer_and_init_gate_c_programming_from_snapshots(
+    transfer: &[u8],
+    requirements: &RequirementsSnapshot,
+    layout: &LayoutSnapshot,
+) -> Result<GateCProgrammingResult, BootCheckError> {
+    let platform_requirements = platform_requirements_from_snapshot(requirements)?;
+    let static_layout = static_platform_ir_from_layout_snapshot(layout, requirements)?;
+    let (validated, warnings) =
+        boot_from_transfer(transfer, &requirements.config_digest, &platform_requirements)?;
+    init_gate_c_programming_from_validated(&platform_requirements, &static_layout, &validated, warnings)
+}
+
+/// Runs boot checks from raw inputs and Gate C hardware programming init.
+pub fn boot_check_and_init_gate_c_programming(
+    boot_info_bytes: &[u8],
+    expected_config_digest: &[u8; SHA256_DIGEST_BYTES],
+    requirements: &PlatformRequirements,
+    observation: &hv_platform_model::ObservationInputs,
+    layout: &StaticPlatformIR,
+) -> Result<GateCProgrammingResult, BootCheckError> {
+    let (validated, warnings) = boot_check(
+        boot_info_bytes,
+        expected_config_digest,
+        requirements,
+        observation,
+    )?;
+    init_gate_c_programming_from_validated(requirements, layout, &validated, warnings)
 }
 
 /// Runs transfer boot checks and mock-backed Gate C init using snapshot + layout metadata.
@@ -120,6 +178,56 @@ fn init_gate_c_from_validated(
         vmx_plan,
         ept_plan,
         vtd_plan,
+    })
+}
+
+fn init_gate_c_programming_from_validated(
+    requirements: &PlatformRequirements,
+    layout: &StaticPlatformIR,
+    validated: &ValidatedPlatform,
+    warnings: alloc::vec::Vec<PlatformWarning>,
+) -> Result<GateCProgrammingResult, BootCheckError> {
+    let vmx_plan = plan_vmx_init(&layout.hypervisor_reserve).map_err(map_vmx_error)?;
+    let ept_plan = plan_ept_init(layout, &vmx_plan).map_err(map_ept_error)?;
+    let interrupt_remapping = matches!(
+        requirements.interrupt_remapping,
+        FeatureRequirement::Required | FeatureRequirement::Preferred
+    );
+    let vtd_plan = plan_vtd_init(layout, interrupt_remapping).map_err(map_vtd_error)?;
+
+    let mut vmx_backend = ProgrammingVmxBackend::default();
+    init_vmx_if_required(
+        &mut vmx_backend,
+        &vmx_plan,
+        validated,
+        requirements.vmx,
+    )?;
+    let mut ept_backend = ProgrammingEptBackend::default();
+    init_ept_if_required(
+        &mut ept_backend,
+        &ept_plan,
+        validated,
+        requirements.ept,
+    )?;
+    let mut vtd_backend = ProgrammingVtdBackend::default();
+    init_vtd_if_required(
+        &mut vtd_backend,
+        &vtd_plan,
+        validated,
+        requirements.vtd,
+    )?;
+
+    Ok(GateCProgrammingResult {
+        init: GateCInitResult {
+            validated: validated.clone(),
+            warnings,
+            vmx_plan,
+            ept_plan,
+            vtd_plan,
+        },
+        vmxon_region: vmx_backend.last_region,
+        ept_tables: ept_backend.last_tables,
+        vtd_tables: vtd_backend.last_tables,
     })
 }
 

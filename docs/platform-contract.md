@@ -61,4 +61,5 @@ If observed hardware does not satisfy `PlatformRequirements`, boot must be refus
 | Gate C orchestration (host) | Implemented (Phase 10: `boot_from_transfer_and_init_gate_c()` with `StaticPlatformIR`) |
 | Layout snapshot ABI | Implemented (Phase 11: `LayoutSnapshot` in `hv-boot-abi`) |
 | UEFI Gate C boot | Implemented (Phase 11: embedded layout snapshot + mock VMX/EPT/VT-d init via `hv-hypervisor-efi`) |
-| Real VMXON/EPT/VT-d hardware enablement | Not started (future Gate C hardware phase) |
+| Gate C hardware programming (host) | Implemented (Phase 12: `Programming*Backend`, structure encoding without CPU instructions) |
+| Real VMXON/EPT/VT-d CPU enablement | Not started (future Gate C hardware phase) |

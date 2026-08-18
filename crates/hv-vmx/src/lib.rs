@@ -16,9 +16,13 @@ mod constants;
 mod error;
 mod init;
 mod plan;
+mod program;
 
 pub use backend::{FailingVmxBackend, MockVmxBackend, VmxBackend};
 pub use constants::{VMXON_REGION_ALIGNMENT_BYTES, VMXON_REGION_MIN_BYTES};
 pub use error::{VmxError, VmxErrorKind};
 pub use init::{init_vmx, vmx_init_required};
 pub use plan::{plan_vmx_init, VmxInitPlan};
+pub use program::{
+    program_vmxon_region, ProgrammingVmxBackend, VmxonProgrammedRegion, REFERENCE_VMXON_REVISION,
+};
