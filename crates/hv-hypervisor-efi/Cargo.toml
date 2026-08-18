@@ -15,6 +15,7 @@ default = []
 real-hw-execution = ["hv-hypervisor-boot/real-hw-execution", "dep:uefi", "dep:hv-x86-cpu"]
 vmx-launch = ["real-hw-execution", "hv-hypervisor-boot/vmx-launch"]
 datapath-foundation = ["vmx-launch", "hv-hypervisor-boot/datapath-foundation"]
+datapath-live = ["datapath-foundation", "hv-hypervisor-boot/datapath-live"]
 
 [dependencies]
 hv-boot-abi = { path = "../hv-boot-abi" }
@@ -27,7 +28,7 @@ uefi = { version = "0.31", optional = true }
 [dev-dependencies]
 hv-config-model = { workspace = true }
 hv-hypervisor = { workspace = true }
-hv-hypervisor-boot = { workspace = true, features = ["real-hw-execution", "vmx-launch", "datapath-foundation"] }
+hv-hypervisor-boot = { workspace = true, features = ["real-hw-execution", "vmx-launch", "datapath-foundation", "datapath-live"] }
 hv-loader = { workspace = true }
 hv-observation-types = { workspace = true }
 hv-platform-model = { workspace = true }
@@ -42,6 +43,11 @@ required-features = ["vmx-launch"]
 name = "datapath_foundation"
 path = "tests/datapath_foundation.rs"
 required-features = ["datapath-foundation"]
+
+[[test]]
+name = "datapath_live"
+path = "tests/datapath_live.rs"
+required-features = ["datapath-live"]
 
 [[test]]
 name = "real_hw"

@@ -14,7 +14,8 @@ mod vmx;
 
 pub use boot::boot_check;
 pub use hv_boot_abi::{
-    GATE_D_BOOT_INFO_BUILT_MARKER, GATE_D_DATAPATH_FOUNDATION_MARKER, REAL_HW_BOOT_SUCCESS_MARKER,
+    GATE_D_BOOT_INFO_BUILT_MARKER, GATE_D_DATAPATH_FOUNDATION_MARKER, GATE_D_DATAPATH_LIVE_MARKER,
+    GATE_D_E1000_MMIO_MARKER, GATE_D_IPC_FORWARD_MARKER, REAL_HW_BOOT_SUCCESS_MARKER,
     REAL_HW_EPT_EXECUTED_MARKER, REAL_HW_VMLAUNCH_EXECUTED_MARKER, REAL_HW_VMXON_EXECUTED_MARKER,
 };
 pub use error::{BootCheckError, BootCheckErrorKind};
@@ -52,6 +53,13 @@ pub use gate_d::{
     boot_from_transfer_and_init_gate_d_datapath_foundation,
     boot_from_transfer_and_init_gate_d_datapath_foundation_from_snapshots,
     GateDDatapathFoundationResult,
+};
+#[cfg(feature = "datapath-live")]
+pub use gate_d::{
+    boot_check_and_init_gate_d_datapath_live,
+    boot_from_transfer_and_init_gate_d_datapath_live,
+    boot_from_transfer_and_init_gate_d_datapath_live_from_snapshots,
+    GateDDatapathLiveResult,
 };
 pub use snapshot::{
     layout_snapshot_from_platform_ir, platform_requirements_from_snapshot,

@@ -10,6 +10,7 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+hv-config-model = { path = "../hv-config-model", default-features = false }
 hv-guest-abi = { workspace = true }
 hv-platform-model = { path = "../hv-platform-model", default-features = false }
 hv-types = { workspace = true }

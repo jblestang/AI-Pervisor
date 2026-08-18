@@ -66,4 +66,4 @@ If observed hardware does not satisfy `PlatformRequirements`, boot must be refus
 | Gate C live instruction execution (host) | Implemented (Phase 14: `execute-instructions`, runtime + ring-0 gates, `boot_*_gate_c_live_execution*`) |
 | REAL_HW resident install + VMCS prepare | Implemented (Phase 15: `PageAllocator`, `ResidentCpuSeam*Backend`, `execute_vmcs_prepare`, `real-hw-execution`) |
 | REAL_HW VMX launch under KVM/OVMF | Implemented (Phase 16: `vmx-launch`, `build-boot-chain-live`, `live-qemu-smoke`; skips without nested KVM) |
-| DMAR MMIO / guest datapath | Partial (Phase 17: IPC + e1000 MMIO descriptors in guest boot info for all partitions; live packet path deferred) |
+| DMAR MMIO / guest datapath | Partial (Phase 18: synthetic IPC forward + e1000 MMIO smoke; live guest path deferred) |

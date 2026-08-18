@@ -19,7 +19,8 @@
 | 15 | C | REAL_HW resident install, VMCS prepare, firmware REAL_HW path, KVM live smoke harness |
 | 16 | C | VMCS field programming, VMLAUNCH seam, smoke guest install, `vmx-launch` orchestration |
 | 17 | D (start) | Layout snapshot IPC/device IDs, datapath planning, full guest boot info, `datapath-foundation` orchestration |
-| 18+ | D | Live e1000 datapath, IPC forwarding, malicious tests, performance |
+| 18 | D | IPC queue runtime, e1000 MMIO smoke, synthetic in→mid→out forwarding, `datapath-live` orchestration |
+| 19+ | D | Compromised-guest malicious tests, performance benchmark, multi-partition VMLAUNCH |
 
 Phases 0–3 complete Gate A. Phase 4 begins Gate B with host-side platform validation and deterministic layout planning.
 

@@ -134,7 +134,8 @@ fn ipc_role_for_vm(
     }
 }
 
-fn plan_e1000_mmio_guest_phys(vm_id: VmId) -> Result<GuestPhysAddr, DatapathError> {
+/// Plans the guest physical base for an e1000 MMIO window.
+pub fn plan_e1000_mmio_guest_phys(vm_id: VmId) -> Result<GuestPhysAddr, DatapathError> {
     let offset = u64::from(vm_id.raw())
         .checked_mul(E1000_MMIO_GUEST_PHYS_STRIDE)
         .ok_or_else(|| {

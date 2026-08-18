@@ -15,6 +15,7 @@ execute-instructions = []
 std = []
 firmware-live-execution = ["execute-instructions"]
 vmx-launch = ["execute-instructions"]
+datapath-live = ["execute-instructions", "vmx-launch"]
 
 [dependencies]
 hv-ept = { path = "../hv-ept" }
