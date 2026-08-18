@@ -35,6 +35,21 @@ fn reference_handoff_snapshot_and_layout() -> (
 }
 
 #[test]
+fn boot_from_transfer_and_init_gate_c_from_snapshots_accepts_reference_transfer() {
+    let (transfer, snapshot, _, layout) = reference_handoff_snapshot_and_layout();
+    let layout_snapshot =
+        hv_hypervisor_boot::layout_snapshot_from_platform_ir(&layout).expect("layout snapshot");
+    let result = hv_hypervisor_boot::boot_from_transfer_and_init_gate_c_from_snapshots(
+        &transfer,
+        &snapshot,
+        &layout_snapshot,
+    )
+    .expect("gate c snapshots");
+    assert!(result.validated.observed.vmx);
+    assert!(!result.ept_plan.identity_mappings.is_empty());
+}
+
+#[test]
 fn boot_from_transfer_and_init_gate_c_accepts_reference_transfer() {
     let (transfer, snapshot, _, layout) = reference_handoff_snapshot_and_layout();
     let result = boot_from_transfer_and_init_gate_c(&transfer, &snapshot, &layout).expect("gate c");

@@ -20,6 +20,7 @@ mod acpi;
 mod boot_info;
 mod constants;
 mod error;
+mod layout_snapshot;
 mod requirements_snapshot;
 mod transfer;
 mod uefi;
@@ -34,6 +35,10 @@ pub use constants::{
     UEFI_MEMORY_DESCRIPTOR_MIN_SIZE, UEFI_MEMORY_DESCRIPTOR_OVMF_SIZE, UEFI_PAGE_SIZE,
 };
 pub use error::{BootError, BootErrorKind};
+pub use layout_snapshot::{
+    LayoutPciSnapshot, LayoutSnapshot, PlannedRegionSnapshot, MAX_LAYOUT_GUEST_REGIONS,
+    MAX_LAYOUT_IPC_REGIONS, MAX_LAYOUT_PCI_DEVICES,
+};
 pub use requirements_snapshot::{
     ExpectedPciSnapshot, RequirementsSnapshot, FEATURE_DISABLED, FEATURE_OPTIONAL,
     FEATURE_PREFERRED, FEATURE_REQUIRED, MAX_REQUIREMENTS_PAGE_SIZES, MAX_REQUIREMENTS_PCI_DEVICES,

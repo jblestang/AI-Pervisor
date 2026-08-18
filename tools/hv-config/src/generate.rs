@@ -10,7 +10,9 @@ use crate::artifacts::{
     STATIC_PLATFORM_LAYOUT_JSON, STATIC_PLATFORM_RS,
 };
 use hv_config_model::compile_config_from_path;
-use hv_hypervisor_boot::requirements_snapshot_from_platform;
+use hv_hypervisor_boot::{
+    layout_snapshot_from_platform_ir, requirements_snapshot_from_platform,
+};
 use hv_platform_model::plan_static_platform_ir;
 
 /// Generates configuration artifacts into `output`.
@@ -284,12 +286,15 @@ fn render_hypervisor_embedded_config(
         platform_ir.hypervisor_reserve.size.bytes(),
     )
     .map_err(|err| err.message)?;
-    Ok(render_embedded_config_rs(digest, &snapshot))
+    let layout_snapshot =
+        layout_snapshot_from_platform_ir(platform_ir).map_err(|err| err.message)?;
+    Ok(render_embedded_config_rs(digest, &snapshot, &layout_snapshot))
 }
 
 fn render_embedded_config_rs(
     digest: &[u8; 32],
     snapshot: &hv_boot_abi::RequirementsSnapshot,
+    layout_snapshot: &hv_boot_abi::LayoutSnapshot,
 ) -> String {
     let mut rendered = String::from("pub const CONFIG_DIGEST: [u8; 32] = [");
     for (index, byte) in digest.iter().enumerate() {
@@ -371,6 +376,59 @@ fn render_embedded_config_rs(
         rendered.push_str(&format!("0x{byte:02X}"));
     }
     rendered.push_str("],\n};\n");
+    rendered.push_str("\npub const LAYOUT_SNAPSHOT: hv_boot_abi::LayoutSnapshot = hv_boot_abi::LayoutSnapshot {\n");
+    rendered.push_str(&format!(
+        "    guest_region_count: {},\n",
+        layout_snapshot.guest_region_count
+    ));
+    rendered.push_str("    guest_regions: [\n");
+    for region in &layout_snapshot.guest_regions {
+        rendered.push_str("        hv_boot_abi::PlannedRegionSnapshot {\n");
+        rendered.push_str(&format!("            host_phys: {},\n", region.host_phys));
+        rendered.push_str(&format!("            size_bytes: {},\n", region.size_bytes));
+        rendered.push_str("        },\n");
+    }
+    rendered.push_str("    ],\n");
+    rendered.push_str(&format!(
+        "    ipc_region_count: {},\n",
+        layout_snapshot.ipc_region_count
+    ));
+    rendered.push_str("    ipc_regions: [\n");
+    for region in &layout_snapshot.ipc_regions {
+        rendered.push_str("        hv_boot_abi::PlannedRegionSnapshot {\n");
+        rendered.push_str(&format!("            host_phys: {},\n", region.host_phys));
+        rendered.push_str(&format!("            size_bytes: {},\n", region.size_bytes));
+        rendered.push_str("        },\n");
+    }
+    rendered.push_str("    ],\n");
+    rendered.push_str(&format!(
+        "    pci_device_count: {},\n",
+        layout_snapshot.pci_device_count
+    ));
+    rendered.push_str("    pci_devices: [\n");
+    for device in &layout_snapshot.pci_devices {
+        rendered.push_str("        hv_boot_abi::LayoutPciSnapshot {\n");
+        rendered.push_str(&format!("            vm_id: {},\n", device.vm_id));
+        rendered.push_str(&format!("            segment: {},\n", device.segment));
+        rendered.push_str(&format!("            bus: {},\n", device.bus));
+        rendered.push_str(&format!("            device: {},\n", device.device));
+        rendered.push_str(&format!("            function: {},\n", device.function));
+        rendered.push_str(&format!(
+            "            reserved: [{}, {}, {}],\n",
+            device.reserved[0], device.reserved[1], device.reserved[2]
+        ));
+        rendered.push_str("        },\n");
+    }
+    rendered.push_str("    ],\n");
+    rendered.push_str(&format!(
+        "    hypervisor_reserve_phys: {},\n",
+        layout_snapshot.hypervisor_reserve_phys
+    ));
+    rendered.push_str(&format!(
+        "    hypervisor_reserve_bytes: {},\n",
+        layout_snapshot.hypervisor_reserve_bytes
+    ));
+    rendered.push_str("};\n");
     rendered
 }
 
@@ -403,6 +461,8 @@ mod tests {
         .expect("render");
         assert!(rendered.contains("hypervisor_reserve_bytes"));
         assert!(rendered.contains("REQUIREMENTS_SNAPSHOT"));
+        assert!(rendered.contains("LAYOUT_SNAPSHOT"));
+        assert!(rendered.contains("guest_region_count"));
     }
 
     #[test]

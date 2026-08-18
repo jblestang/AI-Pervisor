@@ -3,16 +3,23 @@
 use alloc::string::String;
 
 use hv_boot_abi::{
-    ExpectedPciSnapshot, RequirementsSnapshot, FEATURE_DISABLED, FEATURE_OPTIONAL,
-    FEATURE_PREFERRED, FEATURE_REQUIRED, MAX_REQUIREMENTS_PAGE_SIZES, MAX_REQUIREMENTS_PCI_DEVICES,
-    REQUIREMENTS_ARCH_X86_64, SMT_POLICY_ALLOW_CROSS_PARTITION, SMT_POLICY_DISABLED,
-    SMT_POLICY_EXCLUSIVE_CORE, SMT_POLICY_SAME_PARTITION_SIBLINGS,
+    ExpectedPciSnapshot, LayoutPciSnapshot, LayoutSnapshot, PlannedRegionSnapshot,
+    RequirementsSnapshot, FEATURE_DISABLED, FEATURE_OPTIONAL, FEATURE_PREFERRED, FEATURE_REQUIRED,
+    MAX_LAYOUT_GUEST_REGIONS, MAX_LAYOUT_IPC_REGIONS, MAX_LAYOUT_PCI_DEVICES,
+    MAX_REQUIREMENTS_PAGE_SIZES, MAX_REQUIREMENTS_PCI_DEVICES, REQUIREMENTS_ARCH_X86_64,
+    SMT_POLICY_ALLOW_CROSS_PARTITION, SMT_POLICY_DISABLED, SMT_POLICY_EXCLUSIVE_CORE,
+    SMT_POLICY_SAME_PARTITION_SIBLINGS,
 };
 use hv_config_model::{
     ExpectedPciDevice, FeatureRequirement, PageSizeSet, PlatformRequirements, SmtPolicy,
 };
+use hv_platform_model::{
+    PlannedGuestMemory, PlannedHypervisorReserve, PlannedIpcMemory, PlannedPciDevice,
+    StaticPlatformIR,
+};
 use hv_types::{
-    ByteSize, PciBdf, PciBus, PciDevice, PciFunction, PciSegment, VmId, SHA256_DIGEST_BYTES,
+    ByteSize, HostPhysAddr, PciBdf, PciBus, PciDevice, PciFunction, PciSegment, VmId,
+    SHA256_DIGEST_BYTES,
 };
 
 use crate::error::{BootCheckError, BootCheckErrorKind};
@@ -212,6 +219,213 @@ fn smt_policy_to_snapshot(value: SmtPolicy) -> u32 {
     }
 }
 
+/// Builds a layout snapshot from a planned static platform IR.
+pub fn layout_snapshot_from_platform_ir(
+    layout: &StaticPlatformIR,
+) -> Result<LayoutSnapshot, BootCheckError> {
+    if layout.guest_memory.len() > MAX_LAYOUT_GUEST_REGIONS {
+        return Err(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "guest region count exceeds layout snapshot capacity",
+        ));
+    }
+    if layout.ipc_memory.len() > MAX_LAYOUT_IPC_REGIONS {
+        return Err(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "ipc region count exceeds layout snapshot capacity",
+        ));
+    }
+    if layout.pci_devices.len() > MAX_LAYOUT_PCI_DEVICES {
+        return Err(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "pci device count exceeds layout snapshot capacity",
+        ));
+    }
+
+    let mut guest_regions = [PlannedRegionSnapshot {
+        host_phys: 0,
+        size_bytes: 0,
+    }; MAX_LAYOUT_GUEST_REGIONS];
+    for (index, region) in layout.guest_memory.iter().enumerate() {
+        if let Some(slot) = guest_regions.get_mut(index) {
+            *slot = planned_region_to_snapshot(region.host_phys.raw(), region.size.bytes());
+        }
+    }
+
+    let mut ipc_regions = [PlannedRegionSnapshot {
+        host_phys: 0,
+        size_bytes: 0,
+    }; MAX_LAYOUT_IPC_REGIONS];
+    for (index, region) in layout.ipc_memory.iter().enumerate() {
+        if let Some(slot) = ipc_regions.get_mut(index) {
+            *slot = planned_region_to_snapshot(region.host_phys.raw(), region.size.bytes());
+        }
+    }
+
+    let mut pci_devices = [LayoutPciSnapshot {
+        vm_id: 0,
+        segment: 0,
+        bus: 0,
+        device: 0,
+        function: 0,
+        reserved: [0; 3],
+    }; MAX_LAYOUT_PCI_DEVICES];
+    for (index, device) in layout.pci_devices.iter().enumerate() {
+        if let Some(slot) = pci_devices.get_mut(index) {
+            *slot = layout_pci_to_snapshot(device);
+        }
+    }
+
+    Ok(LayoutSnapshot {
+        guest_region_count: layout.guest_memory.len() as u32,
+        guest_regions,
+        ipc_region_count: layout.ipc_memory.len() as u32,
+        ipc_regions,
+        pci_device_count: layout.pci_devices.len() as u32,
+        pci_devices,
+        hypervisor_reserve_phys: layout.hypervisor_reserve.host_phys.raw(),
+        hypervisor_reserve_bytes: layout.hypervisor_reserve.size.bytes(),
+    })
+}
+
+/// Reconstructs static platform IR from embedded layout and requirements snapshots.
+pub fn static_platform_ir_from_layout_snapshot(
+    layout: &LayoutSnapshot,
+    requirements: &RequirementsSnapshot,
+) -> Result<StaticPlatformIR, BootCheckError> {
+    validate_layout_counts(layout)?;
+    validate_layout_reserve_matches_requirements(layout, requirements)?;
+
+    let mut guest_memory = alloc::vec::Vec::with_capacity(layout.guest_region_count as usize);
+    for region in layout
+        .guest_regions
+        .get(0..layout.guest_region_count as usize)
+        .ok_or(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "layout snapshot guest regions out of bounds",
+        ))?
+    {
+        guest_memory.push(PlannedGuestMemory {
+            partition_id: String::new(),
+            vm_id: VmId::new(0),
+            host_phys: HostPhysAddr::new(region.host_phys),
+            size: ByteSize::new(region.size_bytes),
+        });
+    }
+
+    let mut ipc_memory = alloc::vec::Vec::with_capacity(layout.ipc_region_count as usize);
+    for region in layout
+        .ipc_regions
+        .get(0..layout.ipc_region_count as usize)
+        .ok_or(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "layout snapshot ipc regions out of bounds",
+        ))?
+    {
+        ipc_memory.push(PlannedIpcMemory {
+            channel_name: String::new(),
+            channel_id: hv_types::IpcChannelId::new(0),
+            host_phys: HostPhysAddr::new(region.host_phys),
+            size: ByteSize::new(region.size_bytes),
+        });
+    }
+
+    let mut pci_devices = alloc::vec::Vec::with_capacity(layout.pci_device_count as usize);
+    for device in layout
+        .pci_devices
+        .get(0..layout.pci_device_count as usize)
+        .ok_or(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "layout snapshot pci devices out of bounds",
+        ))?
+    {
+        pci_devices.push(planned_pci_from_layout_snapshot(device));
+    }
+
+    Ok(StaticPlatformIR {
+        platform_name: String::new(),
+        guest_memory,
+        ipc_memory,
+        hypervisor_reserve: PlannedHypervisorReserve {
+            host_phys: HostPhysAddr::new(layout.hypervisor_reserve_phys),
+            size: ByteSize::new(layout.hypervisor_reserve_bytes),
+        },
+        pci_devices,
+    })
+}
+
+fn validate_layout_counts(layout: &LayoutSnapshot) -> Result<(), BootCheckError> {
+    if layout.guest_region_count as usize > MAX_LAYOUT_GUEST_REGIONS {
+        return Err(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "layout snapshot guest region count exceeds maximum",
+        ));
+    }
+    if layout.ipc_region_count as usize > MAX_LAYOUT_IPC_REGIONS {
+        return Err(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "layout snapshot ipc region count exceeds maximum",
+        ));
+    }
+    if layout.pci_device_count as usize > MAX_LAYOUT_PCI_DEVICES {
+        return Err(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "layout snapshot pci device count exceeds maximum",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_layout_reserve_matches_requirements(
+    layout: &LayoutSnapshot,
+    requirements: &RequirementsSnapshot,
+) -> Result<(), BootCheckError> {
+    if layout.hypervisor_reserve_phys != requirements.hypervisor_reserve_phys {
+        return Err(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "layout snapshot reserve phys mismatch with requirements snapshot",
+        ));
+    }
+    if layout.hypervisor_reserve_bytes != requirements.hypervisor_reserve_bytes {
+        return Err(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "layout snapshot reserve bytes mismatch with requirements snapshot",
+        ));
+    }
+    Ok(())
+}
+
+fn planned_region_to_snapshot(host_phys: u64, size_bytes: u64) -> PlannedRegionSnapshot {
+    PlannedRegionSnapshot {
+        host_phys,
+        size_bytes,
+    }
+}
+
+fn layout_pci_to_snapshot(device: &PlannedPciDevice) -> LayoutPciSnapshot {
+    LayoutPciSnapshot {
+        vm_id: device.vm_id.raw(),
+        segment: device.bdf.segment.raw(),
+        bus: device.bdf.bus.raw(),
+        device: device.bdf.device.raw(),
+        function: device.bdf.function.raw(),
+        reserved: [0; 3],
+    }
+}
+
+fn planned_pci_from_layout_snapshot(device: &LayoutPciSnapshot) -> PlannedPciDevice {
+    PlannedPciDevice {
+        bdf: PciBdf::new(
+            PciSegment::new(device.segment),
+            PciBus::new(device.bus),
+            PciDevice::new(device.device),
+            PciFunction::new(device.function),
+        ),
+        vm_id: VmId::new(device.vm_id),
+        kind: String::new(),
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::expect_used)]
 mod tests {
@@ -348,5 +562,50 @@ mod tests {
             reserve_bytes,
         )
         .is_err());
+    }
+
+    #[test]
+    fn layout_snapshot_roundtrip_preserves_gate_c_planning_fields() {
+        let yaml = include_str!("../../../configs/qemu.yaml");
+        let compiled = compile_config_from_str(yaml).expect("compile");
+        let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
+        let requirements = requirements_snapshot_from_platform(
+            &compiled.requirements,
+            compiled.digest.bytes,
+            layout.hypervisor_reserve.host_phys.raw(),
+            layout.hypervisor_reserve.size.bytes(),
+        )
+        .expect("requirements snapshot");
+        let layout_snapshot = layout_snapshot_from_platform_ir(&layout).expect("layout snapshot");
+        let restored =
+            static_platform_ir_from_layout_snapshot(&layout_snapshot, &requirements).expect("restore");
+        assert_eq!(restored.guest_memory.len(), layout.guest_memory.len());
+        assert_eq!(restored.ipc_memory.len(), layout.ipc_memory.len());
+        assert_eq!(restored.pci_devices.len(), layout.pci_devices.len());
+        assert_eq!(
+            restored.guest_memory.iter().map(|region| (region.host_phys, region.size)).collect::<Vec<_>>(),
+            layout
+                .guest_memory
+                .iter()
+                .map(|region| (region.host_phys, region.size))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn static_platform_ir_from_layout_snapshot_rejects_reserve_mismatch() {
+        let yaml = include_str!("../../../configs/qemu.yaml");
+        let compiled = compile_config_from_str(yaml).expect("compile");
+        let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
+        let requirements = requirements_snapshot_from_platform(
+            &compiled.requirements,
+            compiled.digest.bytes,
+            layout.hypervisor_reserve.host_phys.raw(),
+            layout.hypervisor_reserve.size.bytes(),
+        )
+        .expect("requirements snapshot");
+        let mut layout_snapshot = layout_snapshot_from_platform_ir(&layout).expect("layout snapshot");
+        layout_snapshot.hypervisor_reserve_bytes ^= 1;
+        assert!(static_platform_ir_from_layout_snapshot(&layout_snapshot, &requirements).is_err());
     }
 }

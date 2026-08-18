@@ -36,6 +36,7 @@ fn generate_writes_artifacts() {
     let embedded = std::fs::read_to_string(output.path().join(HYPERVISOR_EMBEDDED_CONFIG_RS))
         .expect("embedded config");
     assert!(embedded.contains("REQUIREMENTS_SNAPSHOT"));
+    assert!(embedded.contains("LAYOUT_SNAPSHOT"));
     assert!(embedded.contains("hypervisor_reserve_phys"));
 }
 
