@@ -9,7 +9,8 @@
 #![deny(clippy::indexing_slicing)]
 
 pub use hv_hypervisor_boot::{
-    boot_check, boot_check_and_init_vmx, boot_from_transfer, boot_from_transfer_and_init_vmx,
-    boot_from_transfer_snapshot, platform_requirements_from_snapshot,
-    requirements_snapshot_from_platform, BootAndVmxResult, BootCheckError, BootCheckErrorKind,
+    boot_check, boot_check_and_init_gate_c, boot_check_and_init_vmx, boot_from_transfer,
+    boot_from_transfer_and_init_gate_c, boot_from_transfer_and_init_vmx, boot_from_transfer_snapshot,
+    platform_requirements_from_snapshot, requirements_snapshot_from_platform, BootAndVmxResult,
+    BootCheckError, BootCheckErrorKind, GateCInitResult,
 };
