@@ -284,6 +284,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "hv-ept"
+version = "0.1.0"
+dependencies = [
+ "hv-config-model",
+ "hv-platform-model",
+ "hv-types",
+ "hv-vmx",
+]
+
+[[package]]
 name = "hv-guest-abi"
 version = "0.1.0"
 dependencies = [
@@ -309,11 +319,13 @@ version = "0.1.0"
 dependencies = [
  "hv-boot-abi",
  "hv-config-model",
+ "hv-ept",
  "hv-loader",
  "hv-observation-types",
  "hv-platform-model",
  "hv-types",
  "hv-vmx",
+ "hv-vtd",
 ]
 
 [[package]]
@@ -382,6 +394,15 @@ dependencies = [
 
 [[package]]
 name = "hv-vmx"
+version = "0.1.0"
+dependencies = [
+ "hv-config-model",
+ "hv-platform-model",
+ "hv-types",
+]
+
+[[package]]
+name = "hv-vtd"
 version = "0.1.0"
 dependencies = [
  "hv-config-model",

@@ -56,4 +56,8 @@ If observed hardware does not satisfy `PlatformRequirements`, boot must be refus
 | UEFI hypervisor Gate B boot | Implemented (Phase 9: observe, validate, mock VMX init via `hv-hypervisor-efi`) |
 | Transfer allocation binding | Implemented (Phase 9: `published_alloc_size` in transfer ABI v2) |
 | VMX init foundation | Implemented (Phase 9: `hv-vmx` plan + mock backend; no hardware VMXON) |
-| Real VMXON/EPT/VT-d enablement | Not started (Gate C) |
+| EPT init foundation | Implemented (Phase 10: `hv-ept` plan + mock backend; no EPT paging) |
+| VT-d init foundation | Implemented (Phase 10: `hv-vtd` plan + mock backend; no IOMMU programming) |
+| Gate C orchestration (host) | Implemented (Phase 10: `boot_from_transfer_and_init_gate_c()` with `StaticPlatformIR`) |
+| Real VMXON/EPT/VT-d hardware enablement | Not started (future Gate C hardware phase) |
+| UEFI Gate C boot | Not started (requires embedded layout metadata in hypervisor image) |

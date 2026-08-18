@@ -1,0 +1,20 @@
+[package]
+name = "hv-ept"
+description = "EPT initialization planning and backend abstraction for Gate C"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+hv-config-model = { path = "../hv-config-model", default-features = false }
+hv-platform-model = { path = "../hv-platform-model", default-features = false }
+hv-types = { workspace = true }
+hv-vmx = { path = "../hv-vmx", default-features = false }
+
+[dev-dependencies]
+hv-config-model = { workspace = true, features = ["std"] }
+hv-platform-model = { workspace = true, features = ["std"] }

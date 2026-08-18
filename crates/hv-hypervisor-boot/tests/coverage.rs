@@ -4,8 +4,9 @@
 
 use hv_config_model::{compile_config_from_str, PlatformRequirements};
 use hv_hypervisor_boot::{
-    boot_check_and_init_vmx, boot_from_transfer_and_init_vmx, boot_from_transfer_snapshot,
-    BootCheckErrorKind, requirements_snapshot_from_platform,
+    boot_check_and_init_gate_c, boot_check_and_init_vmx, boot_from_transfer_and_init_gate_c,
+    boot_from_transfer_and_init_vmx, boot_from_transfer_snapshot, BootCheckErrorKind,
+    requirements_snapshot_from_platform,
 };
 use hv_loader::{
     build_hypervisor_transfer, build_loader_handoff, encode_qemu_reference_firmware,
@@ -17,8 +18,111 @@ use hv_observation_types::{
     CPUID_80000007_EDX_INVARIANT_TSC_BIT,
 };
 use hv_platform_model::plan_static_platform_ir;
-use hv_types::{PciBdf, PciBus, PciDevice, PciFunction, PciSegment};
-use hv_vmx::{FailingVmxBackend, MockVmxBackend, init_vmx};
+use hv_types::{ByteSize, PciBdf, PciBus, PciDevice, PciFunction, PciSegment};
+use hv_vmx::{FailingVmxBackend, MockVmxBackend, init_vmx, VMXON_REGION_MIN_BYTES};
+
+fn reference_handoff_snapshot_and_layout() -> (
+    Vec<u8>,
+    hv_boot_abi::RequirementsSnapshot,
+    PlatformRequirements,
+    hv_platform_model::StaticPlatformIR,
+) {
+    let (transfer, snapshot, requirements) = reference_handoff_and_snapshot();
+    let yaml = include_str!("../../../configs/qemu.yaml");
+    let compiled = compile_config_from_str(yaml).expect("compile");
+    let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
+    (transfer, snapshot, requirements, layout)
+}
+
+#[test]
+fn boot_from_transfer_and_init_gate_c_accepts_reference_transfer() {
+    let (transfer, snapshot, _, layout) = reference_handoff_snapshot_and_layout();
+    let result = boot_from_transfer_and_init_gate_c(&transfer, &snapshot, &layout).expect("gate c");
+    assert!(result.validated.observed.vmx);
+    assert!(!result.ept_plan.identity_mappings.is_empty());
+    assert_eq!(
+        result.vtd_plan.device_assignments.len(),
+        layout.pci_devices.len()
+    );
+}
+
+#[test]
+fn boot_check_and_init_gate_c_accepts_reference_inputs() {
+    let yaml = include_str!("../../../configs/qemu.yaml");
+    let compiled = compile_config_from_str(yaml).expect("compile");
+    let firmware = encode_qemu_reference_firmware();
+    let handoff = build_loader_handoff(
+        &LoaderHandoffInput::with_default_descriptor_size(
+            compiled.digest.bytes,
+            {
+                let mut memory_map = vec![0u8; 48];
+                memory_map[0..4].copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
+                memory_map[24..32].copy_from_slice(&(2_097_152u64).to_le_bytes());
+                memory_map
+            },
+            firmware
+                .bytes
+                .get(0x1000..0x1000 + 36)
+                .expect("rsdp")
+                .to_vec(),
+            CpuidSnapshot {
+                leaf1_ecx: (1 << CPUID_1_ECX_VMX_BIT) | (1 << CPUID_1_ECX_X2APIC_BIT),
+                leaf1_edx: 1 << CPUID_1_EDX_NX_BIT,
+                leaf1_ebx: (4 << 16) | 4,
+                leaf80000007_edx: Some(1 << CPUID_80000007_EDX_INVARIANT_TSC_BIT),
+                leaf80000008_ecx: Some(3),
+                leaf480_ecx: Some((1 << CPUID_480_ECX_EPT_BIT) | (1 << CPUID_480_ECX_VPID_BIT)),
+                leaf480_ebx: Some(1 << CPUID_480_EBX_PREEMPTION_TIMER_BIT),
+            },
+            vec![
+                PciBdf::new(
+                    PciSegment::new(0),
+                    PciBus::new(0),
+                    PciDevice::new(3),
+                    PciFunction::new(0),
+                ),
+                PciBdf::new(
+                    PciSegment::new(0),
+                    PciBus::new(0),
+                    PciDevice::new(4),
+                    PciFunction::new(0),
+                ),
+            ],
+        ),
+        &firmware,
+    )
+    .expect("handoff");
+    let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
+    let result = boot_check_and_init_gate_c(
+        &handoff.boot_info_blob,
+        &compiled.digest.bytes,
+        &compiled.requirements,
+        &handoff.observation,
+        &layout,
+    )
+    .expect("gate c");
+    assert!(result.validated.observed.interrupt_remapping);
+}
+
+#[test]
+fn boot_from_transfer_and_init_gate_c_rejects_ept_planning_failure() {
+    let (transfer, snapshot, _, mut layout) = reference_handoff_snapshot_and_layout();
+    layout.hypervisor_reserve.size = ByteSize::new(VMXON_REGION_MIN_BYTES);
+    let err =
+        boot_from_transfer_and_init_gate_c(&transfer, &snapshot, &layout).expect_err("must fail");
+    assert_eq!(err.kind, BootCheckErrorKind::Platform);
+}
+
+#[test]
+fn boot_from_transfer_and_init_gate_c_skips_optional_ept_and_vtd() {
+    let (transfer, mut snapshot, _, layout) = reference_handoff_snapshot_and_layout();
+    snapshot.ept = hv_boot_abi::FEATURE_OPTIONAL;
+    snapshot.vtd = hv_boot_abi::FEATURE_OPTIONAL;
+    let result =
+        boot_from_transfer_and_init_gate_c(&transfer, &snapshot, &layout).expect("gate c");
+    assert!(result.validated.observed.ept);
+    assert!(result.validated.observed.vtd);
+}
 
 fn reference_handoff_and_snapshot() -> (
     Vec<u8>,

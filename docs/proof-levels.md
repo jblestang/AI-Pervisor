@@ -32,6 +32,7 @@ Each critical requirement declares its validation level using these categories:
 | Observed platform JSON | UNIT + FUZZ |
 | No-panic policy (production code) | REVIEW + CI + FUZZ (parsers) |
 | ObservedPlatform | QEMU + REAL_HW (future) |
+| VMX / EPT / VT-d init planning | UNIT + REVIEW (Phase 9–10 mock backends) |
 | VMX / EPT / VT-d hardware | QEMU + REAL_HW (future) |
 | 200 Mbit/s datapath | PERFORMANCE (future) |
 
