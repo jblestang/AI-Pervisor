@@ -64,3 +64,7 @@ pub const GATE_D_DATAPATH_GUESTS_MARKER: &str = "hypervisor Gate D datapath gues
 pub const GATE_D_GUEST_ELF_INSTALLED_MARKER: &str = "Gate D: guest ELF installed for all partitions";
 /// Serial log marker emitted when multi-partition VMLAUNCH seams complete.
 pub const GATE_D_MULTI_VMLAUNCH_MARKER: &str = "Gate D: multi-partition VMLAUNCH executed";
+/// Serial log marker emitted after successful Gate D datapath benchmark init.
+pub const GATE_D_DATAPATH_BENCHMARK_MARKER: &str = "hypervisor Gate D datapath benchmark succeeded";
+/// Serial log marker emitted when the 200 Mbit/s benchmark target is met.
+pub const GATE_D_BENCHMARK_TARGET_MET_MARKER: &str = "Gate D: benchmark target 200 Mbit/s met";

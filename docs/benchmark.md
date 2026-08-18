@@ -1,6 +1,6 @@
-# Benchmark specification (stub)
+# Benchmark specification
 
-Performance validation begins after the full datapath exists. This document records the official metric now so later phases do not mix definitions.
+Performance validation uses the official metric defined here. Phase 21 adds host mock and wall-clock benchmark harnesses; live guest datapath runtime under VMX remains future work.
 
 ## Official throughput metric
 

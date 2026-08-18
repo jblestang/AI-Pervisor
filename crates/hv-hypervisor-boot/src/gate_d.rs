@@ -482,7 +482,7 @@ pub fn boot_check_and_init_gate_d_datapath_guests<A: PageAllocator>(
 }
 
 #[cfg(feature = "datapath-guests")]
-fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
+pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
     requirements: &PlatformRequirements,
     layout: &StaticPlatformIR,
     validated: &ValidatedPlatform,
@@ -572,4 +572,112 @@ fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
         elf_images_installed,
         multi_launch_seam,
     })
+}
+
+/// Result of Gate D datapath benchmark init atop datapath guests.
+#[cfg(feature = "datapath-benchmark")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GateDDatapathBenchmarkResult {
+    /// Datapath guests output including ELF install and multi-partition launch.
+    pub guests: GateDDatapathGuestsResult,
+    /// Mock datapath throughput benchmark outcome.
+    pub benchmark: hv_datapath::DatapathBenchmarkResult,
+}
+
+/// Runs transfer boot checks and Gate D datapath benchmark init using embedded snapshots.
+#[cfg(feature = "datapath-benchmark")]
+pub fn boot_from_transfer_and_init_gate_d_datapath_benchmark_from_snapshots<A: PageAllocator>(
+    transfer: &[u8],
+    requirements: &RequirementsSnapshot,
+    layout: &LayoutSnapshot,
+    allocator: &mut A,
+) -> Result<GateDDatapathBenchmarkResult, BootCheckError> {
+    let platform_requirements = platform_requirements_from_snapshot(requirements)?;
+    let static_layout = static_platform_ir_from_layout_snapshot(layout, requirements)?;
+    let (validated, warnings) =
+        boot_from_transfer(transfer, &requirements.config_digest, &platform_requirements)?;
+    init_gate_d_datapath_benchmark_from_validated(
+        &platform_requirements,
+        &static_layout,
+        &validated,
+        warnings,
+        allocator,
+    )
+}
+
+/// Runs transfer boot checks and Gate D datapath benchmark init using snapshot + layout metadata.
+#[cfg(feature = "datapath-benchmark")]
+pub fn boot_from_transfer_and_init_gate_d_datapath_benchmark<A: PageAllocator>(
+    transfer: &[u8],
+    snapshot: &RequirementsSnapshot,
+    layout: &StaticPlatformIR,
+    allocator: &mut A,
+) -> Result<GateDDatapathBenchmarkResult, BootCheckError> {
+    let requirements = platform_requirements_from_snapshot(snapshot)?;
+    let (validated, warnings) =
+        boot_from_transfer(transfer, &snapshot.config_digest, &requirements)?;
+    init_gate_d_datapath_benchmark_from_validated(
+        &requirements,
+        layout,
+        &validated,
+        warnings,
+        allocator,
+    )
+}
+
+/// Runs boot checks from raw inputs and Gate D datapath benchmark init.
+#[cfg(feature = "datapath-benchmark")]
+pub fn boot_check_and_init_gate_d_datapath_benchmark<A: PageAllocator>(
+    boot_info_bytes: &[u8],
+    expected_config_digest: &[u8; SHA256_DIGEST_BYTES],
+    requirements: &PlatformRequirements,
+    observation: &hv_platform_model::ObservationInputs,
+    layout: &StaticPlatformIR,
+    allocator: &mut A,
+) -> Result<GateDDatapathBenchmarkResult, BootCheckError> {
+    let (validated, warnings) = boot_check(
+        boot_info_bytes,
+        expected_config_digest,
+        requirements,
+        observation,
+    )?;
+    init_gate_d_datapath_benchmark_from_validated(
+        requirements,
+        layout,
+        &validated,
+        warnings,
+        allocator,
+    )
+}
+
+#[cfg(feature = "datapath-benchmark")]
+fn init_gate_d_datapath_benchmark_from_validated<A: PageAllocator>(
+    requirements: &PlatformRequirements,
+    layout: &StaticPlatformIR,
+    validated: &ValidatedPlatform,
+    warnings: alloc::vec::Vec<PlatformWarning>,
+    allocator: &mut A,
+) -> Result<GateDDatapathBenchmarkResult, BootCheckError> {
+    let guests = init_gate_d_datapath_guests_from_validated(
+        requirements,
+        layout,
+        validated,
+        warnings,
+        allocator,
+    )?;
+
+    let benchmark = hv_datapath::run_mock_datapath_benchmark(
+        layout,
+        &hv_datapath::DatapathBenchmarkConfig::default(),
+    )
+    .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
+
+    if !benchmark.target_met {
+        return Err(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "datapath benchmark target not met",
+        ));
+    }
+
+    Ok(GateDDatapathBenchmarkResult { guests, benchmark })
 }

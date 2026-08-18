@@ -3,6 +3,7 @@
 #![cfg_attr(not(test), no_std)]
 extern crate alloc;
 
+mod benchmark;
 mod compromised;
 mod constants;
 mod e1000;
@@ -13,6 +14,12 @@ mod plan;
 mod runtime;
 mod topology;
 
+pub use benchmark::{
+    mock_throughput_mbit, run_mock_datapath_benchmark, throughput_mbit_from_frames,
+    DatapathBenchmarkConfig, DatapathBenchmarkResult, DatapathBenchmarkRunStats,
+    BENCHMARK_MEASUREMENT_SECS, BENCHMARK_MIN_RUNS, BENCHMARK_WARMUP_SECS,
+    TARGET_THROUGHPUT_MBIT_PER_SEC,
+};
 pub use compromised::{
     apply_compromised_guest_write, enforce_forward_integrity, scan_ipc_queue_integrity,
     CompromisedGuestAction, E1000Partition, IpcChannelSelector, REFERENCE_COMPROMISED_SCENARIOS,
