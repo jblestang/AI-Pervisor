@@ -96,4 +96,4 @@ Firmware PCI discovery uses legacy CF8/CFC config ports on segment 0. It walks b
 | `hv-vmx` | VMX init plan and backend abstraction (mock backend) |
 | `hv-ept` | EPT init plan and backend abstraction (mock backend) |
 | `hv-vtd` | VT-d init plan and backend abstraction (mock backend) |
-| `hv-x86-cpu` | Host-only CPUID probes and CPU instruction seams (not linked into UEFI images) |
+| `hv-x86-cpu` | Host-only CPUID probes, CPU instruction seams, and live instruction modules (not linked into UEFI images) |

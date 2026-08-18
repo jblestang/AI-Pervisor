@@ -63,4 +63,5 @@ If observed hardware does not satisfy `PlatformRequirements`, boot must be refus
 | UEFI Gate C boot | Implemented (Phase 11: embedded layout snapshot + mock VMX/EPT/VT-d init via `hv-hypervisor-efi`) |
 | Gate C hardware programming (host) | Implemented (Phase 12: `Programming*Backend`, structure encoding without CPU instructions) |
 | Gate C CPU instruction seams (host) | Implemented (Phase 13: `hv-x86-cpu`, `CpuSeam*Backend`, validate-only disposition via `cpu-seams` feature) |
-| Live VMXON/EPT/VT-d privileged instruction execution | Not started (future Gate C hardware phase) |
+| Gate C live instruction execution (host) | Implemented (Phase 14: `execute-instructions`, runtime + ring-0 gates, `boot_*_gate_c_live_execution*`) |
+| REAL_HW VMX launch / DMAR MMIO | Not started (future Gate C–D hardware phase) |

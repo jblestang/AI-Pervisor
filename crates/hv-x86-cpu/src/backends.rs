@@ -83,7 +83,7 @@ impl VtdBackend for CpuSeamVtdBackend {
 
 fn map_cpu_seam_to_vmx(err: CpuSeamError) -> VmxError {
     let kind = match err.kind {
-        CpuSeamErrorKind::Unavailable => VmxErrorKind::Backend,
+        CpuSeamErrorKind::Unavailable | CpuSeamErrorKind::ExecutionFailed => VmxErrorKind::Backend,
         CpuSeamErrorKind::InvalidInput => VmxErrorKind::Planning,
     };
     VmxError::new(kind, err.message)
@@ -91,7 +91,7 @@ fn map_cpu_seam_to_vmx(err: CpuSeamError) -> VmxError {
 
 fn map_cpu_seam_to_ept(err: CpuSeamError) -> EptError {
     let kind = match err.kind {
-        CpuSeamErrorKind::Unavailable => EptErrorKind::Backend,
+        CpuSeamErrorKind::Unavailable | CpuSeamErrorKind::ExecutionFailed => EptErrorKind::Backend,
         CpuSeamErrorKind::InvalidInput => EptErrorKind::Planning,
     };
     EptError::new(kind, err.message)
@@ -99,7 +99,7 @@ fn map_cpu_seam_to_ept(err: CpuSeamError) -> EptError {
 
 fn map_cpu_seam_to_vtd(err: CpuSeamError) -> VtdError {
     let kind = match err.kind {
-        CpuSeamErrorKind::Unavailable => VtdErrorKind::Backend,
+        CpuSeamErrorKind::Unavailable | CpuSeamErrorKind::ExecutionFailed => VtdErrorKind::Backend,
         CpuSeamErrorKind::InvalidInput => VtdErrorKind::Planning,
     };
     VtdError::new(kind, err.message)
@@ -185,6 +185,23 @@ mod tests {
     #[test]
     fn cpu_seam_error_mapping_maps_unavailable_to_backend_errors() {
         let err = CpuSeamError::new(CpuSeamErrorKind::Unavailable, "missing");
+        assert!(matches!(
+            map_cpu_seam_to_vmx(err.clone()).kind,
+            VmxErrorKind::Backend
+        ));
+        assert!(matches!(
+            map_cpu_seam_to_ept(err.clone()).kind,
+            EptErrorKind::Backend
+        ));
+        assert!(matches!(
+            map_cpu_seam_to_vtd(err).kind,
+            VtdErrorKind::Backend
+        ));
+    }
+
+    #[test]
+    fn cpu_seam_error_mapping_maps_execution_failed_to_backend_errors() {
+        let err = CpuSeamError::new(CpuSeamErrorKind::ExecutionFailed, "vmxon failed");
         assert!(matches!(
             map_cpu_seam_to_vmx(err.clone()).kind,
             VmxErrorKind::Backend
