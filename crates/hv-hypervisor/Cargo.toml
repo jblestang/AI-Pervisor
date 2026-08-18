@@ -10,13 +10,13 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+hv-hypervisor-boot = { workspace = true }
+
+[dev-dependencies]
 hv-boot-abi = { workspace = true }
 hv-config-model = { workspace = true }
+hv-hypervisor-boot = { workspace = true }
+hv-loader = { workspace = true }
 hv-observation-types = { workspace = true }
 hv-platform-model = { workspace = true }
 hv-types = { workspace = true }
-
-[dev-dependencies]
-hv-loader = { workspace = true }
-hv-boot-abi = { workspace = true }
-hv-observation-types = { workspace = true }

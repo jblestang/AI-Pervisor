@@ -5,10 +5,12 @@ use std::path::{Path, PathBuf};
 
 use crate::artifacts::{
     BOOT_LAYOUT, BOOT_MANIFEST, BUILD_MANIFEST, CONFIG_SHA256, CORE_OWNERSHIP, CPU_TOPOLOGY,
-    GUEST_IMAGES, IPC_MAP, MEMORY_MAP, PCI_MAP, PLATFORM_LAYOUT, PLATFORM_REQUIREMENTS, QEMU_ARGS,
-    STATIC_INTENT_JSON, STATIC_PLATFORM_LAYOUT_JSON, STATIC_PLATFORM_RS,
+    GUEST_IMAGES, HYPERVISOR_EMBEDDED_CONFIG_RS, IPC_MAP, MEMORY_MAP, PCI_MAP,
+    PLATFORM_LAYOUT, PLATFORM_REQUIREMENTS, QEMU_ARGS, STATIC_INTENT_JSON,
+    STATIC_PLATFORM_LAYOUT_JSON, STATIC_PLATFORM_RS,
 };
 use hv_config_model::compile_config_from_path;
+use hv_hypervisor_boot::requirements_snapshot_from_platform;
 use hv_platform_model::plan_static_platform_ir;
 
 /// Generates configuration artifacts into `output`.
@@ -70,6 +72,10 @@ fn write_artifacts(
     write_file(
         output.join(PLATFORM_LAYOUT),
         render_platform_layout(&platform_ir),
+    )?;
+    write_file(
+        output.join(HYPERVISOR_EMBEDDED_CONFIG_RS),
+        render_hypervisor_embedded_config(&compiled.digest.bytes, &platform_ir, compiled)?,
     )?;
 
     Ok(())
@@ -266,6 +272,108 @@ fn render_platform_layout(platform_ir: &hv_platform_model::StaticPlatformIR) -> 
     out
 }
 
+fn render_hypervisor_embedded_config(
+    digest: &[u8; 32],
+    platform_ir: &hv_platform_model::StaticPlatformIR,
+    compiled: &hv_config_model::CompiledConfig,
+) -> Result<String, String> {
+    let snapshot = requirements_snapshot_from_platform(
+        &compiled.requirements,
+        *digest,
+        platform_ir.hypervisor_reserve.host_phys.raw(),
+        platform_ir.hypervisor_reserve.size.bytes(),
+    )
+    .map_err(|err| err.message)?;
+    Ok(render_embedded_config_rs(digest, &snapshot))
+}
+
+fn render_embedded_config_rs(
+    digest: &[u8; 32],
+    snapshot: &hv_boot_abi::RequirementsSnapshot,
+) -> String {
+    let mut rendered = String::from("pub const CONFIG_DIGEST: [u8; 32] = [");
+    for (index, byte) in digest.iter().enumerate() {
+        if index > 0 {
+            rendered.push_str(", ");
+        }
+        rendered.push_str(&format!("0x{byte:02X}"));
+    }
+    rendered.push_str("];\n\npub const REQUIREMENTS_SNAPSHOT: hv_boot_abi::RequirementsSnapshot = hv_boot_abi::RequirementsSnapshot {\n");
+    rendered.push_str(&format!("    arch: {},\n", snapshot.arch));
+    rendered.push_str(&format!("    vmx: {},\n", snapshot.vmx));
+    rendered.push_str(&format!("    ept: {},\n", snapshot.ept));
+    rendered.push_str(&format!("    vtd: {},\n", snapshot.vtd));
+    rendered.push_str(&format!(
+        "    min_physical_cores: {},\n",
+        snapshot.min_physical_cores
+    ));
+    rendered.push_str(&format!("    smt_policy: {},\n", snapshot.smt_policy));
+    rendered.push_str(&format!(
+        "    min_ram_bytes: {},\n",
+        snapshot.min_ram_bytes
+    ));
+    rendered.push_str(&format!(
+        "    interrupt_remapping: {},\n",
+        snapshot.interrupt_remapping
+    ));
+    rendered.push_str(&format!("    x2apic: {},\n", snapshot.x2apic));
+    rendered.push_str(&format!("    invariant_tsc: {},\n", snapshot.invariant_tsc));
+    rendered.push_str(&format!("    vpid: {},\n", snapshot.vpid));
+    rendered.push_str(&format!(
+        "    vmx_preemption_timer: {},\n",
+        snapshot.vmx_preemption_timer
+    ));
+    rendered.push_str(&format!("    nx: {},\n", snapshot.nx));
+    rendered.push_str(&format!(
+        "    page_size_count: {},\n",
+        snapshot.page_size_count
+    ));
+    rendered.push_str("    page_sizes: [");
+    for (index, size) in snapshot.page_sizes.iter().enumerate() {
+        if index > 0 {
+            rendered.push_str(", ");
+        }
+        rendered.push_str(&size.to_string());
+    }
+    rendered.push_str("],\n");
+    rendered.push_str(&format!(
+        "    expected_pci_count: {},\n",
+        snapshot.expected_pci_count
+    ));
+    rendered.push_str("    expected_pci: [\n");
+    for entry in &snapshot.expected_pci {
+        rendered.push_str("        hv_boot_abi::ExpectedPciSnapshot {\n");
+        rendered.push_str(&format!("            vm_id: {},\n", entry.vm_id));
+        rendered.push_str(&format!("            segment: {},\n", entry.segment));
+        rendered.push_str(&format!("            bus: {},\n", entry.bus));
+        rendered.push_str(&format!("            device: {},\n", entry.device));
+        rendered.push_str(&format!("            function: {},\n", entry.function));
+        rendered.push_str(&format!(
+            "            reserved: [{}, {}, {}],\n",
+            entry.reserved[0], entry.reserved[1], entry.reserved[2]
+        ));
+        rendered.push_str("        },\n");
+    }
+    rendered.push_str("    ],\n");
+    rendered.push_str(&format!(
+        "    hypervisor_reserve_phys: {},\n",
+        snapshot.hypervisor_reserve_phys
+    ));
+    rendered.push_str(&format!(
+        "    hypervisor_reserve_bytes: {},\n",
+        snapshot.hypervisor_reserve_bytes
+    ));
+    rendered.push_str("    config_digest: [");
+    for (index, byte) in snapshot.config_digest.iter().enumerate() {
+        if index > 0 {
+            rendered.push_str(", ");
+        }
+        rendered.push_str(&format!("0x{byte:02X}"));
+    }
+    rendered.push_str("],\n};\n");
+    rendered
+}
+
 #[cfg(test)]
 #[allow(clippy::expect_used)]
 mod tests {
@@ -280,5 +388,32 @@ mod tests {
         )
         .expect("write nested file");
         assert!(dir.path().join("nested/deep/file.txt").is_file());
+    }
+
+    #[test]
+    fn render_hypervisor_embedded_config_writes_snapshot_fields() {
+        let yaml = include_str!("../../../configs/qemu.yaml");
+        let compiled = hv_config_model::compile_config_from_str(yaml).expect("compile");
+        let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
+        let rendered = render_hypervisor_embedded_config(
+            &compiled.digest.bytes,
+            &layout,
+            &compiled,
+        )
+        .expect("render");
+        assert!(rendered.contains("hypervisor_reserve_bytes"));
+        assert!(rendered.contains("REQUIREMENTS_SNAPSHOT"));
+    }
+
+    #[test]
+    fn render_supporting_artifacts_include_expected_fields() {
+        let yaml = include_str!("../../../configs/qemu.yaml");
+        let compiled = hv_config_model::compile_config_from_str(yaml).expect("compile");
+        let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
+        let source = std::path::Path::new("configs/qemu.yaml");
+        assert!(render_build_manifest(source, &compiled).contains("schema_version"));
+        assert!(render_qemu_args(&compiled).contains("-machine"));
+        assert!(render_platform_layout(&layout).contains("hypervisor_reserve"));
+        assert!(render_static_platform_rs(&compiled).expect("static rs").contains("CONFIG_SHA256"));
     }
 }

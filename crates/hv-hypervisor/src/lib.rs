@@ -1,4 +1,4 @@
-//! Hypervisor boot-path validation for Gate B.
+//! Hypervisor boot-path validation orchestration for Gate B (host re-exports).
 
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)]
@@ -8,12 +8,8 @@
 #![deny(clippy::unimplemented)]
 #![deny(clippy::indexing_slicing)]
 
-mod boot;
-mod error;
-mod snapshot;
-mod transfer;
-
-pub use boot::boot_check;
-pub use error::{BootCheckError, BootCheckErrorKind};
-pub use snapshot::{platform_requirements_from_snapshot, requirements_snapshot_from_platform};
-pub use transfer::{boot_from_transfer, boot_from_transfer_snapshot};
+pub use hv_hypervisor_boot::{
+    boot_check, boot_check_and_init_vmx, boot_from_transfer, boot_from_transfer_and_init_vmx,
+    boot_from_transfer_snapshot, platform_requirements_from_snapshot,
+    requirements_snapshot_from_platform, BootAndVmxResult, BootCheckError, BootCheckErrorKind,
+};

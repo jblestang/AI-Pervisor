@@ -1,6 +1,6 @@
 # OVMF boot integration
 
-Phase 8 delivers a buildable UEFI boot chain: the loader (`hv-loader.efi`) collects firmware inputs, builds the hypervisor transfer blob, publishes it through the UEFI configuration table, and chain-loads the hypervisor image (`hv-hypervisor.efi`).
+Phase 9 extends the boot chain: the loader publishes transfer ABI v2 (with `published_alloc_size`), and the hypervisor runs full Gate B validation plus mock-backed VMX init before returning `EFI_SUCCESS`.
 
 ## Build the boot chain
 
@@ -43,16 +43,16 @@ Run QEMU with OVMF and the ESP attached:
 qemu-system-x86_64 \
   -machine q35,accel=kvm:tcg \
   -cpu max \
-  -m 4096 \
+  -m 8192 \
   -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE.fd \
   -drive if=pflash,format=raw,file=/tmp/OVMF_VARS.fd \
   -drive format=raw,file=fat:rw:/tmp/hv-esp \
   -serial stdio
 ```
 
-On success the loader chain-loads the hypervisor, which verifies the published transfer blob and returns `EFI_SUCCESS`. OVMF then returns to the Boot Manager menu (expected for UEFI apps that exit successfully).
+On success the loader chain-loads the hypervisor, which validates the published transfer blob, runs platform observation and fail-closed requirements compare, plans VMX init from the embedded reserve metadata, and invokes the mock VMX backend (Phase 9). The hypervisor then returns `EFI_SUCCESS`. OVMF then returns to the Boot Manager menu (expected for UEFI apps that exit successfully).
 
-Automated verification:
+Automated verification (uses `configs/ovmf-smoke.yaml`, which relaxes VMX/EPT requirements for TCG-backed QEMU; host tests cover mock VMX init with production `configs/qemu.yaml`):
 
 ```bash
 cargo xtask ovmf-smoke-boot
@@ -78,7 +78,7 @@ Firmware PCI discovery uses legacy CF8/CFC config ports on segment 0. It walks b
 
 | Artifact | Role |
 |----------|------|
-| `HypervisorTransferHeader` | Magic/version header for the transfer blob |
+| `HypervisorTransferHeader` | Magic/version header for transfer blob (ABI v2 includes `published_alloc_size`) |
 | Boot info blob | Versioned loader handoff (`HVBOOT`) |
 | Observation payload | CPUID, PCI list, memory map, ACPI tables |
 | `HV_TRANSFER_TABLE_GUID` | UEFI configuration-table entry pointing at the transfer header |
@@ -91,4 +91,6 @@ Firmware PCI discovery uses legacy CF8/CFC config ports on segment 0. It walks b
 | `hv-loader-efi-bin` | UEFI loader application (`hv-loader.efi`) |
 | `hv-loader-efi` | Portable handoff + transfer helpers used by host tests and firmware |
 | `hv-hypervisor-efi-bin` | UEFI hypervisor application (`hv-hypervisor.efi`) |
-| `hv-hypervisor-efi` | Portable transfer verification entry used by host tests and firmware |
+| `hv-hypervisor-efi` | Portable Gate B boot + mock VMX init entry used by host tests and firmware |
+| `hv-hypervisor-boot` | Portable observe/validate/VMX orchestration (`no_std` + `alloc`) |
+| `hv-vmx` | VMX init plan and backend abstraction (mock backend in Phase 9) |

@@ -67,6 +67,10 @@ pub struct RequirementsSnapshot {
     pub expected_pci_count: u32,
     /// Expected PCI devices from configuration.
     pub expected_pci: [ExpectedPciSnapshot; MAX_REQUIREMENTS_PCI_DEVICES],
+    /// Planned host physical base for the hypervisor private reserve (VMXON region).
+    pub hypervisor_reserve_phys: u64,
+    /// Planned hypervisor reserve size in bytes.
+    pub hypervisor_reserve_bytes: u64,
     /// SHA-256 digest of the normalized configuration.
     pub config_digest: [u8; SHA256_DIGEST_BYTES],
 }

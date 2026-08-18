@@ -12,6 +12,8 @@ members = [
     "crates/hv-loader-efi",
     "crates/hv-hypervisor-efi",
     "crates/hv-hypervisor",
+    "crates/hv-hypervisor-boot",
+    "crates/hv-vmx",
     "tools/hv-config",
     "xtask",
 ]
@@ -24,8 +26,8 @@ rust-version = "1.85"
 
 [workspace.dependencies]
 hv-types = { path = "crates/hv-types" }
-hv-config-model = { path = "crates/hv-config-model" }
-hv-platform-model = { path = "crates/hv-platform-model" }
+hv-config-model = { path = "crates/hv-config-model", default-features = true }
+hv-platform-model = { path = "crates/hv-platform-model", default-features = true }
 hv-boot-abi = { path = "crates/hv-boot-abi" }
 hv-acpi-walk = { path = "crates/hv-acpi-walk" }
 hv-observation-types = { path = "crates/hv-observation-types" }
@@ -33,14 +35,16 @@ hv-loader = { path = "crates/hv-loader" }
 hv-loader-efi = { path = "crates/hv-loader-efi" }
 hv-hypervisor-efi = { path = "crates/hv-hypervisor-efi" }
 hv-hypervisor = { path = "crates/hv-hypervisor" }
+hv-hypervisor-boot = { path = "crates/hv-hypervisor-boot", default-features = true }
+hv-vmx = { path = "crates/hv-vmx" }
 hv-guest-abi = { path = "crates/hv-guest-abi" }
-serde = { version = "1.0.217", features = ["derive"] }
+serde = { version = "1.0.217", default-features = false, features = ["derive"] }
 serde_json = "1.0.138"
 serde_yaml = "0.9.34"
-sha2 = "0.10.8"
+sha2 = { version = "0.10.8", default-features = false }
 hex = "0.4.3"
 proptest = "1.6.0"
-thiserror = "2.0.11"
+thiserror = { version = "2.0.11", default-features = false }
 clap = { version = "4.5.28", features = ["derive"] }
 
 [workspace.lints.rust]

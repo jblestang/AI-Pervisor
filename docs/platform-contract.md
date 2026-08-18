@@ -52,5 +52,8 @@ If observed hardware does not satisfy `PlatformRequirements`, boot must be refus
 | ACPI table discovery | Implemented (`hv-acpi-walk`: RSDP → XSDT/RSDT walk in firmware memory) |
 | Portable UEFI loader entry | Implemented (`hv-loader-efi::uefi_loader_entry`, host-tested) |
 | UEFI `.efi` binary build | Implemented (`cargo xtask build-efi` → `build/hv-loader.efi`) |
-| OVMF runtime boot | Documented (`docs/ovmf-boot.md`; manual smoke) |
-| VMX/EPT/VT-d enablement | Not started |
+| OVMF runtime boot | Documented (`docs/ovmf-boot.md`; CI smoke via `cargo xtask ovmf-smoke-boot`) |
+| UEFI hypervisor Gate B boot | Implemented (Phase 9: observe, validate, mock VMX init via `hv-hypervisor-efi`) |
+| Transfer allocation binding | Implemented (Phase 9: `published_alloc_size` in transfer ABI v2) |
+| VMX init foundation | Implemented (Phase 9: `hv-vmx` plan + mock backend; no hardware VMXON) |
+| Real VMXON/EPT/VT-d enablement | Not started (Gate C) |

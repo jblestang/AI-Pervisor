@@ -1,5 +1,7 @@
 //! Hypervisor boot orchestration from loader transfer blobs.
 
+use alloc::vec::Vec;
+
 use hv_boot_abi::{
     decode_observation_transfer, HypervisorTransferView, ObservationTransferPartsOwned,
     RequirementsSnapshot,
@@ -81,6 +83,7 @@ mod tests {
         build_hypervisor_transfer, build_loader_handoff, encode_qemu_reference_firmware,
         LoaderHandoffInput,
     };
+    use hv_platform_model::plan_static_platform_ir;
     use hv_observation_types::{
         CpuidSnapshot, CPUID_1_ECX_VMX_BIT, CPUID_1_ECX_X2APIC_BIT, CPUID_1_EDX_NX_BIT,
         CPUID_480_EBX_PREEMPTION_TIMER_BIT, CPUID_480_ECX_EPT_BIT, CPUID_480_ECX_VPID_BIT,
@@ -147,9 +150,12 @@ mod tests {
     fn boot_from_transfer_snapshot_accepts_reference_handoff() {
         let yaml = include_str!("../../../configs/qemu.yaml");
         let compiled = compile_config_from_str(yaml).expect("compile");
+        let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
         let snapshot = crate::snapshot::requirements_snapshot_from_platform(
             &compiled.requirements,
             compiled.digest.bytes,
+            layout.hypervisor_reserve.host_phys.raw(),
+            layout.hypervisor_reserve.size.bytes(),
         )
         .expect("snapshot");
         let firmware = encode_qemu_reference_firmware();

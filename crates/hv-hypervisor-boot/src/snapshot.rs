@@ -1,5 +1,7 @@
 //! Requirements snapshot conversion for embedded hypervisor images.
 
+use alloc::string::String;
+
 use hv_boot_abi::{
     ExpectedPciSnapshot, RequirementsSnapshot, FEATURE_DISABLED, FEATURE_OPTIONAL,
     FEATURE_PREFERRED, FEATURE_REQUIRED, MAX_REQUIREMENTS_PAGE_SIZES, MAX_REQUIREMENTS_PCI_DEVICES,
@@ -76,10 +78,12 @@ pub fn platform_requirements_from_snapshot(
     })
 }
 
-/// Builds a requirements snapshot from compiled platform requirements.
+/// Builds a requirements snapshot from compiled platform requirements and layout metadata.
 pub fn requirements_snapshot_from_platform(
     requirements: &PlatformRequirements,
     config_digest: [u8; SHA256_DIGEST_BYTES],
+    hypervisor_reserve_phys: u64,
+    hypervisor_reserve_bytes: u64,
 ) -> Result<RequirementsSnapshot, BootCheckError> {
     if requirements.page_sizes.sizes.len() > MAX_REQUIREMENTS_PAGE_SIZES {
         return Err(BootCheckError::new(
@@ -133,6 +137,8 @@ pub fn requirements_snapshot_from_platform(
         page_sizes,
         expected_pci_count: requirements.expected_pci_devices.len() as u32,
         expected_pci,
+        hypervisor_reserve_phys,
+        hypervisor_reserve_bytes,
         config_digest,
     })
 }
@@ -211,14 +217,30 @@ fn smt_policy_to_snapshot(value: SmtPolicy) -> u32 {
 mod tests {
     use super::*;
     use hv_config_model::compile_config_from_str;
+    use hv_platform_model::plan_static_platform_ir;
+
+    fn reference_reserve() -> (u64, u64) {
+        let yaml = include_str!("../../../configs/qemu.yaml");
+        let compiled = compile_config_from_str(yaml).expect("compile");
+        let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
+        (
+            layout.hypervisor_reserve.host_phys.raw(),
+            layout.hypervisor_reserve.size.bytes(),
+        )
+    }
 
     #[test]
     fn requirements_snapshot_roundtrip_from_reference_config() {
         let yaml = include_str!("../../../configs/qemu.yaml");
         let compiled = compile_config_from_str(yaml).expect("compile");
-        let snapshot =
-            requirements_snapshot_from_platform(&compiled.requirements, compiled.digest.bytes)
-                .expect("snapshot");
+        let (reserve_phys, reserve_bytes) = reference_reserve();
+        let snapshot = requirements_snapshot_from_platform(
+            &compiled.requirements,
+            compiled.digest.bytes,
+            reserve_phys,
+            reserve_bytes,
+        )
+        .expect("snapshot");
         let restored = platform_requirements_from_snapshot(&snapshot).expect("restore");
         assert_eq!(restored.arch, compiled.requirements.arch);
         assert_eq!(restored.vmx, compiled.requirements.vmx);
@@ -270,6 +292,8 @@ mod tests {
                 function: 0,
                 reserved: [0; 3],
             }; MAX_REQUIREMENTS_PCI_DEVICES],
+            hypervisor_reserve_phys: 0,
+            hypervisor_reserve_bytes: 4096,
             config_digest: [0; SHA256_DIGEST_BYTES],
         };
         snapshot.arch = 99;
@@ -296,9 +320,16 @@ mod tests {
     fn requirements_snapshot_from_platform_rejects_oversized_inputs() {
         let yaml = include_str!("../../../configs/qemu.yaml");
         let compiled = compile_config_from_str(yaml).expect("compile");
+        let (reserve_phys, reserve_bytes) = reference_reserve();
         let mut requirements = compiled.requirements.clone();
         requirements.page_sizes.sizes = vec![4096; MAX_REQUIREMENTS_PAGE_SIZES + 1];
-        assert!(requirements_snapshot_from_platform(&requirements, compiled.digest.bytes).is_err());
+        assert!(requirements_snapshot_from_platform(
+            &requirements,
+            compiled.digest.bytes,
+            reserve_phys,
+            reserve_bytes,
+        )
+        .is_err());
 
         requirements = compiled.requirements.clone();
         let device = compiled
@@ -310,6 +341,12 @@ mod tests {
         requirements.expected_pci_devices = (0..=MAX_REQUIREMENTS_PCI_DEVICES)
             .map(|_| device.clone())
             .collect();
-        assert!(requirements_snapshot_from_platform(&requirements, compiled.digest.bytes).is_err());
+        assert!(requirements_snapshot_from_platform(
+            &requirements,
+            compiled.digest.bytes,
+            reserve_phys,
+            reserve_bytes,
+        )
+        .is_err());
     }
 }

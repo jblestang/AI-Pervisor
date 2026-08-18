@@ -262,7 +262,9 @@ name = "hv-config"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "hv-boot-abi",
  "hv-config-model",
+ "hv-hypervisor-boot",
  "hv-platform-model",
  "serde_json",
  "tempfile",
@@ -294,10 +296,24 @@ version = "0.1.0"
 dependencies = [
  "hv-boot-abi",
  "hv-config-model",
+ "hv-hypervisor-boot",
  "hv-loader",
  "hv-observation-types",
  "hv-platform-model",
  "hv-types",
+]
+
+[[package]]
+name = "hv-hypervisor-boot"
+version = "0.1.0"
+dependencies = [
+ "hv-boot-abi",
+ "hv-config-model",
+ "hv-loader",
+ "hv-observation-types",
+ "hv-platform-model",
+ "hv-types",
+ "hv-vmx",
 ]
 
 [[package]]
@@ -307,8 +323,10 @@ dependencies = [
  "hv-boot-abi",
  "hv-config-model",
  "hv-hypervisor",
+ "hv-hypervisor-boot",
  "hv-loader",
  "hv-observation-types",
+ "hv-platform-model",
  "hv-types",
 ]
 
@@ -360,6 +378,15 @@ version = "0.1.0"
 dependencies = [
  "proptest",
  "serde",
+]
+
+[[package]]
+name = "hv-vmx"
+version = "0.1.0"
+dependencies = [
+ "hv-config-model",
+ "hv-platform-model",
+ "hv-types",
 ]
 
 [[package]]

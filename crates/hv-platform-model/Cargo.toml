@@ -9,13 +9,17 @@ rust-version.workspace = true
 [lints]
 workspace = true
 
+[features]
+default = ["std"]
+std = ["hv-config-model/std", "dep:serde_json", "serde/std"]
+
 [dependencies]
 hv-boot-abi = { workspace = true }
-hv-config-model = { workspace = true }
+hv-config-model = { path = "../hv-config-model", default-features = false, features = [] }
 hv-observation-types = { workspace = true }
-hv-types = { workspace = true, features = ["serde"] }
-serde = { workspace = true }
-serde_json = { workspace = true }
+hv-types = { workspace = true }
+serde = { workspace = true, default-features = false, features = ["derive", "alloc"] }
+serde_json = { workspace = true, optional = true }
 
 [dev-dependencies]
 proptest = { workspace = true }

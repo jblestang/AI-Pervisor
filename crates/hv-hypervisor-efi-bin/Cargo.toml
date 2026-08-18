@@ -15,12 +15,6 @@ hv-types = { path = "../hv-types" }
 log = { version = "0.4", default-features = false }
 uefi = { version = "0.31", features = ["global_allocator", "logger", "panic_handler"] }
 
-[build-dependencies]
-hex = "0.4.3"
-hv-boot-abi = { path = "../hv-boot-abi" }
-hv-config-model = { path = "../hv-config-model" }
-hv-hypervisor = { path = "../hv-hypervisor" }
-
 [profile.dev]
 panic = "abort"
 

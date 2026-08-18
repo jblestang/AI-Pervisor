@@ -19,7 +19,7 @@ use clap::{Parser, Subcommand};
 use constants::{
     DEFAULT_BOOT_CHAIN_OUTPUT_DIR, DEFAULT_COVERAGE_MIN_LINES, DEFAULT_EFI_CONFIG_PATH,
     DEFAULT_EFI_OUTPUT_PATH, DEFAULT_FUZZ_RUNS, DEFAULT_HYPERVISOR_EFI_OUTPUT_PATH,
-    DEFAULT_OVMF_SMOKE_TIMEOUT_SECS,
+    DEFAULT_OVMF_SMOKE_CONFIG_PATH, DEFAULT_OVMF_SMOKE_TIMEOUT_SECS,
 };
 use hv_config::constants::DEFAULT_CONFIG_OUTPUT_DIR;
 
@@ -273,9 +273,9 @@ fn hypervisor_efi_build_command(
             "--target",
             "x86_64-unknown-uefi",
         ])
-        .env("HV_CONFIG_DIGEST_PATH", digest_path)
-        .env("HV_CONFIG_PATH", config_path)
+        .env("HV_HYPERVISOR_EMBEDDED_CONFIG_PATH", "build/hypervisor_embedded_config.rs")
         .env("CXX", "g++");
+    let _ = (digest_path, config_path);
     command
 }
 
@@ -583,7 +583,7 @@ enum TaskCommandCli {
     /// Boot the loader + hypervisor chain under OVMF/QEMU and verify serial output.
     OvmfSmokeBoot {
         /// Path to YAML configuration used when `--build` is set.
-        #[arg(long, default_value = DEFAULT_EFI_CONFIG_PATH)]
+        #[arg(long, default_value = DEFAULT_OVMF_SMOKE_CONFIG_PATH)]
         config: String,
         /// Directory containing `hv-loader.efi` and `hv-hypervisor.efi`.
         #[arg(long, default_value = DEFAULT_BOOT_CHAIN_OUTPUT_DIR)]
@@ -1041,7 +1041,7 @@ mod tests {
         assert_eq!(
             parse_task_command(["xtask", "ovmf-smoke-boot"]).expect("parse ovmf smoke boot"),
             TaskCommand::OvmfSmokeBoot {
-                config: String::from(DEFAULT_EFI_CONFIG_PATH),
+                config: String::from(DEFAULT_OVMF_SMOKE_CONFIG_PATH),
                 boot_chain_dir: String::from(DEFAULT_BOOT_CHAIN_OUTPUT_DIR),
                 timeout_secs: DEFAULT_OVMF_SMOKE_TIMEOUT_SECS,
                 build: true,
@@ -1050,7 +1050,7 @@ mod tests {
         assert_eq!(
             parse_task_command(["xtask", "ovmf-smoke-boot", "--no-build"]).expect("parse no build"),
             TaskCommand::OvmfSmokeBoot {
-                config: String::from(DEFAULT_EFI_CONFIG_PATH),
+                config: String::from(DEFAULT_OVMF_SMOKE_CONFIG_PATH),
                 boot_chain_dir: String::from(DEFAULT_BOOT_CHAIN_OUTPUT_DIR),
                 timeout_secs: DEFAULT_OVMF_SMOKE_TIMEOUT_SECS,
                 build: false,
@@ -1073,8 +1073,9 @@ mod tests {
             .get_envs()
             .map(|(key, _)| key.to_string_lossy())
             .collect();
-        assert!(env_keys.iter().any(|key| key == "HV_CONFIG_DIGEST_PATH"));
-        assert!(env_keys.iter().any(|key| key == "HV_CONFIG_PATH"));
+        assert!(env_keys
+            .iter()
+            .any(|key| key == "HV_HYPERVISOR_EMBEDDED_CONFIG_PATH"));
     }
 
     #[test]

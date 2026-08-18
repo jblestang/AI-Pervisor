@@ -9,6 +9,12 @@ use crate::{run, run_build_boot_chain};
 
 const OVMF_BOOT_ATTEMPT_MARKER: &str = "BdsDxe: starting Boot";
 const OVMF_BOOT_FAILURE_MARKER: &str = "failed to start Boot";
+/// Guest RAM for smoke boot; must satisfy `configs/qemu.yaml` `min_ram_gib` after firmware reservations.
+const OVMF_SMOKE_MEMORY_MIB: &str = "8192";
+/// SMP topology for smoke boot; must satisfy `configs/qemu.yaml` `min_physical_cores`.
+const OVMF_SMOKE_SMP: &str = "4";
+/// QEMU machine/accel for smoke boot under TCG (serial logging works reliably in CI).
+const OVMF_SMOKE_MACHINE: &str = "q35,accel=tcg";
 
 /// Evaluates OVMF serial output for a successful boot-chain handoff.
 pub fn evaluate_ovmf_smoke_boot_serial(log: &str) -> Result<(), String> {
@@ -114,11 +120,13 @@ fn run_ovmf_smoke_boot_with(
             &timeout,
             "qemu-system-x86_64",
             "-machine",
-            "q35,accel=tcg",
+            OVMF_SMOKE_MACHINE,
             "-cpu",
             "max",
+            "-smp",
+            OVMF_SMOKE_SMP,
             "-m",
-            "4096",
+            OVMF_SMOKE_MEMORY_MIB,
             "-display",
             "none",
             "-serial",
@@ -223,6 +231,13 @@ fn command_exists(program: &str) -> bool {
 #[allow(clippy::expect_used)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, MutexGuard};
+
+    static OVMF_WORKDIR_LOCK: Mutex<()> = Mutex::new(());
+
+    fn lock_ovmf_workdir() -> MutexGuard<'static, ()> {
+        OVMF_WORKDIR_LOCK.lock().expect("ovmf workdir lock")
+    }
 
     #[test]
     fn evaluate_serial_accepts_successful_boot_log() {
@@ -250,11 +265,235 @@ mod tests {
     }
 
     #[test]
-    fn matching_ovmf_vars_uses_4m_pairing() {
-        let code = PathBuf::from("/usr/share/OVMF/OVMF_CODE_4M.fd");
+    fn matching_ovmf_vars_uses_default_vars_name() {
+        let code = PathBuf::from("/usr/share/OVMF/OVMF_CODE.fd");
         assert_eq!(
             matching_ovmf_vars(&code),
-            PathBuf::from("/usr/share/OVMF/OVMF_VARS_4M.fd")
+            PathBuf::from("/usr/share/OVMF/OVMF_VARS.fd")
         );
+    }
+
+    #[test]
+    fn run_ovmf_smoke_boot_with_missing_images_returns_error() {
+        let _guard = lock_ovmf_workdir();
+        let status = run_ovmf_smoke_boot_with(
+            "configs/qemu.yaml",
+            "build/missing-boot-chain",
+            1,
+            false,
+            |_, _| 0,
+            |_, _| 0,
+        );
+        assert_eq!(status, 1);
+    }
+
+    #[test]
+    fn prepare_smoke_workdir_creates_esp_and_vars_copy() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let work = temp.path().join("work");
+        let esp = work.join("esp");
+        let vars = work.join("OVMF_VARS.fd");
+        let template = temp.path().join("OVMF_VARS.template.fd");
+        std::fs::write(&template, b"template").expect("write template");
+        prepare_smoke_workdir(&work, &esp, &vars, &template).expect("prepare workdir");
+        assert!(esp.is_dir());
+        assert!(vars.is_file());
+    }
+
+    #[test]
+    fn prepare_esp_installs_loader_and_hypervisor_images() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let esp = temp.path().join("esp");
+        let loader = temp.path().join("hv-loader.efi");
+        let hypervisor = temp.path().join("hv-hypervisor.efi");
+        std::fs::write(&loader, b"loader").expect("write loader");
+        std::fs::write(&hypervisor, b"hypervisor").expect("write hypervisor");
+        prepare_esp(&esp, &loader, &hypervisor).expect("prepare esp");
+        assert!(esp.join("EFI/BOOT/BOOTX64.EFI").is_file());
+        assert!(esp.join("hv-hypervisor.efi").is_file());
+    }
+
+    #[test]
+    fn command_exists_finds_shell() {
+        assert!(command_exists("sh"));
+    }
+
+    #[test]
+    fn command_exists_rejects_missing_program() {
+        assert!(!command_exists("definitely-not-a-real-command-xyz"));
+    }
+
+    #[test]
+    fn run_ovmf_smoke_boot_without_build_requires_existing_images() {
+        assert_eq!(
+            run_ovmf_smoke_boot("configs/qemu.yaml", "build/missing-boot-chain", 1, false),
+            1
+        );
+    }
+
+    #[test]
+    fn run_ovmf_smoke_boot_with_mock_runner_accepts_success_log() {
+        let _guard = lock_ovmf_workdir();
+        let workspace = crate::workspace_root();
+        let boot_chain = workspace.join("target/ovmf-mock-boot-chain");
+        std::fs::create_dir_all(&boot_chain).expect("boot chain dir");
+        std::fs::write(boot_chain.join("hv-loader.efi"), b"loader").expect("loader");
+        std::fs::write(boot_chain.join("hv-hypervisor.efi"), b"hypervisor").expect("hypervisor");
+        let status = run_ovmf_smoke_boot_with(
+            "configs/qemu.yaml",
+            "target/ovmf-mock-boot-chain",
+            1,
+            false,
+            |_, _| 0,
+            |_, _| {
+                let serial_log = crate::workspace_root()
+                    .join(crate::constants::OVMF_SMOKE_WORK_DIR)
+                    .join("serial.log");
+                std::fs::write(
+                    &serial_log,
+                    "BdsDxe: starting Boot0001 \"UEFI Application\"\n",
+                )
+                .expect("serial log");
+                0
+            },
+        );
+        assert_eq!(status, 0);
+    }
+
+    #[test]
+    fn run_ovmf_smoke_boot_with_rejects_failed_serial_log() {
+        let _guard = lock_ovmf_workdir();
+        let workspace = crate::workspace_root();
+        let boot_chain = workspace.join("target/ovmf-mock-boot-chain-fail");
+        std::fs::create_dir_all(&boot_chain).expect("boot chain dir");
+        std::fs::write(boot_chain.join("hv-loader.efi"), b"loader").expect("loader");
+        std::fs::write(boot_chain.join("hv-hypervisor.efi"), b"hypervisor").expect("hypervisor");
+        let status = run_ovmf_smoke_boot_with(
+            "configs/qemu.yaml",
+            "target/ovmf-mock-boot-chain-fail",
+            1,
+            false,
+            |_, _| 0,
+            |_, _| {
+                let serial_log = crate::workspace_root()
+                    .join(crate::constants::OVMF_SMOKE_WORK_DIR)
+                    .join("serial.log");
+                std::fs::write(
+                    &serial_log,
+                    "BdsDxe: failed to start Boot0001 \"app\": Aborted\n",
+                )
+                .expect("serial log");
+                0
+            },
+        );
+        assert_eq!(status, 1);
+    }
+
+    #[test]
+    fn run_ovmf_smoke_boot_with_rejects_missing_serial_log() {
+        let _guard = lock_ovmf_workdir();
+        let workspace = crate::workspace_root();
+        let boot_chain = workspace.join("target/ovmf-mock-boot-chain-missing-log");
+        std::fs::create_dir_all(&boot_chain).expect("boot chain dir");
+        std::fs::write(boot_chain.join("hv-loader.efi"), b"loader").expect("loader");
+        std::fs::write(boot_chain.join("hv-hypervisor.efi"), b"hypervisor").expect("hypervisor");
+        let status = run_ovmf_smoke_boot_with(
+            "configs/qemu.yaml",
+            "target/ovmf-mock-boot-chain-missing-log",
+            1,
+            false,
+            |_, _| 0,
+            |_, _| 0,
+        );
+        assert_eq!(status, 1);
+    }
+
+    #[test]
+    fn run_ovmf_smoke_boot_with_accepts_timeout_exit_code_with_good_log() {
+        let _guard = lock_ovmf_workdir();
+        let workspace = crate::workspace_root();
+        let boot_chain = workspace.join("target/ovmf-mock-boot-chain-timeout");
+        std::fs::create_dir_all(&boot_chain).expect("boot chain dir");
+        std::fs::write(boot_chain.join("hv-loader.efi"), b"loader").expect("loader");
+        std::fs::write(boot_chain.join("hv-hypervisor.efi"), b"hypervisor").expect("hypervisor");
+        let status = run_ovmf_smoke_boot_with(
+            "configs/qemu.yaml",
+            "target/ovmf-mock-boot-chain-timeout",
+            1,
+            false,
+            |_, _| 0,
+            |_, _| {
+                let serial_log = crate::workspace_root()
+                    .join(crate::constants::OVMF_SMOKE_WORK_DIR)
+                    .join("serial.log");
+                std::fs::write(
+                    &serial_log,
+                    "BdsDxe: starting Boot0001 \"UEFI Application\"\n",
+                )
+                .expect("serial log");
+                124
+            },
+        );
+        assert_eq!(status, 0);
+    }
+
+    #[test]
+    fn prepare_esp_rejects_missing_loader_image() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let esp = temp.path().join("esp");
+        let missing = temp.path().join("missing.efi");
+        let hypervisor = temp.path().join("hv-hypervisor.efi");
+        std::fs::write(&hypervisor, b"hypervisor").expect("write hypervisor");
+        assert!(prepare_esp(&esp, &missing, &hypervisor).is_err());
+    }
+
+    #[test]
+    fn prepare_smoke_workdir_rejects_missing_template() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let work = temp.path().join("work");
+        let esp = work.join("esp");
+        let vars = work.join("OVMF_VARS.fd");
+        let missing = temp.path().join("missing.fd");
+        assert!(prepare_smoke_workdir(&work, &esp, &vars, &missing).is_err());
+    }
+
+    #[test]
+    fn locate_ovmf_firmware_finds_installed_firmware_when_present() {
+        if std::path::Path::new("/usr/share/OVMF/OVMF_CODE_4M.fd").is_file() {
+            assert!(locate_ovmf_firmware().is_some());
+        }
+    }
+
+    #[test]
+    fn run_ovmf_smoke_boot_with_propagates_build_failure() {
+        let _guard = lock_ovmf_workdir();
+        let status = run_ovmf_smoke_boot_with(
+            "configs/qemu.yaml",
+            "target/ovmf-mock-boot-chain",
+            1,
+            true,
+            |_, _| 1,
+            |_, _| 0,
+        );
+        assert_eq!(status, 1);
+    }
+
+    #[test]
+    fn run_ovmf_smoke_boot_with_rejects_non_timeout_qemu_failure() {
+        let _guard = lock_ovmf_workdir();
+        let workspace = crate::workspace_root();
+        let boot_chain = workspace.join("target/ovmf-mock-boot-chain-qemu-fail");
+        std::fs::create_dir_all(&boot_chain).expect("boot chain dir");
+        std::fs::write(boot_chain.join("hv-loader.efi"), b"loader").expect("loader");
+        std::fs::write(boot_chain.join("hv-hypervisor.efi"), b"hypervisor").expect("hypervisor");
+        let status = run_ovmf_smoke_boot_with(
+            "configs/qemu.yaml",
+            "target/ovmf-mock-boot-chain-qemu-fail",
+            1,
+            false,
+            |_, _| 0,
+            |_, _| 1,
+        );
+        assert_eq!(status, 1);
     }
 }

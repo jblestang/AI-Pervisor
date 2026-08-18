@@ -9,13 +9,23 @@ rust-version.workspace = true
 [lints]
 workspace = true
 
+[features]
+default = ["std"]
+std = [
+    "dep:serde_json",
+    "dep:serde_yaml",
+    "dep:sha2",
+    "dep:thiserror",
+    "serde/std",
+]
+
 [dependencies]
 hv-types = { workspace = true, features = ["serde"] }
-serde = { workspace = true }
-serde_json = { workspace = true }
-serde_yaml = { workspace = true }
-sha2 = { workspace = true }
-thiserror = { workspace = true }
+serde = { workspace = true, default-features = false, features = ["derive", "alloc"] }
+serde_json = { workspace = true, optional = true }
+serde_yaml = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true, default-features = false }
+thiserror = { workspace = true, optional = true, default-features = false }
 
 [dev-dependencies]
 proptest = { workspace = true }

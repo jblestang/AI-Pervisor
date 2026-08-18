@@ -32,3 +32,5 @@ pub const STATIC_INTENT_JSON: &str = "static-intent.json";
 pub const STATIC_PLATFORM_LAYOUT_JSON: &str = "static-platform-layout.json";
 /// Human-readable platform layout summary.
 pub const PLATFORM_LAYOUT: &str = "platform-layout.txt";
+/// Embedded hypervisor UEFI configuration module.
+pub const HYPERVISOR_EMBEDDED_CONFIG_RS: &str = "hypervisor_embedded_config.rs";

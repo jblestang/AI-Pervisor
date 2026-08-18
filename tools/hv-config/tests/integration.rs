@@ -3,8 +3,8 @@
 use std::path::Path;
 
 use hv_config::artifacts::{
-    CONFIG_SHA256, PLATFORM_LAYOUT, STATIC_INTENT_JSON, STATIC_PLATFORM_LAYOUT_JSON,
-    STATIC_PLATFORM_RS,
+    CONFIG_SHA256, HYPERVISOR_EMBEDDED_CONFIG_RS, PLATFORM_LAYOUT, STATIC_INTENT_JSON,
+    STATIC_PLATFORM_LAYOUT_JSON, STATIC_PLATFORM_RS,
 };
 use hv_config::validate_config;
 use tempfile::tempdir;
@@ -32,6 +32,11 @@ fn generate_writes_artifacts() {
     assert!(output.path().join(STATIC_INTENT_JSON).is_file());
     assert!(output.path().join(STATIC_PLATFORM_LAYOUT_JSON).is_file());
     assert!(output.path().join(PLATFORM_LAYOUT).is_file());
+    assert!(output.path().join(HYPERVISOR_EMBEDDED_CONFIG_RS).is_file());
+    let embedded = std::fs::read_to_string(output.path().join(HYPERVISOR_EMBEDDED_CONFIG_RS))
+        .expect("embedded config");
+    assert!(embedded.contains("REQUIREMENTS_SNAPSHOT"));
+    assert!(embedded.contains("hypervisor_reserve_phys"));
 }
 
 #[test]

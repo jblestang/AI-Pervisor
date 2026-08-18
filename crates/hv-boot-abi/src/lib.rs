@@ -41,7 +41,8 @@ pub use requirements_snapshot::{
     SMT_POLICY_EXCLUSIVE_CORE, SMT_POLICY_SAME_PARTITION_SIBLINGS,
 };
 pub use transfer::{
-    build_hypervisor_transfer_blob, decode_observation_transfer, CpuidTransferSnapshot, Guid,
+    build_hypervisor_transfer_blob, decode_observation_transfer, patch_published_alloc_size,
+    validate_transfer_bounds, CpuidTransferSnapshot, Guid,
     HypervisorTransferHeader, HypervisorTransferView, ObservationTransferHeader,
     ObservationTransferParts, ObservationTransferPartsOwned, PciBdfTransfer,
     HV_TRANSFER_TABLE_GUID, TRANSFER_ABI_VERSION, TRANSFER_MAGIC,
