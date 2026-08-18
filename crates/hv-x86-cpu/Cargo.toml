@@ -12,6 +12,7 @@ workspace = true
 [features]
 default = []
 execute-instructions = []
+std = []
 
 [dependencies]
 hv-ept = { path = "../hv-ept" }
@@ -24,3 +25,8 @@ hv-ept = { workspace = true }
 hv-platform-model = { workspace = true, features = ["std"] }
 hv-vmx = { workspace = true }
 hv-vtd = { workspace = true }
+
+[[test]]
+name = "live_instructions"
+path = "tests/live_instructions.rs"
+required-features = ["execute-instructions", "std"]

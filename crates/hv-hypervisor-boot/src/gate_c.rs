@@ -22,6 +22,8 @@ use hv_x86_cpu::{
     CpuSeamEptBackend, CpuSeamVmxBackend, CpuSeamVtdBackend, EptCpuSeamOutcome, VmxCpuSeamOutcome,
     VtdCpuSeamOutcome,
 };
+#[cfg(feature = "live-execution")]
+use hv_x86_cpu::live_execution_environment_ready;
 
 use crate::boot::boot_check;
 use crate::error::{BootCheckError, BootCheckErrorKind};
@@ -115,6 +117,66 @@ pub fn boot_check_and_init_gate_c_cpu_seam(
         observation,
     )?;
     init_gate_c_cpu_seam_from_validated(requirements, layout, &validated, warnings)
+}
+
+/// Result of Gate C init with live privileged instruction execution enabled.
+#[cfg(feature = "live-execution")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GateCLiveExecutionResult {
+    /// CPU seam output including programmed structures and seam dispositions.
+    pub cpu_seam: GateCCpuSeamResult,
+    /// Whether the host runtime environment permitted live instruction execution.
+    pub live_environment_ready: bool,
+}
+
+/// Runs transfer boot checks and Gate C live execution init using snapshot + layout metadata.
+#[cfg(feature = "live-execution")]
+pub fn boot_from_transfer_and_init_gate_c_live_execution(
+    transfer: &[u8],
+    snapshot: &RequirementsSnapshot,
+    layout: &StaticPlatformIR,
+) -> Result<GateCLiveExecutionResult, BootCheckError> {
+    let cpu_seam = boot_from_transfer_and_init_gate_c_cpu_seam(transfer, snapshot, layout)?;
+    Ok(wrap_gate_c_live_execution(cpu_seam))
+}
+
+/// Runs transfer boot checks and Gate C live execution init using embedded snapshots.
+#[cfg(feature = "live-execution")]
+pub fn boot_from_transfer_and_init_gate_c_live_execution_from_snapshots(
+    transfer: &[u8],
+    requirements: &RequirementsSnapshot,
+    layout: &LayoutSnapshot,
+) -> Result<GateCLiveExecutionResult, BootCheckError> {
+    let cpu_seam =
+        boot_from_transfer_and_init_gate_c_cpu_seam_from_snapshots(transfer, requirements, layout)?;
+    Ok(wrap_gate_c_live_execution(cpu_seam))
+}
+
+/// Runs boot checks from raw inputs and Gate C live execution init.
+#[cfg(feature = "live-execution")]
+pub fn boot_check_and_init_gate_c_live_execution(
+    boot_info_bytes: &[u8],
+    expected_config_digest: &[u8; SHA256_DIGEST_BYTES],
+    requirements: &PlatformRequirements,
+    observation: &hv_platform_model::ObservationInputs,
+    layout: &StaticPlatformIR,
+) -> Result<GateCLiveExecutionResult, BootCheckError> {
+    let cpu_seam = boot_check_and_init_gate_c_cpu_seam(
+        boot_info_bytes,
+        expected_config_digest,
+        requirements,
+        observation,
+        layout,
+    )?;
+    Ok(wrap_gate_c_live_execution(cpu_seam))
+}
+
+#[cfg(feature = "live-execution")]
+fn wrap_gate_c_live_execution(cpu_seam: GateCCpuSeamResult) -> GateCLiveExecutionResult {
+    GateCLiveExecutionResult {
+        live_environment_ready: live_execution_environment_ready(),
+        cpu_seam,
+    }
 }
 
 /// Runs transfer boot checks and mock-backed Gate C init using embedded snapshots.

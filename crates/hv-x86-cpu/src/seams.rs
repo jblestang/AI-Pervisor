@@ -160,41 +160,44 @@ fn encode_ept_pointer(root_table_phys: u64) -> u64 {
 }
 
 fn execute_vmxon_if_enabled(host_phys: u64) -> Result<CpuInstructionDisposition, CpuSeamError> {
-    let _ = host_phys;
     #[cfg(feature = "execute-instructions")]
     {
-        Ok(CpuInstructionDisposition::Executed)
+        match crate::instructions::vmx::execute_vmxon(host_phys) {
+            Ok(()) => return Ok(CpuInstructionDisposition::Executed),
+            Err(err) if err.kind == CpuSeamErrorKind::Unavailable => {}
+            Err(err) => return Err(err),
+        }
     }
-    #[cfg(not(feature = "execute-instructions"))]
-    {
-        Ok(CpuInstructionDisposition::SeamValidated)
-    }
+    let _ = host_phys;
+    Ok(CpuInstructionDisposition::SeamValidated)
 }
 
 fn execute_ept_pointer_if_enabled(ept_pointer: u64) -> Result<CpuInstructionDisposition, CpuSeamError> {
-    let _ = ept_pointer;
     #[cfg(feature = "execute-instructions")]
     {
-        Ok(CpuInstructionDisposition::Executed)
+        match crate::instructions::ept::execute_ept_pointer_load(ept_pointer) {
+            Ok(()) => return Ok(CpuInstructionDisposition::Executed),
+            Err(err) if err.kind == CpuSeamErrorKind::Unavailable => {}
+            Err(err) => return Err(err),
+        }
     }
-    #[cfg(not(feature = "execute-instructions"))]
-    {
-        Ok(CpuInstructionDisposition::SeamValidated)
-    }
+    let _ = ept_pointer;
+    Ok(CpuInstructionDisposition::SeamValidated)
 }
 
 fn execute_vtd_enable_if_enabled(
     interrupt_remapping: bool,
 ) -> Result<CpuInstructionDisposition, CpuSeamError> {
-    let _ = interrupt_remapping;
     #[cfg(feature = "execute-instructions")]
     {
-        Ok(CpuInstructionDisposition::Executed)
+        match crate::instructions::vtd::execute_vtd_enable(interrupt_remapping) {
+            Ok(()) => return Ok(CpuInstructionDisposition::Executed),
+            Err(err) if err.kind == CpuSeamErrorKind::Unavailable => {}
+            Err(err) => return Err(err),
+        }
     }
-    #[cfg(not(feature = "execute-instructions"))]
-    {
-        Ok(CpuInstructionDisposition::SeamValidated)
-    }
+    let _ = interrupt_remapping;
+    Ok(CpuInstructionDisposition::SeamValidated)
 }
 
 #[cfg(test)]
@@ -202,6 +205,7 @@ fn execute_vtd_enable_if_enabled(
 mod tests {
     use super::*;
     use hv_config_model::compile_config_from_str;
+    use crate::cpuid::{cpuid_ept_available, cpuid_vtd_available};
     use hv_ept::{plan_ept_init, program_ept_tables, EptProgrammedMapping, EptProgrammedTables};
     use hv_platform_model::plan_static_platform_ir;
     use hv_vmx::{plan_vmx_init, program_vmxon_region, REFERENCE_VMXON_REVISION};
@@ -354,13 +358,38 @@ mod tests {
         test_force_vtd_unavailable(false);
     }
 
+    #[test]
+    fn ept_and_vtd_cpu_seams_fall_back_without_live_environment() {
+        let yaml = include_str!("../../../configs/qemu.yaml");
+        let compiled = hv_config_model::compile_config_from_str(yaml).expect("compile");
+        let layout = hv_platform_model::plan_static_platform_ir(&compiled.intent).expect("plan");
+        let vmx_plan = plan_vmx_init(&layout.hypervisor_reserve).expect("vmx");
+        let ept_plan = plan_ept_init(&layout, &vmx_plan).expect("ept");
+        let ept_tables = program_ept_tables(&ept_plan).expect("program ept");
+        let vtd_plan = plan_vtd_init(&layout, true).expect("vtd");
+        let vtd_tables = program_vtd_tables(&vtd_plan).expect("program vtd");
+
+        let ept = run_ept_pointer_cpu_seam(&ept_tables).expect("ept seam");
+        if cpuid_ept_available() {
+            assert_eq!(ept.disposition, CpuInstructionDisposition::SeamValidated);
+        } else {
+            assert_eq!(ept.disposition, CpuInstructionDisposition::SkippedNoHardware);
+        }
+        let vtd = run_vtd_enable_cpu_seam(&vtd_tables).expect("vtd seam");
+        if cpuid_vtd_available() {
+            assert_eq!(vtd.disposition, CpuInstructionDisposition::SeamValidated);
+        } else {
+            assert_eq!(vtd.disposition, CpuInstructionDisposition::SkippedNoHardware);
+        }
+    }
+
     #[cfg(feature = "execute-instructions")]
     #[test]
-    fn execute_instruction_features_record_executed_disposition() {
+    fn execute_instruction_feature_falls_back_without_live_environment() {
         let region = reference_vmxon_region();
         let outcome = run_vmxon_cpu_seam(&region).expect("seam");
         if cpuid_vmx_available() {
-            assert_eq!(outcome.disposition, CpuInstructionDisposition::Executed);
+            assert_eq!(outcome.disposition, CpuInstructionDisposition::SeamValidated);
         }
     }
 }

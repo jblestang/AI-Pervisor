@@ -13,6 +13,7 @@ workspace = true
 default = ["std"]
 std = ["hv-config-model/std", "hv-platform-model/std"]
 cpu-seams = ["dep:hv-x86-cpu"]
+live-execution = ["cpu-seams", "hv-x86-cpu/execute-instructions", "hv-x86-cpu/std"]
 
 [dependencies]
 hv-boot-abi = { path = "../hv-boot-abi" }
@@ -38,3 +39,8 @@ hv-x86-cpu = { workspace = true }
 name = "cpu_seams"
 path = "tests/cpu_seams.rs"
 required-features = ["cpu-seams"]
+
+[[test]]
+name = "live_execution"
+path = "tests/live_execution.rs"
+required-features = ["live-execution"]
