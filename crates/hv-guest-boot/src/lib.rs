@@ -21,7 +21,8 @@ pub use elf::{
     GuestElfLoadSegment,
 };
 pub use partition_images::{
-    reference_guest_elf, GUEST_IN_RUNNING_MARKER, GUEST_MID_RUNNING_MARKER,
-    GUEST_OUT_RUNNING_MARKER, REFERENCE_GUEST_PARTITION_IDS,
+    reference_datapath_guest_elf, reference_guest_elf, GUEST_DATAPATH_CAPABLE_MARKER,
+    GUEST_IN_RUNNING_MARKER, GUEST_MID_RUNNING_MARKER, GUEST_OUT_RUNNING_MARKER,
+    REFERENCE_GUEST_PARTITION_IDS,
 };
 pub use smoke::{GUEST_SMOKE_IMAGE, GUEST_SMOKE_RUNNING_MARKER};

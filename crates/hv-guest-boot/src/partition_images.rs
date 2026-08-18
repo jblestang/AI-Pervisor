@@ -8,6 +8,8 @@ pub const GUEST_IN_RUNNING_MARKER: &str = "GUEST: in partition running";
 pub const GUEST_MID_RUNNING_MARKER: &str = "GUEST: mid partition running";
 /// Serial marker emitted when the OUT partition guest runs.
 pub const GUEST_OUT_RUNNING_MARKER: &str = "GUEST: out partition running";
+/// Serial marker emitted when a datapath-capable guest image runs.
+pub const GUEST_DATAPATH_CAPABLE_MARKER: &str = "GUEST: datapath capable";
 
 /// Returns the reference ELF image bytes for a partition id.
 pub fn reference_guest_elf(partition_id: &str) -> Option<&'static [u8]> {
@@ -15,6 +17,16 @@ pub fn reference_guest_elf(partition_id: &str) -> Option<&'static [u8]> {
         "in" => Some(GUEST_IN_ELF),
         "mid" => Some(GUEST_MID_ELF),
         "out" => Some(GUEST_OUT_ELF),
+        _ => None,
+    }
+}
+
+/// Returns the datapath-capable reference ELF image bytes for a partition id.
+pub fn reference_datapath_guest_elf(partition_id: &str) -> Option<&'static [u8]> {
+    match partition_id {
+        "in" => Some(GUEST_IN_DATAPATH_ELF),
+        "mid" => Some(GUEST_MID_DATAPATH_ELF),
+        "out" => Some(GUEST_OUT_DATAPATH_ELF),
         _ => None,
     }
 }
@@ -29,9 +41,9 @@ mod tests {
     use crate::elf::parse_elf64;
 
     #[test]
-    fn all_reference_partition_elfs_parse() {
+    fn all_reference_datapath_partition_elfs_parse() {
         for partition in REFERENCE_GUEST_PARTITION_IDS {
-            let bytes = reference_guest_elf(partition).expect("elf");
+            let bytes = reference_datapath_guest_elf(partition).expect("datapath elf");
             parse_elf64(bytes).expect("parse");
         }
     }

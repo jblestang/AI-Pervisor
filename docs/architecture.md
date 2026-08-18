@@ -23,7 +23,8 @@
 | 19 | D | Compromised-guest malicious IPC tests, pre-forward integrity enforcement, `datapath-malicious` orchestration |
 | 20 | D | Reference guest ELF64 images, multi-partition VMLAUNCH orchestration, `datapath-guests` |
 | 21 | D | Performance benchmark (200 Mbit/s target), `datapath-benchmark` orchestration |
-| 22+ | D | Live guest datapath runtime under VMX |
+| 22 | D | Live guest datapath runtime under VMX, `datapath-runtime` orchestration |
+| 23+ | D | Real `guests/` source trees, live VMX throughput benchmark |
 
 Phases 0–3 complete Gate A. Phase 4 begins Gate B with host-side platform validation and deterministic layout planning.
 

@@ -9,11 +9,16 @@ mod constants;
 mod e1000;
 mod error;
 mod forward;
+mod guest_runtime;
 mod ipc;
 mod plan;
 mod runtime;
 mod topology;
 
+pub use guest_runtime::{
+    run_guest_datapath_runtime, DatapathRuntimeDisposition, DatapathRuntimeOutcome,
+    GuestDatapathRuntime, GUEST_DATAPATH_IPC_HOPS,
+};
 pub use benchmark::{
     mock_throughput_mbit, run_mock_datapath_benchmark, throughput_mbit_from_frames,
     DatapathBenchmarkConfig, DatapathBenchmarkResult, DatapathBenchmarkRunStats,

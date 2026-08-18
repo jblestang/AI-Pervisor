@@ -17,6 +17,7 @@ firmware-live-execution = ["execute-instructions"]
 vmx-launch = ["execute-instructions"]
 datapath-live = ["execute-instructions", "vmx-launch"]
 datapath-guests = ["vmx-launch", "dep:hv-guest-boot"]
+datapath-runtime = ["datapath-guests", "datapath-live"]
 
 [dependencies]
 hv-ept = { path = "../hv-ept" }
