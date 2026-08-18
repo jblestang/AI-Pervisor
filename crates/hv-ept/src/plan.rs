@@ -2,6 +2,7 @@
 
 use alloc::vec::Vec;
 
+use hv_datapath::{plan_e1000_mmio_guest_phys, E1000_MMIO_SIZE_BYTES};
 use hv_platform_model::StaticPlatformIR;
 use hv_types::{ByteSize, HostPhysAddr};
 use hv_vmx::{VMXON_REGION_MIN_BYTES, VmxInitPlan};
@@ -52,6 +53,20 @@ pub fn plan_ept_init(
             region.host_phys,
             region.size,
         )?;
+    }
+    for device in &layout.pci_devices {
+        if device.kind == "nic_e1000" {
+            let guest_phys = plan_e1000_mmio_guest_phys(device.vm_id).map_err(|_| {
+                planning_error("failed to plan e1000 mmio guest mapping")
+            })?;
+            let host_phys = HostPhysAddr::new(guest_phys.raw());
+            push_identity_mapping(
+                &mut identity_mappings,
+                host_phys,
+                host_phys,
+                ByteSize::new(E1000_MMIO_SIZE_BYTES),
+            )?;
+        }
     }
 
     let table_end = VMXON_REGION_MIN_BYTES
@@ -120,7 +135,10 @@ mod tests {
         let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
         let vmx_plan = plan_vmx_init(&layout.hypervisor_reserve).expect("vmx plan");
         let ept_plan = plan_ept_init(&layout, &vmx_plan).expect("ept plan");
-        assert_eq!(ept_plan.identity_mappings.len(), layout.guest_memory.len() + layout.ipc_memory.len());
+        assert_eq!(
+            ept_plan.identity_mappings.len(),
+            layout.guest_memory.len() + layout.ipc_memory.len() + layout.pci_devices.len()
+        );
         assert!(ept_plan.root_table_bytes.bytes() >= EPT_ROOT_TABLE_BYTES);
     }
 

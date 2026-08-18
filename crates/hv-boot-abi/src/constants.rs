@@ -48,3 +48,9 @@ pub const REAL_HW_VMLAUNCH_EXECUTED_MARKER: &str = "REAL_HW: VMLAUNCH Executed";
 pub const GATE_D_DATAPATH_FOUNDATION_MARKER: &str = "hypervisor Gate D datapath foundation succeeded";
 /// Serial log marker emitted when guest boot info is built for all partitions.
 pub const GATE_D_BOOT_INFO_BUILT_MARKER: &str = "Gate D: guest boot info built for all partitions";
+/// Serial log marker emitted after successful Gate D datapath live init.
+pub const GATE_D_DATAPATH_LIVE_MARKER: &str = "hypervisor Gate D datapath live succeeded";
+/// Serial log marker emitted when a synthetic frame is forwarded in→mid→out.
+pub const GATE_D_IPC_FORWARD_MARKER: &str = "Gate D: IPC frame forwarded in→mid→out";
+/// Serial log marker emitted when e1000 MMIO is handled on the live datapath path.
+pub const GATE_D_E1000_MMIO_MARKER: &str = "Gate D: e1000 MMIO handled";

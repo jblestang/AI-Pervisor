@@ -12,6 +12,7 @@ workspace = true
 [dependencies]
 hv-config-model = { path = "../hv-config-model", default-features = false }
 hv-platform-model = { path = "../hv-platform-model", default-features = false }
+hv-datapath = { path = "../hv-datapath", default-features = false }
 hv-types = { workspace = true }
 hv-vmx = { path = "../hv-vmx", default-features = false }
 

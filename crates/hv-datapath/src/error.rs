@@ -7,6 +7,8 @@ use alloc::string::String;
 pub enum DatapathErrorKind {
     /// Partition or layout input was invalid.
     InvalidInput,
+    /// IPC queue integrity or bounds violation.
+    IpcViolation,
 }
 
 /// Structured datapath planning error.

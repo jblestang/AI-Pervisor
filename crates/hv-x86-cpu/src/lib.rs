@@ -53,3 +53,5 @@ pub use seams::{
     run_vmx_launch_cpu_seam, CpuInstructionDisposition, EptCpuSeamOutcome, VmxCpuSeamOutcome,
     VmxLaunchCpuSeamOutcome, VtdCpuSeamOutcome,
 };
+#[cfg(feature = "datapath-live")]
+pub use seams::{run_datapath_live_cpu_seam, DatapathLiveCpuSeamOutcome};

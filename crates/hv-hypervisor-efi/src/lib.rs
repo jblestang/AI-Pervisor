@@ -28,10 +28,13 @@ use hv_hypervisor_boot::boot_from_transfer_and_init_gate_c_real_hw_from_snapshot
 use hv_hypervisor_boot::boot_from_transfer_and_init_gate_c_vmx_launch_from_snapshots;
 #[cfg(feature = "datapath-foundation")]
 use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_foundation_from_snapshots;
+#[cfg(feature = "datapath-live")]
+use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_live_from_snapshots;
 
 pub use error::{HypervisorEfiError, HypervisorEfiErrorKind};
 pub use hv_hypervisor_boot::{
-    GATE_D_BOOT_INFO_BUILT_MARKER, GATE_D_DATAPATH_FOUNDATION_MARKER, REAL_HW_BOOT_SUCCESS_MARKER,
+    GATE_D_BOOT_INFO_BUILT_MARKER, GATE_D_DATAPATH_FOUNDATION_MARKER, GATE_D_DATAPATH_LIVE_MARKER,
+    GATE_D_E1000_MMIO_MARKER, GATE_D_IPC_FORWARD_MARKER, REAL_HW_BOOT_SUCCESS_MARKER,
     REAL_HW_EPT_EXECUTED_MARKER, REAL_HW_VMLAUNCH_EXECUTED_MARKER, REAL_HW_VMXON_EXECUTED_MARKER,
 };
 pub use hv_guest_boot::GUEST_SMOKE_RUNNING_MARKER;
@@ -67,6 +70,18 @@ pub struct DatapathFoundationBootMarkers {
     pub vmx_launch: VmxLaunchBootMarkers,
     /// Whether guest boot info was built for all partitions.
     pub datapath_boot_infos_built: bool,
+}
+
+/// Gate D datapath live boot outcome markers for serial-log verification.
+#[cfg(feature = "datapath-live")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DatapathLiveBootMarkers {
+    /// Datapath foundation boot markers.
+    pub foundation: DatapathFoundationBootMarkers,
+    /// Whether a synthetic IPC frame was forwarded in→mid→out.
+    pub ipc_forward_executed: bool,
+    /// Whether e1000 MMIO was handled on the live datapath path.
+    pub e1000_mmio_handled: bool,
 }
 
 /// Runs full Gate B validation and mock-backed Gate C init from a transfer blob.
@@ -228,6 +243,74 @@ pub fn boot_hypervisor_from_transfer_datapath_foundation<A: PageAllocator>(
             vmlaunch_executed,
         },
         datapath_boot_infos_built: result.partition_boot_infos.len() == 3,
+    })
+}
+
+/// Runs Gate B validation and Gate D datapath live init with resident page installation.
+#[cfg(feature = "datapath-live")]
+pub fn boot_hypervisor_from_transfer_datapath_live<A: PageAllocator>(
+    transfer: &[u8],
+    expected_config_digest: &[u8; SHA256_DIGEST_BYTES],
+    requirements: &RequirementsSnapshot,
+    layout: &LayoutSnapshot,
+    allocator: &mut A,
+) -> Result<DatapathLiveBootMarkers, HypervisorEfiError> {
+    if requirements.config_digest != *expected_config_digest {
+        return Err(HypervisorEfiError::new(
+            HypervisorEfiErrorKind::Requirements,
+            "requirements snapshot digest mismatch",
+        ));
+    }
+    let result = boot_from_transfer_and_init_gate_d_datapath_live_from_snapshots(
+        transfer,
+        requirements,
+        layout,
+        allocator,
+    )
+    .map_err(HypervisorEfiError::from)?;
+    let vmxon_executed = result
+        .foundation
+        .vmx_launch
+        .real_hw
+        .live
+        .cpu_seam
+        .vmx_seam
+        .as_ref()
+        .is_some_and(|seam| seam.disposition == CpuInstructionDisposition::Executed);
+    let ept_executed = result
+        .foundation
+        .vmx_launch
+        .real_hw
+        .live
+        .cpu_seam
+        .ept_seam
+        .as_ref()
+        .is_some_and(|seam| seam.disposition == CpuInstructionDisposition::Executed);
+    let vmlaunch_executed = result
+        .foundation
+        .vmx_launch
+        .launch_seam
+        .as_ref()
+        .is_some_and(|seam| seam.disposition == CpuInstructionDisposition::Executed);
+    Ok(DatapathLiveBootMarkers {
+        foundation: DatapathFoundationBootMarkers {
+            vmx_launch: VmxLaunchBootMarkers {
+                real_hw: RealHwBootMarkers {
+                    vmxon_executed,
+                    ept_executed,
+                },
+                vmlaunch_executed,
+            },
+            datapath_boot_infos_built: result.foundation.partition_boot_infos.len() == 3,
+        },
+        ipc_forward_executed: result
+            .live_outcome
+            .as_ref()
+            .is_some_and(|outcome| outcome.synthetic_frame_forwarded),
+        e1000_mmio_handled: result
+            .live_outcome
+            .as_ref()
+            .is_some_and(|outcome| outcome.e1000_tx_observed),
     })
 }
 

@@ -38,6 +38,7 @@ Each critical requirement declares its validation level using these categories:
 | VMX / EPT / VT-d live privileged instructions | REVIEW + REAL_HW (Phase 14 modules; CI validate-only fallback) |
 | REAL_HW resident install + VMCS prepare | UNIT + REVIEW + REAL_HW (Phase 15) |
 | VMX launch (VMCS fields + VMLAUNCH) | UNIT + REVIEW + REAL_HW (Phase 16) |
-| Guest datapath smoke | UNIT + REVIEW (Phase 17: full boot info for in/mid/out; live e1000/IPC path deferred) |
+| Guest datapath smoke | UNIT + REVIEW (Phase 18: synthetic in→mid→out IPC forward + e1000 doorbell) |
+| IPC forwarding integrity | UNIT (Phase 18 host-side malicious IPC tests) |
 
 QEMU is not sufficient proof for silicon-specific properties.

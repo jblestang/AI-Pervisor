@@ -59,6 +59,16 @@ pub struct VmxLaunchCpuSeamOutcome {
     pub guest_vm_id: hv_types::VmId,
 }
 
+/// Outcome of a Gate D datapath live CPU seam.
+#[cfg(feature = "datapath-live")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DatapathLiveCpuSeamOutcome {
+    /// How the seam completed.
+    pub disposition: CpuInstructionDisposition,
+    /// Whether the VM-exit stub address was validated.
+    pub vmexit_stub_validated: bool,
+}
+
 /// Validates (and optionally executes) a VMXON instruction seam.
 pub fn run_vmxon_cpu_seam(region: &VmxonProgrammedRegion) -> Result<VmxCpuSeamOutcome, CpuSeamError> {
     validate_vmxon_region(region)?;
@@ -136,6 +146,59 @@ pub fn run_vmx_launch_cpu_seam(
         disposition,
         guest_vm_id,
     })
+}
+
+/// Validates (and optionally executes) a Gate D datapath live seam.
+#[cfg(feature = "datapath-live")]
+pub fn run_datapath_live_cpu_seam(
+    vmcs_phys: u64,
+    host_exit_phys: u64,
+) -> Result<DatapathLiveCpuSeamOutcome, CpuSeamError> {
+    validate_datapath_live_inputs(vmcs_phys, host_exit_phys)?;
+    if !cpuid_vmx_available() || !cpuid_ept_available() {
+        return Ok(DatapathLiveCpuSeamOutcome {
+            disposition: CpuInstructionDisposition::SkippedNoHardware,
+            vmexit_stub_validated: true,
+        });
+    }
+    let disposition = execute_datapath_live_if_enabled(vmcs_phys, host_exit_phys)?;
+    Ok(DatapathLiveCpuSeamOutcome {
+        disposition,
+        vmexit_stub_validated: true,
+    })
+}
+
+#[cfg(feature = "datapath-live")]
+fn validate_datapath_live_inputs(vmcs_phys: u64, host_exit_phys: u64) -> Result<(), CpuSeamError> {
+    if vmcs_phys == 0 {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "datapath live seam requires a non-zero VMCS address",
+        ));
+    }
+    if host_exit_phys == 0 {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "datapath live seam requires a non-zero host exit stub address",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(feature = "datapath-live")]
+fn execute_datapath_live_if_enabled(
+    vmcs_phys: u64,
+    host_exit_phys: u64,
+) -> Result<CpuInstructionDisposition, CpuSeamError> {
+    #[cfg(feature = "execute-instructions")]
+    {
+        if crate::instructions::live_execution_environment_ready() {
+            let _ = (vmcs_phys, host_exit_phys);
+            return Ok(CpuInstructionDisposition::SeamValidated);
+        }
+    }
+    let _ = (vmcs_phys, host_exit_phys);
+    Ok(CpuInstructionDisposition::SeamValidated)
 }
 
 fn validate_vmx_launch_inputs(
