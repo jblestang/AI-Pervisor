@@ -13,6 +13,7 @@ workspace = true
 default = ["cpu-seams"]
 cpu-seams = ["hv-hypervisor-boot/cpu-seams"]
 live-execution = ["cpu-seams", "hv-hypervisor-boot/live-execution"]
+real-hw-execution = ["live-execution", "hv-hypervisor-boot/real-hw-execution"]
 
 [dependencies]
 hv-hypervisor-boot = { workspace = true, features = ["cpu-seams"] }

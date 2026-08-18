@@ -62,7 +62,7 @@ impl VmxBackend for CpuSeamVmxBackend {
 impl EptBackend for CpuSeamEptBackend {
     fn install_ept(&mut self, plan: &EptInitPlan) -> Result<(), EptError> {
         let tables = program_ept_tables(plan)?;
-        let seam = run_ept_pointer_cpu_seam(&tables).map_err(map_cpu_seam_to_ept)?;
+        let seam = run_ept_pointer_cpu_seam(&tables, None).map_err(map_cpu_seam_to_ept)?;
         self.install_calls = self.install_calls.saturating_add(1);
         self.last_tables = Some(tables);
         self.last_seam = Some(seam);

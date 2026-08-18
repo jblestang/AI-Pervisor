@@ -7,6 +7,12 @@
 extern crate alloc;
 
 use hv_boot_abi::HypervisorTransferHeader;
+#[cfg(feature = "real-hw-execution")]
+use hv_hypervisor_efi::{
+    boot_hypervisor_from_transfer_real_hw, RealHwBootMarkers, REAL_HW_BOOT_SUCCESS_MARKER,
+    REAL_HW_EPT_EXECUTED_MARKER, REAL_HW_VMXON_EXECUTED_MARKER, UefiPageAllocator,
+};
+#[cfg(not(feature = "real-hw-execution"))]
 use hv_hypervisor_efi::boot_hypervisor_from_transfer;
 use uefi::prelude::*;
 use uefi::system::with_config_table;
@@ -32,18 +38,48 @@ fn efi_main() -> Status {
 
 fn run_hypervisor() -> Result<(), &'static str> {
     let transfer = locate_transfer_blob()?;
-    boot_hypervisor_from_transfer(
-        transfer,
-        &CONFIG_DIGEST,
-        &REQUIREMENTS_SNAPSHOT,
-        &LAYOUT_SNAPSHOT,
-    )
+    #[cfg(feature = "real-hw-execution")]
+    {
+        let mut allocator = UefiPageAllocator::new();
+        let markers = boot_hypervisor_from_transfer_real_hw(
+            transfer,
+            &CONFIG_DIGEST,
+            &REQUIREMENTS_SNAPSHOT,
+            &LAYOUT_SNAPSHOT,
+            &mut allocator,
+        )
+        .map_err(|err| {
+            log::error!("hypervisor REAL_HW boot failed: {err}");
+            "hypervisor REAL_HW boot and Gate C init failed"
+        })?;
+        log_real_hw_markers(&markers);
+        log::info!("{REAL_HW_BOOT_SUCCESS_MARKER}");
+    }
+    #[cfg(not(feature = "real-hw-execution"))]
+    {
+        boot_hypervisor_from_transfer(
+            transfer,
+            &CONFIG_DIGEST,
+            &REQUIREMENTS_SNAPSHOT,
+            &LAYOUT_SNAPSHOT,
+        )
         .map_err(|err| {
             log::error!("hypervisor boot failed: {err}");
             "hypervisor boot and Gate C init failed"
         })?;
-    log::info!("hypervisor Gate C boot succeeded");
+        log::info!("hypervisor Gate C boot succeeded");
+    }
     Ok(())
+}
+
+#[cfg(feature = "real-hw-execution")]
+fn log_real_hw_markers(markers: &RealHwBootMarkers) {
+    if markers.vmxon_executed {
+        log::info!("{REAL_HW_VMXON_EXECUTED_MARKER}");
+    }
+    if markers.ept_executed {
+        log::info!("{REAL_HW_EPT_EXECUTED_MARKER}");
+    }
 }
 
 fn locate_transfer_blob() -> Result<&'static [u8], &'static str> {

@@ -5,12 +5,20 @@
 use hv_x86_cpu::{
     execute_vmxon, execute_vtd_enable, last_vtd_enable_intent, live_execution_environment_ready,
     live_execution_runtime_enabled, read_vmx_basic_msr, run_vmxon_cpu_seam,
-    vmx_revision_from_basic_msr, CpuInstructionDisposition, CpuSeamErrorKind, VtdEnableIntent,
+    vmx_revision_from_basic_msr, CpuInstructionDisposition, CpuSeamErrorKind,
+    HV_X86_LIVE_INSTRUCTIONS_ENABLED, HV_X86_LIVE_INSTRUCTIONS_ENV, VtdEnableIntent,
 };
 
 #[test]
 fn live_execution_runtime_stays_disabled_without_env_var() {
-    assert!(!live_execution_runtime_enabled());
+    if cfg!(feature = "firmware-live-execution")
+        || std::env::var(HV_X86_LIVE_INSTRUCTIONS_ENV).ok().as_deref()
+            == Some(HV_X86_LIVE_INSTRUCTIONS_ENABLED)
+    {
+        assert!(live_execution_runtime_enabled());
+    } else {
+        assert!(!live_execution_runtime_enabled());
+    }
     assert!(!live_execution_environment_ready());
 }
 

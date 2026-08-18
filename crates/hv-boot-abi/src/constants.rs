@@ -35,3 +35,10 @@ pub const DMAR_MIN_LENGTH: usize = 0x30;
 
 /// DMAR flags bit indicating interrupt remapping support.
 pub const DMAR_FLAG_INTR_REMAP: u8 = 0x01;
+
+/// Serial log marker emitted after successful REAL_HW Gate C init.
+pub const REAL_HW_BOOT_SUCCESS_MARKER: &str = "hypervisor Gate C REAL_HW boot succeeded";
+/// Serial log marker emitted when VMXON executes under REAL_HW Gate C.
+pub const REAL_HW_VMXON_EXECUTED_MARKER: &str = "REAL_HW: VMXON Executed";
+/// Serial log marker emitted when EPT pointer load executes under REAL_HW Gate C.
+pub const REAL_HW_EPT_EXECUTED_MARKER: &str = "REAL_HW: EPT pointer Executed";

@@ -29,3 +29,8 @@ pub use hv_hypervisor_boot::{
     boot_from_transfer_and_init_gate_c_live_execution,
     boot_from_transfer_and_init_gate_c_live_execution_from_snapshots, GateCLiveExecutionResult,
 };
+#[cfg(feature = "real-hw-execution")]
+pub use hv_hypervisor_boot::{
+    boot_check_and_init_gate_c_real_hw, boot_from_transfer_and_init_gate_c_real_hw,
+    boot_from_transfer_and_init_gate_c_real_hw_from_snapshots, GateCRealHwResult,
+};

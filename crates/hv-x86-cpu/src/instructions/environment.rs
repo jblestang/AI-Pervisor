@@ -1,5 +1,11 @@
 //! Host execution environment probes for live privileged instructions.
 
+use crate::constants::{
+    HV_X86_LIVE_INSTRUCTIONS_ENABLED, HV_X86_LIVE_INSTRUCTIONS_ENV, X86_CPL_MASK, X86_RING_0,
+};
+#[cfg(test)]
+use crate::constants::HV_X86_LIVE_INSTRUCTIONS_DISABLED;
+
 #[cfg(test)]
 use core::sync::atomic::{AtomicBool, Ordering};
 
@@ -15,7 +21,7 @@ pub fn current_privilege_level() -> u8 {
             options(nomem, nostack, preserves_flags),
         );
     }
-    (cs & 0x3) as u8
+    (cs & X86_CPL_MASK) as u8
 }
 
 /// Non-x86 targets report ring 3 so live execution stays disabled.
@@ -27,15 +33,31 @@ pub fn current_privilege_level() -> u8 {
 /// Returns whether live privileged instruction execution is enabled at runtime.
 #[cfg(all(feature = "execute-instructions", feature = "std"))]
 pub fn live_execution_runtime_enabled() -> bool {
-    match std::env::var("HV_X86_LIVE_INSTRUCTIONS") {
-        Ok(value) => value == "1",
+    if firmware_live_execution_enabled() {
+        return true;
+    }
+    match std::env::var(HV_X86_LIVE_INSTRUCTIONS_ENV) {
+        Ok(value) => value == HV_X86_LIVE_INSTRUCTIONS_ENABLED,
         Err(_) => false,
     }
 }
 
-/// Without `std`, runtime opt-in is unavailable.
+/// Firmware builds opt in at compile time via `firmware-live-execution`.
 #[cfg(all(feature = "execute-instructions", not(feature = "std")))]
 pub fn live_execution_runtime_enabled() -> bool {
+    firmware_live_execution_enabled()
+}
+
+/// Compile-time firmware opt-in for ring-0 live execution without env vars.
+/// Returns whether this build opted into firmware ring-0 live execution.
+#[cfg(feature = "firmware-live-execution")]
+pub fn firmware_live_execution_enabled() -> bool {
+    true
+}
+
+/// Returns whether this build opted into firmware ring-0 live execution.
+#[cfg(not(feature = "firmware-live-execution"))]
+pub fn firmware_live_execution_enabled() -> bool {
     false
 }
 
@@ -63,7 +85,7 @@ pub fn live_execution_environment_ready() -> bool {
     if !live_execution_runtime_enabled() {
         return false;
     }
-    current_privilege_level() == 0
+    current_privilege_level() == X86_RING_0
 }
 
 #[cfg(test)]
@@ -78,7 +100,40 @@ mod tests {
 
     #[test]
     fn live_execution_runtime_disabled_without_env_var() {
+        if cfg!(feature = "firmware-live-execution") {
+            assert!(live_execution_runtime_enabled());
+            return;
+        }
         assert!(!live_execution_runtime_enabled());
+    }
+
+    #[test]
+    fn live_execution_runtime_rejects_zero_env_var() {
+        if cfg!(feature = "firmware-live-execution") {
+            return;
+        }
+        std::env::set_var(HV_X86_LIVE_INSTRUCTIONS_ENV, HV_X86_LIVE_INSTRUCTIONS_DISABLED);
+        assert!(!live_execution_runtime_enabled());
+        std::env::remove_var(HV_X86_LIVE_INSTRUCTIONS_ENV);
+    }
+
+    #[test]
+    fn firmware_live_execution_enabled_reflects_feature() {
+        if cfg!(feature = "firmware-live-execution") {
+            assert!(firmware_live_execution_enabled());
+        } else {
+            assert!(!firmware_live_execution_enabled());
+        }
+    }
+
+    #[test]
+    fn live_execution_runtime_honors_env_var_when_set() {
+        if cfg!(feature = "firmware-live-execution") {
+            return;
+        }
+        std::env::set_var(HV_X86_LIVE_INSTRUCTIONS_ENV, HV_X86_LIVE_INSTRUCTIONS_ENABLED);
+        assert!(live_execution_runtime_enabled());
+        std::env::remove_var(HV_X86_LIVE_INSTRUCTIONS_ENV);
     }
 
     #[test]
@@ -92,7 +147,7 @@ mod tests {
     #[test]
     fn live_execution_environment_not_ready_in_userspace() {
         if cfg!(target_arch = "x86_64") && live_execution_runtime_enabled() {
-            assert_ne!(current_privilege_level(), 0);
+            assert_ne!(current_privilege_level(), X86_RING_0);
         }
         assert!(!live_execution_environment_ready());
     }

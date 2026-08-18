@@ -13,13 +13,16 @@ use std::path::Path;
 use std::process::Command as ProcessCommand;
 
 mod constants;
+mod live_qemu_smoke;
 mod ovmf_smoke;
 
 use clap::{Parser, Subcommand};
 use constants::{
     DEFAULT_BOOT_CHAIN_OUTPUT_DIR, DEFAULT_COVERAGE_MIN_LINES, DEFAULT_EFI_CONFIG_PATH,
     DEFAULT_EFI_OUTPUT_PATH, DEFAULT_FUZZ_RUNS, DEFAULT_HYPERVISOR_EFI_OUTPUT_PATH,
+    DEFAULT_LIVE_BOOT_CHAIN_OUTPUT_DIR, DEFAULT_LIVE_QEMU_SMOKE_TIMEOUT_SECS,
     DEFAULT_OVMF_SMOKE_CONFIG_PATH, DEFAULT_OVMF_SMOKE_TIMEOUT_SECS,
+    HYPERVISOR_EFI_REAL_HW_FEATURE,
 };
 use hv_config::constants::DEFAULT_CONFIG_OUTPUT_DIR;
 
@@ -126,6 +129,16 @@ pub fn run_ovmf_smoke_boot(
     ovmf_smoke::run_ovmf_smoke_boot(config_path, boot_chain_dir, timeout_secs, build_first)
 }
 
+/// Runs a KVM/QEMU REAL_HW smoke boot of the loader + hypervisor chain.
+pub fn run_live_qemu_smoke(
+    config_path: &str,
+    boot_chain_dir: &str,
+    timeout_secs: u64,
+    build_first: bool,
+) -> i32 {
+    live_qemu_smoke::run_live_qemu_smoke(config_path, boot_chain_dir, timeout_secs, build_first)
+}
+
 /// Builds loader and hypervisor `.efi` images into one output directory.
 pub fn run_build_boot_chain(config_path: &str, output_dir: &str) -> i32 {
     run_build_boot_chain_with(
@@ -190,6 +203,70 @@ fn run_build_boot_chain_with(
     0
 }
 
+/// Builds loader and REAL_HW hypervisor `.efi` images into one output directory.
+pub fn run_build_boot_chain_live(config_path: &str, output_dir: &str) -> i32 {
+    run_build_boot_chain_live_with(
+        config_path,
+        output_dir,
+        run_config_generate,
+        run_with_cxx_gpp,
+        build_efi_image,
+        build_hypervisor_efi_image_live,
+    )
+}
+
+fn run_build_boot_chain_live_with(
+    config_path: &str,
+    output_dir: &str,
+    generate: fn(&str, &str) -> i32,
+    install_target: fn(&str, &[&str]) -> i32,
+    build_loader: fn(&std::path::Path, &str) -> i32,
+    build_hypervisor: fn(&std::path::Path, &str, &str) -> i32,
+) -> i32 {
+    let workspace = workspace_root();
+    let output = workspace.join(output_dir);
+    if std::fs::create_dir_all(&output).is_err() {
+        eprintln!(
+            "failed to create boot-chain output directory: {}",
+            output.display()
+        );
+        return 1;
+    }
+
+    let loader_output = output.join("hv-loader.efi");
+    let hypervisor_output = output.join("hv-hypervisor.efi");
+    let loader_path = loader_output.to_string_lossy().into_owned();
+    let hypervisor_path = hypervisor_output.to_string_lossy().into_owned();
+
+    if run_build_efi_with(
+        config_path,
+        &loader_path,
+        generate,
+        install_target,
+        build_loader,
+    ) != 0
+    {
+        return 1;
+    }
+    if run_build_hypervisor_efi_with(
+        config_path,
+        &hypervisor_path,
+        generate,
+        install_target,
+        build_hypervisor,
+    ) != 0
+    {
+        return 1;
+    }
+
+    eprintln!(
+        "built REAL_HW boot chain: {} and {}",
+        loader_output.display(),
+        hypervisor_output.display()
+    );
+    0
+}
+
 fn run_build_hypervisor_efi_with(
     config_path: &str,
     output_path: &str,
@@ -241,19 +318,35 @@ fn build_hypervisor_efi_image(
     digest_path: &str,
     config_path: &str,
 ) -> i32 {
-    build_hypervisor_efi_image_with(workspace, digest_path, config_path, run_command)
+    build_hypervisor_efi_image_with(workspace, digest_path, config_path, &[], run_command)
+}
+
+fn build_hypervisor_efi_image_live(
+    workspace: &std::path::Path,
+    digest_path: &str,
+    config_path: &str,
+) -> i32 {
+    build_hypervisor_efi_image_with(
+        workspace,
+        digest_path,
+        config_path,
+        &[HYPERVISOR_EFI_REAL_HW_FEATURE],
+        run_command,
+    )
 }
 
 fn build_hypervisor_efi_image_with(
     workspace: &std::path::Path,
     digest_path: &str,
     config_path: &str,
+    features: &[&str],
     runner: fn(ProcessCommand) -> i32,
 ) -> i32 {
     runner(hypervisor_efi_build_command(
         workspace,
         digest_path,
         config_path,
+        features,
     ))
 }
 
@@ -261,6 +354,7 @@ fn hypervisor_efi_build_command(
     workspace: &std::path::Path,
     digest_path: &str,
     config_path: &str,
+    features: &[&str],
 ) -> ProcessCommand {
     let mut command = ProcessCommand::new("cargo");
     command
@@ -275,6 +369,9 @@ fn hypervisor_efi_build_command(
         ])
         .env("HV_HYPERVISOR_EMBEDDED_CONFIG_PATH", "build/hypervisor_embedded_config.rs")
         .env("CXX", "g++");
+    if !features.is_empty() {
+        command.args(["--features", &features.join(",")]);
+    }
     let _ = (digest_path, config_path);
     command
 }
@@ -447,25 +544,66 @@ fn coverage_command_with(min_lines: u8, spawn: CoverageSpawnFn) -> i32 {
     evaluate_coverage_output(min_lines, &stdout, success)
 }
 
+type CoveragePassRunner = fn(&[&str]) -> bool;
+
+fn run_llvm_cov_pass(args: &[&str]) -> bool {
+    ProcessCommand::new("cargo")
+        .arg("llvm-cov")
+        .args(args)
+        .arg("--no-report")
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+}
+
 fn spawn_llvm_cov_summary(min_lines: u8) -> Result<(String, String, bool), i32> {
     let mut command = ProcessCommand::new("cargo");
-    spawn_llvm_cov_summary_with(min_lines, &mut command)
+    spawn_llvm_cov_summary_with(min_lines, &mut command, run_llvm_cov_pass)
 }
 
 fn spawn_llvm_cov_summary_with(
     min_lines: u8,
     command: &mut ProcessCommand,
+    pass_runner: CoveragePassRunner,
 ) -> Result<(String, String, bool), i32> {
     let threshold = min_lines.to_string();
+    if !pass_runner(&["--workspace"]) {
+        return Ok((String::new(), String::new(), false));
+    }
+    if !pass_runner(&[
+        "-p",
+        "hv-hypervisor-boot",
+        "--features",
+        HYPERVISOR_EFI_REAL_HW_FEATURE,
+    ]) {
+        return Ok((String::new(), String::new(), false));
+    }
+    if !pass_runner(&[
+        "-p",
+        "hv-x86-cpu",
+        "--features",
+        "execute-instructions,std,firmware-live-execution",
+    ]) {
+        return Ok((String::new(), String::new(), false));
+    }
+    if !pass_runner(&[
+        "-p",
+        "hv-hypervisor-efi",
+        "--features",
+        HYPERVISOR_EFI_REAL_HW_FEATURE,
+    ]) {
+        return Ok((String::new(), String::new(), false));
+    }
+
     command.args([
         "llvm-cov",
-        "--workspace",
+        "report",
         "--summary-only",
         "--fail-under-lines",
         threshold.as_str(),
     ]);
     let status = command.output().map_err(|err| {
-        eprintln!("failed to run coverage: {err}");
+        eprintln!("failed to run coverage report: {err}");
         1
     })?;
 
@@ -512,12 +650,21 @@ fn dispatch_task_with(task: TaskCommand, runner: fn(&str, &[&str]) -> i32) -> i3
         TaskCommand::BuildBootChain { config, output_dir } => {
             run_build_boot_chain(&config, &output_dir)
         }
+        TaskCommand::BuildBootChainLive { config, output_dir } => {
+            run_build_boot_chain_live(&config, &output_dir)
+        }
         TaskCommand::OvmfSmokeBoot {
             config,
             boot_chain_dir,
             timeout_secs,
             build,
         } => run_ovmf_smoke_boot(&config, &boot_chain_dir, timeout_secs, build),
+        TaskCommand::LiveQemuSmoke {
+            config,
+            boot_chain_dir,
+            timeout_secs,
+            build,
+        } => run_live_qemu_smoke(&config, &boot_chain_dir, timeout_secs, build),
         TaskCommand::ConfigValidate { path } => run_config_validate(&path),
         TaskCommand::ConfigGenerate { path, output } => run_config_generate(&path, &output),
     }
@@ -580,6 +727,15 @@ enum TaskCommandCli {
         #[arg(long, default_value = DEFAULT_BOOT_CHAIN_OUTPUT_DIR)]
         output_dir: String,
     },
+    /// Build loader and REAL_HW hypervisor `.efi` images for KVM live smoke testing.
+    BuildBootChainLive {
+        /// Path to YAML configuration used to embed artifacts.
+        #[arg(long, default_value = DEFAULT_EFI_CONFIG_PATH)]
+        config: String,
+        /// Output directory for boot-chain images.
+        #[arg(long, default_value = DEFAULT_LIVE_BOOT_CHAIN_OUTPUT_DIR)]
+        output_dir: String,
+    },
     /// Boot the loader + hypervisor chain under OVMF/QEMU and verify serial output.
     OvmfSmokeBoot {
         /// Path to YAML configuration used when `--build` is set.
@@ -592,6 +748,21 @@ enum TaskCommandCli {
         #[arg(long, default_value_t = DEFAULT_OVMF_SMOKE_TIMEOUT_SECS)]
         timeout_secs: u64,
         /// Skip rebuilding the boot chain (requires existing `.efi` images).
+        #[arg(long, default_value_t = false)]
+        no_build: bool,
+    },
+    /// Boot the loader + REAL_HW hypervisor chain under KVM/QEMU and verify serial output.
+    LiveQemuSmoke {
+        /// Path to YAML configuration used when `--build` is set.
+        #[arg(long, default_value = DEFAULT_EFI_CONFIG_PATH)]
+        config: String,
+        /// Directory containing `hv-loader.efi` and `hv-hypervisor.efi`.
+        #[arg(long, default_value = DEFAULT_LIVE_BOOT_CHAIN_OUTPUT_DIR)]
+        boot_chain_dir: String,
+        /// Maximum seconds to wait for KVM/QEMU before evaluating the serial log.
+        #[arg(long, default_value_t = DEFAULT_LIVE_QEMU_SMOKE_TIMEOUT_SECS)]
+        timeout_secs: u64,
+        /// Skip rebuilding the REAL_HW boot chain (requires existing `.efi` images).
         #[arg(long, default_value_t = false)]
         no_build: bool,
     },
@@ -628,12 +799,26 @@ pub(crate) fn map_cli_command(command: TaskCommandCli) -> TaskCommand {
         TaskCommandCli::BuildBootChain { config, output_dir } => {
             TaskCommand::BuildBootChain { config, output_dir }
         }
+        TaskCommandCli::BuildBootChainLive { config, output_dir } => {
+            TaskCommand::BuildBootChainLive { config, output_dir }
+        }
         TaskCommandCli::OvmfSmokeBoot {
             config,
             boot_chain_dir,
             timeout_secs,
             no_build,
         } => TaskCommand::OvmfSmokeBoot {
+            config,
+            boot_chain_dir,
+            timeout_secs,
+            build: !no_build,
+        },
+        TaskCommandCli::LiveQemuSmoke {
+            config,
+            boot_chain_dir,
+            timeout_secs,
+            no_build,
+        } => TaskCommand::LiveQemuSmoke {
             config,
             boot_chain_dir,
             timeout_secs,
@@ -696,6 +881,13 @@ pub enum TaskCommand {
         /// Output directory for boot-chain images.
         output_dir: String,
     },
+    /// Build loader and REAL_HW hypervisor `.efi` images for KVM live smoke testing.
+    BuildBootChainLive {
+        /// Path to YAML configuration used to embed artifacts.
+        config: String,
+        /// Output directory for boot-chain images.
+        output_dir: String,
+    },
     /// Boot the loader + hypervisor chain under OVMF/QEMU and verify serial output.
     OvmfSmokeBoot {
         /// Path to YAML configuration used when building the boot chain.
@@ -705,6 +897,17 @@ pub enum TaskCommand {
         /// Maximum seconds to wait for OVMF/QEMU before evaluating the serial log.
         timeout_secs: u64,
         /// Build the boot chain before launching QEMU.
+        build: bool,
+    },
+    /// Boot the loader + REAL_HW hypervisor chain under KVM/QEMU and verify serial output.
+    LiveQemuSmoke {
+        /// Path to YAML configuration used when building the boot chain.
+        config: String,
+        /// Directory containing `hv-loader.efi` and `hv-hypervisor.efi`.
+        boot_chain_dir: String,
+        /// Maximum seconds to wait for KVM/QEMU before evaluating the serial log.
+        timeout_secs: u64,
+        /// Build the REAL_HW boot chain before launching QEMU.
         build: bool,
     },
     /// Validate a configuration file.
@@ -863,12 +1066,16 @@ mod tests {
 
     #[test]
     fn spawn_llvm_cov_summary_with_mock_command_reads_output() {
+        fn mock_pass(args: &[&str]) -> bool {
+            let _ = args;
+            true
+        }
         let mut command = ProcessCommand::new("sh");
         command
             .arg("-c")
             .arg("echo 'TOTAL  2018  290  85.63%  457  55  87.96%  4088  204  95.01%  0  0  -'");
         let (stdout, stderr, success) =
-            spawn_llvm_cov_summary_with(95, &mut command).expect("spawn");
+            spawn_llvm_cov_summary_with(95, &mut command, mock_pass).expect("spawn");
         assert!(stdout.contains("TOTAL"));
         assert!(stderr.is_empty());
         assert!(success);
@@ -884,6 +1091,138 @@ mod tests {
     #[test]
     fn run_tests_invokes_cargo_test_workspace() {
         assert_eq!(run_tests_with(mock_test_runner), 0);
+    }
+
+    #[test]
+    fn run_tests_with_delegates_to_test_command() {
+        assert_eq!(run_tests_with(|_, _| 0), 0);
+    }
+
+    #[test]
+    fn run_build_boot_chain_live_with_mock_pipeline_succeeds() {
+        let workspace = workspace_root();
+        let output_dir = workspace.join("build/mock-live-boot-chain");
+        let _ = std::fs::remove_dir_all(&output_dir);
+        let write_loader = |workspace: &std::path::Path, _digest: &str| {
+            let source = workspace
+                .join("crates/hv-loader-efi-bin/target/x86_64-unknown-uefi/release/hv-loader.efi");
+            std::fs::create_dir_all(source.parent().expect("parent")).expect("dir");
+            std::fs::write(&source, b"mock-loader").expect("write");
+            0
+        };
+        let write_hypervisor = |workspace: &std::path::Path, _digest: &str, _config: &str| {
+            let source = workspace.join(
+                "crates/hv-hypervisor-efi-bin/target/x86_64-unknown-uefi/release/hv-hypervisor.efi",
+            );
+            std::fs::create_dir_all(source.parent().expect("parent")).expect("dir");
+            std::fs::write(&source, b"mock-hypervisor").expect("write");
+            0
+        };
+        assert_eq!(
+            run_build_boot_chain_live_with(
+                "configs/qemu.yaml",
+                "build/mock-live-boot-chain",
+                |_, _| 0,
+                |_, _| 0,
+                write_loader,
+                write_hypervisor,
+            ),
+            0
+        );
+        assert!(output_dir.join("hv-loader.efi").is_file());
+        assert!(output_dir.join("hv-hypervisor.efi").is_file());
+    }
+
+    #[test]
+    fn hypervisor_efi_build_command_passes_real_hw_features() {
+        let workspace = workspace_root();
+        let command = hypervisor_efi_build_command(
+            &workspace,
+            "/tmp/config.sha256",
+            "/tmp/config.yaml",
+            &[HYPERVISOR_EFI_REAL_HW_FEATURE],
+        );
+        let args: Vec<_> = command.get_args().collect();
+        assert!(args.iter().any(|arg| *arg == "--features"));
+        assert!(args.iter().any(|arg| {
+            arg.to_string_lossy().contains(HYPERVISOR_EFI_REAL_HW_FEATURE)
+        }));
+    }
+
+    #[test]
+    fn run_build_hypervisor_efi_delegates_to_pipeline() {
+        assert_ne!(
+            run_build_hypervisor_efi("/no/such/config.yaml", "build/out.efi"),
+            0
+        );
+    }
+
+    #[test]
+    fn run_build_efi_delegates_to_pipeline() {
+        assert_ne!(run_build_efi("/no/such/config.yaml", "build/out.efi"), 0);
+    }
+
+    #[test]
+    fn run_tests_with_mock_runner() {
+        assert_eq!(run_tests_with(|_, _| 0), 0);
+    }
+
+    #[test]
+    fn run_build_boot_chain_delegates_to_pipeline() {
+        assert_ne!(
+            run_build_boot_chain("/no/such/config.yaml", "build/out"),
+            0
+        );
+    }
+
+    #[test]
+    fn run_build_boot_chain_live_delegates_to_pipeline() {
+        assert_ne!(
+            run_build_boot_chain_live("/no/such/config.yaml", "build/out"),
+            0
+        );
+    }
+
+    #[test]
+    fn run_build_hypervisor_efi_with_mock_pipeline_succeeds() {
+        let workspace = workspace_root();
+        let output = workspace.join("build/mock-hypervisor.efi");
+        let _ = std::fs::remove_file(&output);
+        let write_hypervisor = |workspace: &std::path::Path, _digest: &str, _config: &str| {
+            let source = workspace.join(
+                "crates/hv-hypervisor-efi-bin/target/x86_64-unknown-uefi/release/hv-hypervisor.efi",
+            );
+            std::fs::create_dir_all(source.parent().expect("parent")).expect("dir");
+            std::fs::write(&source, b"mock-hypervisor").expect("write");
+            0
+        };
+        assert_eq!(
+            run_build_hypervisor_efi_with(
+                "configs/qemu.yaml",
+                "build/mock-hypervisor.efi",
+                |_, _| 0,
+                |_, _| 0,
+                write_hypervisor,
+            ),
+            0
+        );
+        assert!(output.is_file());
+    }
+
+    #[test]
+    fn run_live_qemu_smoke_and_ovmf_wrappers_are_callable() {
+        let _ = run_ovmf_smoke_boot(
+            "configs/qemu.yaml",
+            "build/missing-ovmf-chain",
+            1,
+            false,
+        );
+        let _ = run_live_qemu_smoke(
+            "configs/qemu.yaml",
+            "build/missing-live-chain",
+            1,
+            false,
+        );
     }
 
     #[test]
@@ -927,6 +1266,31 @@ mod tests {
             Err(9)
         }
         assert_eq!(coverage_command_with(95, mock_spawn_fail), 9);
+    }
+
+    #[test]
+    fn dispatch_task_routes_live_boot_chain_and_smoke_commands() {
+        assert_ne!(
+            dispatch_task(TaskCommand::BuildBootChainLive {
+                config: "/no/such/config.yaml".into(),
+                output_dir: "build/out".into(),
+            }),
+            0
+        );
+        let smoke_status = dispatch_task(TaskCommand::LiveQemuSmoke {
+            config: String::from(DEFAULT_EFI_CONFIG_PATH),
+            boot_chain_dir: String::from("build/missing-live-chain-dispatch"),
+            timeout_secs: 1,
+            build: false,
+        });
+        assert_eq!(
+            smoke_status,
+            if super::live_qemu_smoke::live_qemu_hardware_ready() {
+                1
+            } else {
+                0
+            }
+        );
     }
 
     #[test]
@@ -1056,13 +1420,34 @@ mod tests {
                 build: false,
             }
         );
+        assert_eq!(
+            parse_task_command(["xtask", "build-boot-chain-live"]).expect("parse live boot chain"),
+            TaskCommand::BuildBootChainLive {
+                config: String::from(DEFAULT_EFI_CONFIG_PATH),
+                output_dir: String::from(DEFAULT_LIVE_BOOT_CHAIN_OUTPUT_DIR),
+            }
+        );
+        assert_eq!(
+            parse_task_command(["xtask", "live-qemu-smoke"]).expect("parse live qemu smoke"),
+            TaskCommand::LiveQemuSmoke {
+                config: String::from(DEFAULT_EFI_CONFIG_PATH),
+                boot_chain_dir: String::from(DEFAULT_LIVE_BOOT_CHAIN_OUTPUT_DIR),
+                timeout_secs: DEFAULT_LIVE_QEMU_SMOKE_TIMEOUT_SECS,
+                build: true,
+            }
+        );
     }
 
     #[test]
     fn hypervisor_efi_build_command_sets_release_uefi_manifest_and_env() {
         let workspace = workspace_root();
         let command =
-            hypervisor_efi_build_command(&workspace, "/tmp/config.sha256", "/tmp/config.yaml");
+            hypervisor_efi_build_command(
+                &workspace,
+                "/tmp/config.sha256",
+                "/tmp/config.yaml",
+                &[],
+            );
         assert_eq!(command.get_program(), "cargo");
         let args: Vec<_> = command.get_args().collect();
         assert!(args.iter().any(|arg| *arg == "--release"));
@@ -1076,6 +1461,68 @@ mod tests {
         assert!(env_keys
             .iter()
             .any(|key| key == "HV_HYPERVISOR_EMBEDDED_CONFIG_PATH"));
+    }
+
+    #[test]
+    fn run_build_boot_chain_with_propagates_loader_build_failure() {
+        assert_eq!(
+            run_build_boot_chain_with(
+                "configs/qemu.yaml",
+                "build/mock-boot-chain-fail",
+                |_, _| 0,
+                |_, _| 0,
+                |_, _| 1,
+                |_, _, _| 0,
+            ),
+            1
+        );
+    }
+
+    #[test]
+    fn run_build_boot_chain_with_propagates_hypervisor_build_failure() {
+        assert_eq!(
+            run_build_boot_chain_with(
+                "configs/qemu.yaml",
+                "build/mock-boot-chain-fail-hv",
+                |_, _| 0,
+                |_, _| 0,
+                |_, _| 0,
+                |_, _, _| 1,
+            ),
+            1
+        );
+    }
+
+    #[test]
+    fn run_build_boot_chain_live_with_propagates_loader_build_failure() {
+        assert_eq!(
+            run_build_boot_chain_live_with(
+                "configs/qemu.yaml",
+                "build/mock-live-boot-chain-fail",
+                |_, _| 0,
+                |_, _| 0,
+                |_, _| 1,
+                |_, _, _| 0,
+            ),
+            1
+        );
+    }
+
+    #[test]
+    fn copy_hypervisor_efi_artifact_succeeds_when_source_exists() {
+        let workspace = workspace_root();
+        let source = workspace.join(
+            "crates/hv-hypervisor-efi-bin/target/x86_64-unknown-uefi/release/hv-hypervisor.efi",
+        );
+        std::fs::create_dir_all(source.parent().expect("parent")).expect("dir");
+        std::fs::write(&source, b"mock-hypervisor").expect("write");
+        let output = workspace.join("build/mock-copy-hypervisor.efi");
+        let _ = std::fs::remove_file(&output);
+        assert_eq!(
+            copy_hypervisor_efi_artifact(output.to_str().expect("path")),
+            0
+        );
+        assert!(output.is_file());
     }
 
     #[test]
