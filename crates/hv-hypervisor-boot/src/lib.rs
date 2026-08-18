@@ -19,6 +19,11 @@ pub use gate_c::{
     boot_from_transfer_and_init_gate_c_programming_from_snapshots, GateCInitResult,
     GateCProgrammingResult,
 };
+#[cfg(feature = "cpu-seams")]
+pub use gate_c::{
+    boot_check_and_init_gate_c_cpu_seam, boot_from_transfer_and_init_gate_c_cpu_seam,
+    boot_from_transfer_and_init_gate_c_cpu_seam_from_snapshots, GateCCpuSeamResult,
+};
 pub use snapshot::{
     layout_snapshot_from_platform_ir, platform_requirements_from_snapshot,
     requirements_snapshot_from_platform, static_platform_ir_from_layout_snapshot,

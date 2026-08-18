@@ -17,6 +17,12 @@ use hv_vtd::{
     VtdError, VtdInitPlan, VtdProgrammedTables,
 };
 
+#[cfg(feature = "cpu-seams")]
+use hv_x86_cpu::{
+    CpuSeamEptBackend, CpuSeamVmxBackend, CpuSeamVtdBackend, EptCpuSeamOutcome, VmxCpuSeamOutcome,
+    VtdCpuSeamOutcome,
+};
+
 use crate::boot::boot_check;
 use crate::error::{BootCheckError, BootCheckErrorKind};
 use crate::snapshot::{
@@ -50,6 +56,65 @@ pub struct GateCProgrammingResult {
     pub ept_tables: Option<EptProgrammedTables>,
     /// Programmed VT-d tables when VT-d init ran.
     pub vtd_tables: Option<VtdProgrammedTables>,
+}
+
+/// Result of Gate C init using CPU instruction seams after structure programming.
+#[cfg(feature = "cpu-seams")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GateCCpuSeamResult {
+    /// Shared Gate C programming output (plans + programmed structures).
+    pub programming: GateCProgrammingResult,
+    /// VMXON CPU seam outcome when VMX init ran.
+    pub vmx_seam: Option<VmxCpuSeamOutcome>,
+    /// EPT pointer CPU seam outcome when EPT init ran.
+    pub ept_seam: Option<EptCpuSeamOutcome>,
+    /// VT-d enable CPU seam outcome when VT-d init ran.
+    pub vtd_seam: Option<VtdCpuSeamOutcome>,
+}
+
+/// Runs transfer boot checks and Gate C CPU seam init using snapshot + layout metadata.
+#[cfg(feature = "cpu-seams")]
+pub fn boot_from_transfer_and_init_gate_c_cpu_seam(
+    transfer: &[u8],
+    snapshot: &RequirementsSnapshot,
+    layout: &StaticPlatformIR,
+) -> Result<GateCCpuSeamResult, BootCheckError> {
+    let requirements = platform_requirements_from_snapshot(snapshot)?;
+    let (validated, warnings) =
+        boot_from_transfer(transfer, &snapshot.config_digest, &requirements)?;
+    init_gate_c_cpu_seam_from_validated(&requirements, layout, &validated, warnings)
+}
+
+/// Runs transfer boot checks and Gate C CPU seam init using embedded snapshots.
+#[cfg(feature = "cpu-seams")]
+pub fn boot_from_transfer_and_init_gate_c_cpu_seam_from_snapshots(
+    transfer: &[u8],
+    requirements: &RequirementsSnapshot,
+    layout: &LayoutSnapshot,
+) -> Result<GateCCpuSeamResult, BootCheckError> {
+    let platform_requirements = platform_requirements_from_snapshot(requirements)?;
+    let static_layout = static_platform_ir_from_layout_snapshot(layout, requirements)?;
+    let (validated, warnings) =
+        boot_from_transfer(transfer, &requirements.config_digest, &platform_requirements)?;
+    init_gate_c_cpu_seam_from_validated(&platform_requirements, &static_layout, &validated, warnings)
+}
+
+/// Runs boot checks from raw inputs and Gate C CPU seam init.
+#[cfg(feature = "cpu-seams")]
+pub fn boot_check_and_init_gate_c_cpu_seam(
+    boot_info_bytes: &[u8],
+    expected_config_digest: &[u8; SHA256_DIGEST_BYTES],
+    requirements: &PlatformRequirements,
+    observation: &hv_platform_model::ObservationInputs,
+    layout: &StaticPlatformIR,
+) -> Result<GateCCpuSeamResult, BootCheckError> {
+    let (validated, warnings) = boot_check(
+        boot_info_bytes,
+        expected_config_digest,
+        requirements,
+        observation,
+    )?;
+    init_gate_c_cpu_seam_from_validated(requirements, layout, &validated, warnings)
 }
 
 /// Runs transfer boot checks and mock-backed Gate C init using embedded snapshots.
@@ -231,6 +296,62 @@ fn init_gate_c_programming_from_validated(
     })
 }
 
+#[cfg(feature = "cpu-seams")]
+fn init_gate_c_cpu_seam_from_validated(
+    requirements: &PlatformRequirements,
+    layout: &StaticPlatformIR,
+    validated: &ValidatedPlatform,
+    warnings: alloc::vec::Vec<PlatformWarning>,
+) -> Result<GateCCpuSeamResult, BootCheckError> {
+    let vmx_plan = plan_vmx_init(&layout.hypervisor_reserve).map_err(map_vmx_error)?;
+    let ept_plan = plan_ept_init(layout, &vmx_plan).map_err(map_ept_error)?;
+    let interrupt_remapping = matches!(
+        requirements.interrupt_remapping,
+        FeatureRequirement::Required | FeatureRequirement::Preferred
+    );
+    let vtd_plan = plan_vtd_init(layout, interrupt_remapping).map_err(map_vtd_error)?;
+
+    let mut vmx_backend = CpuSeamVmxBackend::default();
+    init_vmx_if_required(
+        &mut vmx_backend,
+        &vmx_plan,
+        validated,
+        requirements.vmx,
+    )?;
+    let mut ept_backend = CpuSeamEptBackend::default();
+    init_ept_if_required(
+        &mut ept_backend,
+        &ept_plan,
+        validated,
+        requirements.ept,
+    )?;
+    let mut vtd_backend = CpuSeamVtdBackend::default();
+    init_vtd_if_required(
+        &mut vtd_backend,
+        &vtd_plan,
+        validated,
+        requirements.vtd,
+    )?;
+
+    Ok(GateCCpuSeamResult {
+        programming: GateCProgrammingResult {
+            init: GateCInitResult {
+                validated: validated.clone(),
+                warnings,
+                vmx_plan,
+                ept_plan,
+                vtd_plan,
+            },
+            vmxon_region: vmx_backend.last_region,
+            ept_tables: ept_backend.last_tables,
+            vtd_tables: vtd_backend.last_tables,
+        },
+        vmx_seam: vmx_backend.last_seam,
+        ept_seam: ept_backend.last_seam,
+        vtd_seam: vtd_backend.last_seam,
+    })
+}
+
 fn init_vmx_if_required<B: VmxBackend>(
     backend: &mut B,
     plan: &VmxInitPlan,
@@ -277,4 +398,26 @@ fn map_ept_error(err: EptError) -> BootCheckError {
 
 fn map_vtd_error(err: VtdError) -> BootCheckError {
     BootCheckError::new(BootCheckErrorKind::Platform, err.message)
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod gate_c_map_tests {
+    use super::*;
+    use hv_ept::EptErrorKind;
+    use hv_vmx::VmxErrorKind;
+    use hv_vtd::VtdErrorKind;
+
+    #[test]
+    fn map_error_helpers_wrap_platform_failures() {
+        let vmx = map_vmx_error(VmxError::new(VmxErrorKind::Backend, "vmx backend"));
+        let ept = map_ept_error(EptError::new(EptErrorKind::Planning, "ept plan"));
+        let vtd = map_vtd_error(VtdError::new(VtdErrorKind::Backend, "vtd backend"));
+        assert_eq!(vmx.kind, BootCheckErrorKind::Platform);
+        assert_eq!(ept.kind, BootCheckErrorKind::Platform);
+        assert_eq!(vtd.kind, BootCheckErrorKind::Platform);
+        assert!(vmx.message.contains("vmx backend"));
+        assert!(ept.message.contains("ept plan"));
+        assert!(vtd.message.contains("vtd backend"));
+    }
 }

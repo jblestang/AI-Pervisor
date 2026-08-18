@@ -1,0 +1,26 @@
+[package]
+name = "hv-x86-cpu"
+description = "x86 CPU instruction seams for Gate C hardware bring-up (host-only)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = []
+execute-instructions = []
+
+[dependencies]
+hv-ept = { path = "../hv-ept" }
+hv-vmx = { path = "../hv-vmx" }
+hv-vtd = { path = "../hv-vtd" }
+
+[dev-dependencies]
+hv-config-model = { workspace = true, features = ["std"] }
+hv-ept = { workspace = true }
+hv-platform-model = { workspace = true, features = ["std"] }
+hv-vmx = { workspace = true }
+hv-vtd = { workspace = true }
