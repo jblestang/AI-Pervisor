@@ -91,6 +91,8 @@ Firmware PCI discovery uses legacy CF8/CFC config ports on segment 0. It walks b
 | `hv-loader-efi-bin` | UEFI loader application (`hv-loader.efi`) |
 | `hv-loader-efi` | Portable handoff + transfer helpers used by host tests and firmware |
 | `hv-hypervisor-efi-bin` | UEFI hypervisor application (`hv-hypervisor.efi`) |
-| `hv-hypervisor-efi` | Portable Gate B boot + mock VMX init entry used by host tests and firmware |
-| `hv-hypervisor-boot` | Portable observe/validate/VMX orchestration (`no_std` + `alloc`) |
-| `hv-vmx` | VMX init plan and backend abstraction (mock backend in Phase 9) |
+| `hv-hypervisor-efi` | Portable Gate C boot + mock VMX/EPT/VT-d init entry used by host tests and firmware |
+| `hv-hypervisor-boot` | Portable observe/validate/Gate C orchestration (`no_std` + `alloc`) |
+| `hv-vmx` | VMX init plan and backend abstraction (mock backend) |
+| `hv-ept` | EPT init plan and backend abstraction (mock backend) |
+| `hv-vtd` | VT-d init plan and backend abstraction (mock backend) |
