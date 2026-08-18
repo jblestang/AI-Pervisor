@@ -1,6 +1,6 @@
 //! Gate C initialization after Gate B boot validation.
 
-use hv_boot_abi::RequirementsSnapshot;
+use hv_boot_abi::{LayoutSnapshot, RequirementsSnapshot};
 use hv_config_model::{FeatureRequirement, PlatformRequirements};
 use hv_ept::{
     ept_init_required, init_ept, plan_ept_init, EptBackend, EptInitPlan, EptError, MockEptBackend,
@@ -16,7 +16,9 @@ use hv_vtd::{
 
 use crate::boot::boot_check;
 use crate::error::{BootCheckError, BootCheckErrorKind};
-use crate::snapshot::platform_requirements_from_snapshot;
+use crate::snapshot::{
+    platform_requirements_from_snapshot, static_platform_ir_from_layout_snapshot,
+};
 use crate::transfer::boot_from_transfer;
 
 /// Result of Gate B validation followed by Gate C planning and mock-backed init.
@@ -32,6 +34,19 @@ pub struct GateCInitResult {
     pub ept_plan: EptInitPlan,
     /// VT-d init plan derived from static layout metadata.
     pub vtd_plan: VtdInitPlan,
+}
+
+/// Runs transfer boot checks and mock-backed Gate C init using embedded snapshots.
+pub fn boot_from_transfer_and_init_gate_c_from_snapshots(
+    transfer: &[u8],
+    requirements: &RequirementsSnapshot,
+    layout: &LayoutSnapshot,
+) -> Result<GateCInitResult, BootCheckError> {
+    let platform_requirements = platform_requirements_from_snapshot(requirements)?;
+    let static_layout = static_platform_ir_from_layout_snapshot(layout, requirements)?;
+    let (validated, warnings) =
+        boot_from_transfer(transfer, &requirements.config_digest, &platform_requirements)?;
+    init_gate_c_from_validated(&platform_requirements, &static_layout, &validated, warnings)
 }
 
 /// Runs transfer boot checks and mock-backed Gate C init using snapshot + layout metadata.

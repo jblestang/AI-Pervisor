@@ -10,7 +10,9 @@
 
 pub use hv_hypervisor_boot::{
     boot_check, boot_check_and_init_gate_c, boot_check_and_init_vmx, boot_from_transfer,
-    boot_from_transfer_and_init_gate_c, boot_from_transfer_and_init_vmx, boot_from_transfer_snapshot,
-    platform_requirements_from_snapshot, requirements_snapshot_from_platform, BootAndVmxResult,
-    BootCheckError, BootCheckErrorKind, GateCInitResult,
+    boot_from_transfer_and_init_gate_c, boot_from_transfer_and_init_gate_c_from_snapshots,
+    boot_from_transfer_and_init_vmx, boot_from_transfer_snapshot,
+    layout_snapshot_from_platform_ir, platform_requirements_from_snapshot,
+    requirements_snapshot_from_platform, static_platform_ir_from_layout_snapshot,
+    BootAndVmxResult, BootCheckError, BootCheckErrorKind, GateCInitResult,
 };

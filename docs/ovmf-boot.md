@@ -1,6 +1,6 @@
 # OVMF boot integration
 
-Phase 9 extends the boot chain: the loader publishes transfer ABI v2 (with `published_alloc_size`), and the hypervisor runs full Gate B validation plus mock-backed VMX init before returning `EFI_SUCCESS`.
+Phase 11 extends the boot chain: the hypervisor embeds both a requirements snapshot and a compact layout snapshot, then runs full Gate C validation plus mock-backed VMX/EPT/VT-d init before returning `EFI_SUCCESS`.
 
 ## Build the boot chain
 
@@ -11,7 +11,7 @@ cargo xtask build-boot-chain
 This:
 
 1. Generates configuration artifacts under `build/` (including `config.sha256`)
-2. Embeds the digest into the loader image and digest + requirements snapshot into the hypervisor image
+2. Embeds the digest, requirements snapshot, and layout snapshot into the hypervisor image
 3. Builds `build/boot-chain/hv-loader.efi` and `build/boot-chain/hv-hypervisor.efi` for `x86_64-unknown-uefi`
 
 Individual images:
@@ -50,9 +50,9 @@ qemu-system-x86_64 \
   -serial stdio
 ```
 
-On success the loader chain-loads the hypervisor, which validates the published transfer blob, runs platform observation and fail-closed requirements compare, plans VMX init from the embedded reserve metadata, and invokes the mock VMX backend (Phase 9). The hypervisor then returns `EFI_SUCCESS`. OVMF then returns to the Boot Manager menu (expected for UEFI apps that exit successfully).
+On success the loader chain-loads the hypervisor, which validates the published transfer blob, runs platform observation and fail-closed requirements compare, reconstructs static layout from the embedded layout snapshot, and invokes mock VMX/EPT/VT-d backends (Phase 11 Gate C). The hypervisor then returns `EFI_SUCCESS`. OVMF then returns to the Boot Manager menu (expected for UEFI apps that exit successfully).
 
-Automated verification (uses `configs/ovmf-smoke.yaml`, which relaxes VMX/EPT requirements for TCG-backed QEMU; host tests cover mock VMX init with production `configs/qemu.yaml`):
+Automated verification (uses `configs/ovmf-smoke.yaml`, which relaxes VMX/EPT/VT-d requirements for TCG-backed QEMU; host tests cover Gate C with production `configs/qemu.yaml`):
 
 ```bash
 cargo xtask ovmf-smoke-boot
@@ -91,6 +91,8 @@ Firmware PCI discovery uses legacy CF8/CFC config ports on segment 0. It walks b
 | `hv-loader-efi-bin` | UEFI loader application (`hv-loader.efi`) |
 | `hv-loader-efi` | Portable handoff + transfer helpers used by host tests and firmware |
 | `hv-hypervisor-efi-bin` | UEFI hypervisor application (`hv-hypervisor.efi`) |
-| `hv-hypervisor-efi` | Portable Gate B boot + mock VMX init entry used by host tests and firmware |
-| `hv-hypervisor-boot` | Portable observe/validate/VMX orchestration (`no_std` + `alloc`) |
-| `hv-vmx` | VMX init plan and backend abstraction (mock backend in Phase 9) |
+| `hv-hypervisor-efi` | Portable Gate C boot + mock VMX/EPT/VT-d init entry used by host tests and firmware |
+| `hv-hypervisor-boot` | Portable observe/validate/Gate C orchestration (`no_std` + `alloc`) |
+| `hv-vmx` | VMX init plan and backend abstraction (mock backend) |
+| `hv-ept` | EPT init plan and backend abstraction (mock backend) |
+| `hv-vtd` | VT-d init plan and backend abstraction (mock backend) |

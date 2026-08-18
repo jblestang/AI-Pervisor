@@ -12,7 +12,8 @@
 | 8 | B | Hypervisor transfer ABI, UEFI chain-load, PCI enumeration, requirements snapshot embedding |
 | 9 | B | Transfer ABI v2 hardening, VMX init foundation (mock backend), Gate B closure on UEFI hypervisor path |
 | 10 | C (start) | EPT/VT-d init planning, mock backends, host-tested Gate C orchestration |
-| 11+ | C–D | Hardware VMXON/EPT/VT-d, UEFI Gate C, datapath |
+| 11 | C | Embedded layout snapshot, UEFI Gate C closure (mock VMX/EPT/VT-d) |
+| 12+ | C–D | Hardware VMXON/EPT/VT-d, datapath |
 
 Phases 0–3 complete Gate A. Phase 4 begins Gate B with host-side platform validation and deterministic layout planning.
 
@@ -24,7 +25,7 @@ Phases 0–3 complete Gate A. Phase 4 begins Gate B with host-side platform vali
 | `hv-config-model` | YAML model, validation, normalization, platform requirements, static intent IR |
 | `hv-platform-model` | Observed platform validation, runtime observation, static platform IR planning |
 | `hv-acpi-walk` | RSDP → XSDT/RSDT ACPI table discovery in firmware memory |
-| `hv-boot-abi` | Loader to hypervisor boot ABI (header, descriptors, parse-only views) |
+| `hv-boot-abi` | Loader to hypervisor boot ABI (header, descriptors, requirements/layout snapshots, parse-only views) |
 | `hv-loader` | Boot info blob construction, firmware memory fixtures, handoff bundle |
 | `hv-loader-efi` | Portable UEFI loader entry (`uefi_loader_entry`) |
 | `hv-loader-efi-bin` | UEFI application binary (`hv-loader.efi`) |
@@ -63,7 +64,7 @@ The runtime must consume only compiled artifacts. Partition names such as `in`, 
 - **Gate C (before e1000):** EPT/VT-d/IRQ isolation and lifecycle
 - **Gate D (before optimization):** end-to-end datapath and malicious tests
 
-Phases 0–3 complete Gate A. Phase 4 adds observed-platform validation and static layout planning (Gate B foundation). Phase 5 wires the boot path: the loader builds a versioned boot info blob, the hypervisor parses it, observes firmware inputs, and runs fail-closed platform validation before VMX setup. Phase 6 replaces the interim flattened ACPI contract with RSDP-directed table discovery and introduces the portable UEFI loader entry crate. Phase 7 builds the UEFI application (`hv-loader.efi`) that collects runtime firmware inputs and runs the handoff under OVMF. Phase 8 publishes the hypervisor transfer blob, chain-loads `hv-hypervisor.efi`, and enumerates PCI devices at firmware boot. Phase 9 closes Gate B on the UEFI hypervisor path: transfer ABI v2 binds loader allocation size, the hypervisor runs full observe/validate plus mock-backed VMX init, and `hv-vmx`/`hv-hypervisor-boot` split portable orchestration from host tests. Phase 10 begins Gate C foundation: `hv-ept` and `hv-vtd` mirror the VMX planning seam with mock backends, and `boot_from_transfer_and_init_gate_c()` chains VMX + EPT + VT-d init on the host path (UEFI hypervisor remains Gate B until layout embedding). All parsing surfaces are fuzzed via libFuzzer (`fuzz/`, `cargo xtask fuzz`); see [fuzzing.md](fuzzing.md). OVMF boot: [ovmf-boot.md](ovmf-boot.md).
+Phases 0–3 complete Gate A. Phase 4 adds observed-platform validation and static layout planning (Gate B foundation). Phase 5 wires the boot path: the loader builds a versioned boot info blob, the hypervisor parses it, observes firmware inputs, and runs fail-closed platform validation before VMX setup. Phase 6 replaces the interim flattened ACPI contract with RSDP-directed table discovery and introduces the portable UEFI loader entry crate. Phase 7 builds the UEFI application (`hv-loader.efi`) that collects runtime firmware inputs and runs the handoff under OVMF. Phase 8 publishes the hypervisor transfer blob, chain-loads `hv-hypervisor.efi`, and enumerates PCI devices at firmware boot. Phase 9 closes Gate B on the UEFI hypervisor path: transfer ABI v2 binds loader allocation size, the hypervisor runs full observe/validate plus mock-backed VMX init, and `hv-vmx`/`hv-hypervisor-boot` split portable orchestration from host tests. Phase 10 begins Gate C foundation: `hv-ept` and `hv-vtd` mirror the VMX planning seam with mock backends, and `boot_from_transfer_and_init_gate_c()` chains VMX + EPT + VT-d init on the host path. Phase 11 closes Gate C on the UEFI hypervisor path: `LayoutSnapshot` is embedded alongside the requirements snapshot, and firmware runs full Gate C mock init via `boot_from_transfer_and_init_gate_c_from_snapshots()`. All parsing surfaces are fuzzed via libFuzzer (`fuzz/`, `cargo xtask fuzz`); see [fuzzing.md](fuzzing.md). OVMF boot: [ovmf-boot.md](ovmf-boot.md).
 
 ## No-panic policy
 

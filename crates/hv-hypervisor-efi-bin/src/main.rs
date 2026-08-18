@@ -32,12 +32,17 @@ fn efi_main() -> Status {
 
 fn run_hypervisor() -> Result<(), &'static str> {
     let transfer = locate_transfer_blob()?;
-    boot_hypervisor_from_transfer(transfer, &CONFIG_DIGEST, &REQUIREMENTS_SNAPSHOT)
+    boot_hypervisor_from_transfer(
+        transfer,
+        &CONFIG_DIGEST,
+        &REQUIREMENTS_SNAPSHOT,
+        &LAYOUT_SNAPSHOT,
+    )
         .map_err(|err| {
             log::error!("hypervisor boot failed: {err}");
-            "hypervisor boot and VMX init failed"
+            "hypervisor boot and Gate C init failed"
         })?;
-    log::info!("hypervisor Gate B boot succeeded");
+    log::info!("hypervisor Gate C boot succeeded");
     Ok(())
 }
 
