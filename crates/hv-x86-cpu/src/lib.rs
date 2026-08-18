@@ -19,6 +19,7 @@ extern crate alloc;
 extern crate std;
 
 mod backends;
+mod constants;
 mod cpuid;
 mod error;
 mod instructions;
@@ -27,7 +28,11 @@ mod resident_backends;
 mod seams;
 
 pub use backends::{CpuSeamEptBackend, CpuSeamVmxBackend, CpuSeamVtdBackend};
-pub use cpuid::{cpuid_ept_available, cpuid_vmx_available, cpuid_vtd_available};
+pub use constants::{
+    CR4_VMXE_BIT, HV_X86_LIVE_INSTRUCTIONS_DISABLED, HV_X86_LIVE_INSTRUCTIONS_ENABLED,
+    HV_X86_LIVE_INSTRUCTIONS_ENV, HV_X86_LIVE_VMXON_UNAVAILABLE, HV_X86_LIVE_VTD_UNAVAILABLE,
+    VMCS_EPT_POINTER_FIELD, VMXON_REVISION_PREFIX_BYTES, X86_CPL_MASK, X86_RING_0,
+};
 pub use error::{CpuSeamError, CpuSeamErrorKind};
 pub use instructions::{
     current_privilege_level, execute_ept_pointer_load, execute_vmxon, execute_vtd_enable,

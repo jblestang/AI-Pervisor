@@ -1,8 +1,13 @@
 //! CPU instruction seams for Gate C hardware bring-up.
 
-use hv_ept::EptProgrammedTables;
-use hv_vmx::VmxonProgrammedRegion;
+use hv_ept::{
+    EptProgrammedTables, EPT_POINTER_MEMORY_TYPE_SHIFT, EPT_POINTER_MEMORY_TYPE_WB,
+    EPT_POINTER_PAGE_WALK_LENGTH, EPT_POINTER_PAGE_WALK_LENGTH_SHIFT, EPT_ROOT_TABLE_BYTES,
+};
+use hv_vmx::{VmxonProgrammedRegion, VMXON_REGION_MIN_BYTES};
 use hv_vtd::VtdProgrammedTables;
+
+use crate::constants::VMXON_REVISION_PREFIX_BYTES;
 
 use crate::cpuid::{cpuid_ept_available, cpuid_vmx_available, cpuid_vtd_available};
 use crate::error::{CpuSeamError, CpuSeamErrorKind};
@@ -105,7 +110,7 @@ pub fn run_vtd_enable_cpu_seam(
 }
 
 fn validate_vmxon_region(region: &VmxonProgrammedRegion) -> Result<(), CpuSeamError> {
-    if region.bytes.len() < 4096 {
+    if region.bytes.len() < VMXON_REGION_MIN_BYTES as usize {
         return Err(CpuSeamError::new(
             CpuSeamErrorKind::InvalidInput,
             "VMXON region smaller than one page",
@@ -113,7 +118,7 @@ fn validate_vmxon_region(region: &VmxonProgrammedRegion) -> Result<(), CpuSeamEr
     }
     let revision = region
         .bytes
-        .get(0..4)
+        .get(0..VMXON_REVISION_PREFIX_BYTES)
         .ok_or_else(|| {
             CpuSeamError::new(
                 CpuSeamErrorKind::InvalidInput,
@@ -138,7 +143,7 @@ fn validate_vmxon_region(region: &VmxonProgrammedRegion) -> Result<(), CpuSeamEr
 }
 
 fn validate_ept_tables(tables: &EptProgrammedTables) -> Result<(), CpuSeamError> {
-    if tables.root_table.len() < 4096 {
+    if tables.root_table.len() < EPT_ROOT_TABLE_BYTES as usize {
         return Err(CpuSeamError::new(
             CpuSeamErrorKind::InvalidInput,
             "EPT root table smaller than one page",
@@ -154,9 +159,8 @@ fn validate_ept_tables(tables: &EptProgrammedTables) -> Result<(), CpuSeamError>
 }
 
 fn encode_ept_pointer(root_table_phys: u64) -> u64 {
-    // Memory type WB (6) in bits 5:3, page-walk length 3 (2) in bits 8:6.
-    let memory_type = 6u64 << 3;
-    let page_walk_length = 2u64 << 6;
+    let memory_type = EPT_POINTER_MEMORY_TYPE_WB << EPT_POINTER_MEMORY_TYPE_SHIFT;
+    let page_walk_length = EPT_POINTER_PAGE_WALK_LENGTH << EPT_POINTER_PAGE_WALK_LENGTH_SHIFT;
     root_table_phys | memory_type | page_walk_length
 }
 
@@ -210,7 +214,10 @@ mod tests {
     use super::*;
     use hv_config_model::compile_config_from_str;
     use crate::cpuid::{cpuid_ept_available, cpuid_vtd_available};
-    use hv_ept::{plan_ept_init, program_ept_tables, EptProgrammedMapping, EptProgrammedTables};
+    use hv_ept::{
+        plan_ept_init, program_ept_tables, EptProgrammedMapping, EptProgrammedTables,
+        EPT_PAGE_OFFSET_MASK, EPT_PAGE_SIZE_BYTES,
+    };
     use hv_platform_model::plan_static_platform_ir;
     use hv_vmx::{plan_vmx_init, program_vmxon_region, REFERENCE_VMXON_REVISION};
     use hv_vtd::{plan_vtd_init, program_vtd_tables};
@@ -302,7 +309,7 @@ mod tests {
     #[test]
     fn run_vmxon_cpu_seam_rejects_zero_revision() {
         let mut region = reference_vmxon_region();
-        if let Some(prefix) = region.bytes.get_mut(0..4) {
+        if let Some(prefix) = region.bytes.get_mut(0..VMXON_REVISION_PREFIX_BYTES) {
             prefix.copy_from_slice(&0u32.to_le_bytes());
         }
         assert!(run_vmxon_cpu_seam(&region).is_err());
@@ -314,7 +321,7 @@ mod tests {
         let outcome = run_ept_pointer_cpu_seam(&tables, None).expect("seam");
         if cpuid_ept_available() {
             assert_eq!(outcome.disposition, CpuInstructionDisposition::SeamValidated);
-            assert_ne!(outcome.ept_pointer & 0xFFF, 0);
+            assert_ne!(outcome.ept_pointer & EPT_PAGE_OFFSET_MASK, 0);
         } else {
             assert_eq!(
                 outcome.disposition,
@@ -351,7 +358,7 @@ mod tests {
     fn run_ept_pointer_cpu_seam_rejects_empty_mappings() {
         let tables = EptProgrammedTables {
             root_table_phys: 0x2000,
-            root_table: alloc::vec![0u8; 4096],
+            root_table: alloc::vec![0u8; EPT_ROOT_TABLE_BYTES as usize],
             mappings: alloc::vec::Vec::new(),
         };
         assert!(run_ept_pointer_cpu_seam(&tables, None).is_err());
@@ -365,7 +372,7 @@ mod tests {
             mappings: alloc::vec![EptProgrammedMapping {
                 guest_phys: 0,
                 host_phys: 0,
-                size_bytes: 4096,
+                size_bytes: EPT_PAGE_SIZE_BYTES,
                 encoded_entry: 1,
             }],
         };

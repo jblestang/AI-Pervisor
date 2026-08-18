@@ -1,13 +1,18 @@
 //! Host physical page installation for REAL_HW Gate C bring-up.
 
 use hv_ept::EptProgrammedTables;
-use hv_vmx::{VmxonProgrammedRegion, REFERENCE_VMXON_REVISION};
+use hv_vmx::{
+    VmxonProgrammedRegion, VMXON_REGION_ALIGNMENT_BYTES, VMXON_REGION_MIN_BYTES,
+    REFERENCE_VMXON_REVISION,
+};
+
+use crate::constants::VMXON_REVISION_PREFIX_BYTES;
 
 use crate::error::{CpuSeamError, CpuSeamErrorKind};
 use crate::instructions::{read_vmx_basic_msr, vmx_revision_from_basic_msr};
 
 /// Minimum VMCS region size (one page).
-pub const VMCS_REGION_BYTES: usize = 4096;
+pub const VMCS_REGION_BYTES: usize = VMXON_REGION_MIN_BYTES as usize;
 
 /// Installs programmed bytes into host physical pages.
 pub trait PageAllocator {
@@ -36,7 +41,7 @@ pub fn install_vmxon_region<A: PageAllocator>(
             "VMXON region bytes must not be empty",
         ));
     }
-    let host_phys = allocator.allocate_pages(region.bytes.len(), 4096)?;
+    let host_phys = allocator.allocate_pages(region.bytes.len(), VMXON_REGION_ALIGNMENT_BYTES)?;
     allocator.copy_to_pages(host_phys, &region.bytes)?;
     Ok(VmxonProgrammedRegion {
         host_phys,
@@ -55,7 +60,7 @@ pub fn install_ept_tables<A: PageAllocator>(
             "EPT root table bytes must not be empty",
         ));
     }
-    let root_table_phys = allocator.allocate_pages(tables.root_table.len(), 4096)?;
+    let root_table_phys = allocator.allocate_pages(tables.root_table.len(), VMXON_REGION_ALIGNMENT_BYTES)?;
     allocator.copy_to_pages(root_table_phys, &tables.root_table)?;
     Ok(EptProgrammedTables {
         root_table_phys,
@@ -70,10 +75,10 @@ pub fn install_vmcs_region<A: PageAllocator>(
 ) -> Result<u64, CpuSeamError> {
     let revision = resolve_vmxon_revision();
     let mut bytes = alloc::vec![0u8; VMCS_REGION_BYTES];
-    if let Some(prefix) = bytes.get_mut(0..4) {
+    if let Some(prefix) = bytes.get_mut(0..VMXON_REVISION_PREFIX_BYTES) {
         prefix.copy_from_slice(&revision.to_le_bytes());
     }
-    let host_phys = allocator.allocate_pages(bytes.len(), 4096)?;
+    let host_phys = allocator.allocate_pages(bytes.len(), VMXON_REGION_ALIGNMENT_BYTES)?;
     allocator.copy_to_pages(host_phys, &bytes)?;
     Ok(host_phys)
 }
@@ -147,6 +152,7 @@ impl PageAllocator for MockPageAllocator {
 #[allow(clippy::expect_used)]
 mod tests {
     use super::*;
+    use hv_ept::{EPT_PAGE_SIZE_BYTES, EPT_ROOT_TABLE_BYTES};
     use hv_config_model::compile_config_from_str;
     use hv_ept::{plan_ept_init, program_ept_tables};
     use hv_platform_model::plan_static_platform_ir;
@@ -186,20 +192,22 @@ mod tests {
     fn install_vmcs_region_allocates_revision_prefix_page() {
         let mut allocator = MockPageAllocator::new(0x0000_0000_0300_0000);
         let vmcs_phys = install_vmcs_region(&mut allocator).expect("install vmcs");
-        assert_eq!(vmcs_phys & 0xFFF, 0);
+        assert_eq!(vmcs_phys & (EPT_PAGE_SIZE_BYTES - 1), 0);
         assert_eq!(allocator.copies.len(), 1);
     }
 
     #[test]
     fn resident_mock_allocator_rejects_zero_size() {
         let mut allocator = MockPageAllocator::new(0x1000);
-        assert!(allocator.allocate_pages(0, 4096).is_err());
+        assert!(allocator.allocate_pages(0, VMXON_REGION_ALIGNMENT_BYTES).is_err());
     }
 
     #[test]
     fn resident_mock_copy_rejects_zero_target() {
         let mut allocator = MockPageAllocator::new(0x1000);
-        let phys = allocator.allocate_pages(4096, 4096).expect("allocate");
+        let phys = allocator
+            .allocate_pages(EPT_ROOT_TABLE_BYTES as usize, VMXON_REGION_ALIGNMENT_BYTES)
+            .expect("allocate");
         assert!(allocator.copy_to_pages(0, &[0u8; 16]).is_err());
         assert!(allocator.copy_to_pages(phys, &[0u8; 16]).is_ok());
     }
@@ -207,8 +215,8 @@ mod tests {
     #[test]
     fn resident_mock_allocator_rejects_invalid_alignment() {
         let mut allocator = MockPageAllocator::new(0x1000);
-        assert!(allocator.allocate_pages(4096, 0).is_err());
-        assert!(allocator.allocate_pages(4096, 3).is_err());
+        assert!(allocator.allocate_pages(EPT_ROOT_TABLE_BYTES as usize, 0).is_err());
+        assert!(allocator.allocate_pages(EPT_ROOT_TABLE_BYTES as usize, 3).is_err());
     }
 
     #[test]

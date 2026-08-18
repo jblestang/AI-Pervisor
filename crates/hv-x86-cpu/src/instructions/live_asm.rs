@@ -7,11 +7,12 @@
     not(coverage)
 ))]
 
+use crate::constants::{CR4_VMXE_BIT, VMCS_EPT_POINTER_FIELD};
 use crate::error::{CpuSeamError, CpuSeamErrorKind};
 
 pub fn enable_vmx_in_cr4() -> Result<(), CpuSeamError> {
     let cr4 = read_cr4();
-    let vmxe_mask = 1u64 << 13;
+    let vmxe_mask = 1u64 << CR4_VMXE_BIT;
     if cr4 & vmxe_mask == 0 {
         write_cr4(cr4 | vmxe_mask);
     }
@@ -91,7 +92,6 @@ pub fn vmptrld(vmcs_phys: u64) -> Result<(), CpuSeamError> {
 }
 
 pub fn vmwrite_ept_pointer(value: u64) -> Result<(), CpuSeamError> {
-    const VMCS_EPT_POINTER: u32 = 0x0000_201A;
     let mut cf: u8;
     let mut zf: u8;
     // SAFETY: VMWRITE is defined when executing in VMX root operation with a valid VMCS.
@@ -100,7 +100,7 @@ pub fn vmwrite_ept_pointer(value: u64) -> Result<(), CpuSeamError> {
             "vmwrite {field}, {value}",
             "setc {cf}",
             "setz {zf}",
-            field = in(reg) u64::from(VMCS_EPT_POINTER),
+            field = in(reg) u64::from(VMCS_EPT_POINTER_FIELD),
             value = in(reg) value,
             cf = out(reg_byte) cf,
             zf = out(reg_byte) zf,

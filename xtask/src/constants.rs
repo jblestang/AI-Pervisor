@@ -1,5 +1,29 @@
 //! xtask-specific constants.
 
+/// Cargo feature enabling REAL_HW hypervisor EFI builds.
+pub const HYPERVISOR_EFI_REAL_HW_FEATURE: &str = "real-hw-execution";
+
+/// OVMF serial marker emitted when BDS attempts to boot an application.
+pub const OVMF_BOOT_ATTEMPT_MARKER: &str = "BdsDxe: starting Boot";
+
+/// OVMF serial marker substring indicating a boot application failure.
+pub const OVMF_BOOT_FAILURE_MARKER: &str = "failed to start Boot";
+
+/// Guest RAM for smoke boots; must satisfy `configs/qemu.yaml` `min_ram_gib`.
+pub const SMOKE_GUEST_MEMORY_MIB: &str = "8192";
+
+/// SMP topology for smoke boots; must satisfy `configs/qemu.yaml` `min_physical_cores`.
+pub const SMOKE_GUEST_SMP: &str = "4";
+
+/// QEMU machine/accel for OVMF TCG smoke boot.
+pub const OVMF_SMOKE_MACHINE: &str = "q35,accel=tcg";
+
+/// QEMU machine/accel for KVM live REAL_HW smoke boot.
+pub const LIVE_QEMU_MACHINE: &str = "q35,accel=kvm";
+
+/// QEMU CPU model for KVM live REAL_HW smoke boot.
+pub const LIVE_QEMU_CPU: &str = "host";
+
 /// Default minimum required line coverage percentage.
 pub const DEFAULT_COVERAGE_MIN_LINES: u8 = 95;
 

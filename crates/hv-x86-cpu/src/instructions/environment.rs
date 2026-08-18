@@ -1,5 +1,11 @@
 //! Host execution environment probes for live privileged instructions.
 
+use crate::constants::{
+    HV_X86_LIVE_INSTRUCTIONS_ENABLED, HV_X86_LIVE_INSTRUCTIONS_ENV, X86_CPL_MASK, X86_RING_0,
+};
+#[cfg(test)]
+use crate::constants::HV_X86_LIVE_INSTRUCTIONS_DISABLED;
+
 #[cfg(test)]
 use core::sync::atomic::{AtomicBool, Ordering};
 
@@ -15,7 +21,7 @@ pub fn current_privilege_level() -> u8 {
             options(nomem, nostack, preserves_flags),
         );
     }
-    (cs & 0x3) as u8
+    (cs & X86_CPL_MASK) as u8
 }
 
 /// Non-x86 targets report ring 3 so live execution stays disabled.
@@ -30,8 +36,8 @@ pub fn live_execution_runtime_enabled() -> bool {
     if firmware_live_execution_enabled() {
         return true;
     }
-    match std::env::var("HV_X86_LIVE_INSTRUCTIONS") {
-        Ok(value) => value == "1",
+    match std::env::var(HV_X86_LIVE_INSTRUCTIONS_ENV) {
+        Ok(value) => value == HV_X86_LIVE_INSTRUCTIONS_ENABLED,
         Err(_) => false,
     }
 }
@@ -79,7 +85,7 @@ pub fn live_execution_environment_ready() -> bool {
     if !live_execution_runtime_enabled() {
         return false;
     }
-    current_privilege_level() == 0
+    current_privilege_level() == X86_RING_0
 }
 
 #[cfg(test)]
@@ -106,9 +112,9 @@ mod tests {
         if cfg!(feature = "firmware-live-execution") {
             return;
         }
-        std::env::set_var("HV_X86_LIVE_INSTRUCTIONS", "0");
+        std::env::set_var(HV_X86_LIVE_INSTRUCTIONS_ENV, HV_X86_LIVE_INSTRUCTIONS_DISABLED);
         assert!(!live_execution_runtime_enabled());
-        std::env::remove_var("HV_X86_LIVE_INSTRUCTIONS");
+        std::env::remove_var(HV_X86_LIVE_INSTRUCTIONS_ENV);
     }
 
     #[test]
@@ -125,9 +131,9 @@ mod tests {
         if cfg!(feature = "firmware-live-execution") {
             return;
         }
-        std::env::set_var("HV_X86_LIVE_INSTRUCTIONS", "1");
+        std::env::set_var(HV_X86_LIVE_INSTRUCTIONS_ENV, HV_X86_LIVE_INSTRUCTIONS_ENABLED);
         assert!(live_execution_runtime_enabled());
-        std::env::remove_var("HV_X86_LIVE_INSTRUCTIONS");
+        std::env::remove_var(HV_X86_LIVE_INSTRUCTIONS_ENV);
     }
 
     #[test]
@@ -141,7 +147,7 @@ mod tests {
     #[test]
     fn live_execution_environment_not_ready_in_userspace() {
         if cfg!(target_arch = "x86_64") && live_execution_runtime_enabled() {
-            assert_ne!(current_privilege_level(), 0);
+            assert_ne!(current_privilege_level(), X86_RING_0);
         }
         assert!(!live_execution_environment_ready());
     }

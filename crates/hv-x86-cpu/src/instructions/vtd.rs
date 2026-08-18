@@ -11,7 +11,7 @@ pub fn execute_vtd_enable(interrupt_remapping: bool) -> Result<(), CpuSeamError>
     if !live_execution_environment_ready() {
         return Err(CpuSeamError::new(
             CpuSeamErrorKind::Unavailable,
-            "live VT-d enable requires HV_X86_LIVE_INSTRUCTIONS=1 in ring 0",
+            crate::constants::HV_X86_LIVE_VTD_UNAVAILABLE,
         ));
     }
     record_vtd_enable_intent(interrupt_remapping);

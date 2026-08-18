@@ -4,22 +4,14 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
 
-use crate::constants::LIVE_QEMU_SMOKE_WORK_DIR;
+use crate::constants::{
+    LIVE_QEMU_CPU, LIVE_QEMU_MACHINE, LIVE_QEMU_SMOKE_WORK_DIR, OVMF_BOOT_ATTEMPT_MARKER,
+    OVMF_BOOT_FAILURE_MARKER, SMOKE_GUEST_MEMORY_MIB, SMOKE_GUEST_SMP,
+};
 use crate::{run, run_build_boot_chain_live};
-
-/// Serial log marker emitted after successful REAL_HW Gate C init.
-pub const REAL_HW_BOOT_SUCCESS_MARKER: &str = "hypervisor Gate C REAL_HW boot succeeded";
-/// Serial log marker emitted when VMXON executes under REAL_HW Gate C.
-pub const REAL_HW_VMXON_EXECUTED_MARKER: &str = "REAL_HW: VMXON Executed";
-/// Serial log marker emitted when EPT pointer load executes under REAL_HW Gate C.
-pub const REAL_HW_EPT_EXECUTED_MARKER: &str = "REAL_HW: EPT pointer Executed";
-
-const OVMF_BOOT_ATTEMPT_MARKER: &str = "BdsDxe: starting Boot";
-const OVMF_BOOT_FAILURE_MARKER: &str = "failed to start Boot";
-const LIVE_QEMU_MEMORY_MIB: &str = "8192";
-const LIVE_QEMU_SMP: &str = "4";
-const LIVE_QEMU_MACHINE: &str = "q35,accel=kvm";
-const LIVE_QEMU_CPU: &str = "host";
+pub use hv_boot_abi::{
+    REAL_HW_BOOT_SUCCESS_MARKER, REAL_HW_EPT_EXECUTED_MARKER, REAL_HW_VMXON_EXECUTED_MARKER,
+};
 
 /// Evaluates OVMF serial output for a successful REAL_HW Gate C boot.
 pub fn evaluate_live_qemu_smoke_serial(log: &str) -> Result<(), String> {
@@ -153,9 +145,9 @@ fn run_live_qemu_smoke_with(
             "-cpu",
             &cpu_arg,
             "-smp",
-            LIVE_QEMU_SMP,
+            SMOKE_GUEST_SMP,
             "-m",
-            LIVE_QEMU_MEMORY_MIB,
+            SMOKE_GUEST_MEMORY_MIB,
             "-display",
             "none",
             "-serial",
@@ -283,8 +275,8 @@ mod tests {
 
     #[test]
     fn evaluate_live_serial_rejects_missing_ovmf_boot_attempt() {
-        let log = "hypervisor Gate C REAL_HW boot succeeded\n";
-        assert!(evaluate_live_qemu_smoke_serial(log).is_err());
+        let log = format!("{REAL_HW_BOOT_SUCCESS_MARKER}\n");
+        assert!(evaluate_live_qemu_smoke_serial(&log).is_err());
     }
 
     #[test]
@@ -337,11 +329,10 @@ mod tests {
 
     #[test]
     fn evaluate_live_serial_requires_real_hw_success_marker() {
-        let log = concat!(
-            "BdsDxe: starting Boot0001 \"app\"\n",
-            "hypervisor Gate C REAL_HW boot succeeded\n",
+        let log = format!(
+            "BdsDxe: starting Boot0001 \"app\"\n{REAL_HW_BOOT_SUCCESS_MARKER}\n",
         );
-        assert!(evaluate_live_qemu_smoke_serial(log).is_ok());
+        assert!(evaluate_live_qemu_smoke_serial(&log).is_ok());
     }
 
     #[test]
@@ -398,9 +389,8 @@ mod tests {
                     .join("serial.log");
                 std::fs::write(
                     &serial_log,
-                    concat!(
-                        "BdsDxe: starting Boot0001 \"UEFI Application\"\n",
-                        "hypervisor Gate C REAL_HW boot succeeded\n",
+                    format!(
+                        "BdsDxe: starting Boot0001 \"UEFI Application\"\n{REAL_HW_BOOT_SUCCESS_MARKER}\n",
                     ),
                 )
                 .expect("serial log");
@@ -526,9 +516,8 @@ mod tests {
                     .join("serial.log");
                 std::fs::write(
                     &serial_log,
-                    concat!(
-                        "BdsDxe: starting Boot0001 \"UEFI Application\"\n",
-                        "hypervisor Gate C REAL_HW boot succeeded\n",
+                    format!(
+                        "BdsDxe: starting Boot0001 \"UEFI Application\"\n{REAL_HW_BOOT_SUCCESS_MARKER}\n",
                     ),
                 )
                 .expect("serial log");

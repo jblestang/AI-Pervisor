@@ -2,6 +2,8 @@
 
 #![allow(clippy::needless_return)]
 
+use hv_ept::EPT_PAGE_OFFSET_MASK;
+
 use crate::error::{CpuSeamError, CpuSeamErrorKind};
 
 /// Attempts to execute VMXON against the given host-physical VMXON region address.
@@ -12,7 +14,7 @@ pub fn execute_vmxon(host_phys: u64) -> Result<(), CpuSeamError> {
     if !live_execution_environment_ready() {
         return Err(CpuSeamError::new(
             CpuSeamErrorKind::Unavailable,
-            "live VMXON requires HV_X86_LIVE_INSTRUCTIONS=1 in ring 0",
+            crate::constants::HV_X86_LIVE_VMXON_UNAVAILABLE,
         ));
     }
     #[cfg(any(test, coverage))]
@@ -39,7 +41,7 @@ pub fn execute_vmxon(_host_phys: u64) -> Result<(), CpuSeamError> {
 }
 
 fn validate_vmxon_operand(host_phys: u64) -> Result<(), CpuSeamError> {
-    if host_phys == 0 || host_phys & 0xFFF != 0 {
+    if host_phys == 0 || host_phys & EPT_PAGE_OFFSET_MASK != 0 {
         return Err(CpuSeamError::new(
             CpuSeamErrorKind::InvalidInput,
             "VMXON region address must be page aligned and non-zero",

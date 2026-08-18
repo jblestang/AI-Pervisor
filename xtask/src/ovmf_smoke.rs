@@ -4,17 +4,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
 
-use crate::constants::OVMF_SMOKE_WORK_DIR;
+use crate::constants::{
+    OVMF_BOOT_ATTEMPT_MARKER, OVMF_BOOT_FAILURE_MARKER, OVMF_SMOKE_MACHINE, OVMF_SMOKE_WORK_DIR,
+    SMOKE_GUEST_MEMORY_MIB, SMOKE_GUEST_SMP,
+};
 use crate::{run, run_build_boot_chain};
-
-const OVMF_BOOT_ATTEMPT_MARKER: &str = "BdsDxe: starting Boot";
-const OVMF_BOOT_FAILURE_MARKER: &str = "failed to start Boot";
-/// Guest RAM for smoke boot; must satisfy `configs/qemu.yaml` `min_ram_gib` after firmware reservations.
-const OVMF_SMOKE_MEMORY_MIB: &str = "8192";
-/// SMP topology for smoke boot; must satisfy `configs/qemu.yaml` `min_physical_cores`.
-const OVMF_SMOKE_SMP: &str = "4";
-/// QEMU machine/accel for smoke boot under TCG (serial logging works reliably in CI).
-const OVMF_SMOKE_MACHINE: &str = "q35,accel=tcg";
 
 /// Evaluates OVMF serial output for a successful boot-chain handoff.
 pub fn evaluate_ovmf_smoke_boot_serial(log: &str) -> Result<(), String> {
@@ -124,9 +118,9 @@ fn run_ovmf_smoke_boot_with(
             "-cpu",
             "max",
             "-smp",
-            OVMF_SMOKE_SMP,
+            SMOKE_GUEST_SMP,
             "-m",
-            OVMF_SMOKE_MEMORY_MIB,
+            SMOKE_GUEST_MEMORY_MIB,
             "-display",
             "none",
             "-serial",

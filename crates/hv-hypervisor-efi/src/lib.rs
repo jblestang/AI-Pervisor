@@ -26,13 +26,9 @@ use hv_x86_cpu::{CpuInstructionDisposition, PageAllocator};
 use hv_hypervisor_boot::boot_from_transfer_and_init_gate_c_real_hw_from_snapshots;
 
 pub use error::{HypervisorEfiError, HypervisorEfiErrorKind};
-
-/// Serial log marker emitted after successful REAL_HW Gate C init.
-pub const REAL_HW_BOOT_SUCCESS_MARKER: &str = "hypervisor Gate C REAL_HW boot succeeded";
-/// Serial log marker emitted when VMXON executes under REAL_HW Gate C.
-pub const REAL_HW_VMXON_EXECUTED_MARKER: &str = "REAL_HW: VMXON Executed";
-/// Serial log marker emitted when EPT pointer load executes under REAL_HW Gate C.
-pub const REAL_HW_EPT_EXECUTED_MARKER: &str = "REAL_HW: EPT pointer Executed";
+pub use hv_hypervisor_boot::{
+    REAL_HW_BOOT_SUCCESS_MARKER, REAL_HW_EPT_EXECUTED_MARKER, REAL_HW_VMXON_EXECUTED_MARKER,
+};
 
 #[cfg(feature = "real-hw-execution")]
 pub use allocator::UefiPageAllocator;

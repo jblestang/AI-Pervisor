@@ -2,6 +2,8 @@
 
 #![allow(clippy::needless_return)]
 
+use hv_ept::EPT_PAGE_OFFSET_MASK;
+
 use crate::error::{CpuSeamError, CpuSeamErrorKind};
 
 /// Attempts to load an EPT pointer into the current VMCS when live execution is permitted.
@@ -43,7 +45,7 @@ pub fn execute_ept_pointer_load(_ept_pointer: u64, _vmcs_phys: u64) -> Result<()
 }
 
 fn validate_ept_pointer_operand(ept_pointer: u64) -> Result<(), CpuSeamError> {
-    if ept_pointer & 0xFFF != 0 {
+    if ept_pointer & EPT_PAGE_OFFSET_MASK != 0 {
         return Err(CpuSeamError::new(
             CpuSeamErrorKind::InvalidInput,
             "EPT pointer low 12 bits must be zero",

@@ -2,6 +2,8 @@
 
 #![allow(clippy::needless_return)]
 
+use hv_ept::EPT_PAGE_OFFSET_MASK;
+
 use crate::error::{CpuSeamError, CpuSeamErrorKind};
 
 /// Prepares a VMCS region for field programming (VMCLEAR + VMPTRLD).
@@ -39,7 +41,7 @@ pub fn execute_vmcs_prepare(_vmcs_phys: u64) -> Result<(), CpuSeamError> {
 }
 
 fn validate_vmcs_operand(vmcs_phys: u64) -> Result<(), CpuSeamError> {
-    if vmcs_phys == 0 || vmcs_phys & 0xFFF != 0 {
+    if vmcs_phys == 0 || vmcs_phys & EPT_PAGE_OFFSET_MASK != 0 {
         return Err(CpuSeamError::new(
             CpuSeamErrorKind::InvalidInput,
             "VMCS region address must be page aligned and non-zero",

@@ -4,7 +4,10 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::backend::EptBackend;
-use crate::constants::{EPT_PAGE_SIZE_BYTES, EPT_ROOT_TABLE_BYTES};
+use crate::constants::{
+    EPT_PAGE_SIZE_BYTES, EPT_POINTER_MEMORY_TYPE_SHIFT, EPT_POINTER_MEMORY_TYPE_WB,
+    EPT_ROOT_TABLE_BYTES,
+};
 use crate::error::{EptError, EptErrorKind};
 use crate::plan::{EptIdentityMapping, EptInitPlan};
 
@@ -15,7 +18,8 @@ pub const EPT_ENTRY_WRITE: u64 = 1 << 1;
 /// EPT entry execute permission bit.
 pub const EPT_ENTRY_EXECUTE: u64 = 1 << 2;
 /// EPT entry write-back memory type field.
-pub const EPT_ENTRY_MEMORY_TYPE_WB: u64 = 6 << 3;
+pub const EPT_ENTRY_MEMORY_TYPE_WB: u64 =
+    EPT_POINTER_MEMORY_TYPE_WB << EPT_POINTER_MEMORY_TYPE_SHIFT;
 
 /// One encoded identity EPT leaf entry derived from the init plan.
 #[derive(Debug, Clone, PartialEq, Eq)]

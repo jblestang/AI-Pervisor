@@ -22,6 +22,7 @@ use constants::{
     DEFAULT_EFI_OUTPUT_PATH, DEFAULT_FUZZ_RUNS, DEFAULT_HYPERVISOR_EFI_OUTPUT_PATH,
     DEFAULT_LIVE_BOOT_CHAIN_OUTPUT_DIR, DEFAULT_LIVE_QEMU_SMOKE_TIMEOUT_SECS,
     DEFAULT_OVMF_SMOKE_CONFIG_PATH, DEFAULT_OVMF_SMOKE_TIMEOUT_SECS,
+    HYPERVISOR_EFI_REAL_HW_FEATURE,
 };
 use hv_config::constants::DEFAULT_CONFIG_OUTPUT_DIR;
 
@@ -329,7 +330,7 @@ fn build_hypervisor_efi_image_live(
         workspace,
         digest_path,
         config_path,
-        &["real-hw-execution"],
+        &[HYPERVISOR_EFI_REAL_HW_FEATURE],
         run_command,
     )
 }
@@ -573,7 +574,7 @@ fn spawn_llvm_cov_summary_with(
         "-p",
         "hv-hypervisor-boot",
         "--features",
-        "real-hw-execution",
+        HYPERVISOR_EFI_REAL_HW_FEATURE,
     ]) {
         return Ok((String::new(), String::new(), false));
     }
@@ -589,7 +590,7 @@ fn spawn_llvm_cov_summary_with(
         "-p",
         "hv-hypervisor-efi",
         "--features",
-        "real-hw-execution",
+        HYPERVISOR_EFI_REAL_HW_FEATURE,
     ]) {
         return Ok((String::new(), String::new(), false));
     }
@@ -1139,11 +1140,13 @@ mod tests {
             &workspace,
             "/tmp/config.sha256",
             "/tmp/config.yaml",
-            &["real-hw-execution"],
+            &[HYPERVISOR_EFI_REAL_HW_FEATURE],
         );
         let args: Vec<_> = command.get_args().collect();
         assert!(args.iter().any(|arg| *arg == "--features"));
-        assert!(args.iter().any(|arg| arg.to_string_lossy().contains("real-hw-execution")));
+        assert!(args.iter().any(|arg| {
+            arg.to_string_lossy().contains(HYPERVISOR_EFI_REAL_HW_FEATURE)
+        }));
     }
 
     #[test]

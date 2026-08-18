@@ -237,14 +237,14 @@ mod tests {
 
     #[test]
     fn install_ept_tables_rejects_empty_root_table() {
-        use hv_ept::EptProgrammedTables;
+        use hv_ept::{EptProgrammedTables, EPT_PAGE_SIZE_BYTES};
         let tables = EptProgrammedTables {
             root_table_phys: 0x2000,
             root_table: alloc::vec::Vec::new(),
             mappings: alloc::vec![hv_ept::EptProgrammedMapping {
                 guest_phys: 0,
                 host_phys: 0,
-                size_bytes: 4096,
+                size_bytes: EPT_PAGE_SIZE_BYTES,
                 encoded_entry: 1,
             }],
         };

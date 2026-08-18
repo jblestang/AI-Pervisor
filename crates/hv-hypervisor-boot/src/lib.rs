@@ -11,6 +11,9 @@ mod transfer;
 mod vmx;
 
 pub use boot::boot_check;
+pub use hv_boot_abi::{
+    REAL_HW_BOOT_SUCCESS_MARKER, REAL_HW_EPT_EXECUTED_MARKER, REAL_HW_VMXON_EXECUTED_MARKER,
+};
 pub use error::{BootCheckError, BootCheckErrorKind};
 pub use gate_c::{
     boot_check_and_init_gate_c, boot_check_and_init_gate_c_programming,
