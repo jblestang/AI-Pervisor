@@ -4,7 +4,9 @@
 extern crate alloc;
 
 mod boot_info;
+mod elf;
 mod parse;
+mod partition_images;
 mod smoke;
 
 pub use boot_info::{
@@ -13,5 +15,13 @@ pub use boot_info::{
 };
 pub use parse::{
     GuestBootInfoParseError, GuestBootInfoParseErrorKind, GuestBootInfoView,
+};
+pub use elf::{
+    guest_entry_phys_for_region, parse_elf64, GuestElfError, GuestElfErrorKind, GuestElfImage,
+    GuestElfLoadSegment,
+};
+pub use partition_images::{
+    reference_guest_elf, GUEST_IN_RUNNING_MARKER, GUEST_MID_RUNNING_MARKER,
+    GUEST_OUT_RUNNING_MARKER, REFERENCE_GUEST_PARTITION_IDS,
 };
 pub use smoke::{GUEST_SMOKE_IMAGE, GUEST_SMOKE_RUNNING_MARKER};

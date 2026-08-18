@@ -57,6 +57,18 @@ pub struct VmcsProgrammedFields {
     pub fields: Vec<VmcsProgrammedField>,
 }
 
+/// Builds VMX launch plans for every guest partition in static platform layout order.
+pub fn plan_vmx_launch_all_partitions(
+    layout: &StaticPlatformIR,
+    vmx_plan: &VmxInitPlan,
+) -> Result<alloc::vec::Vec<VmxLaunchPlan>, VmxError> {
+    let mut plans = alloc::vec::Vec::with_capacity(layout.guest_memory.len());
+    for region in &layout.guest_memory {
+        plans.push(plan_vmx_launch_for_region(layout, vmx_plan, region)?);
+    }
+    Ok(plans)
+}
+
 /// Builds a VMX launch plan for the given partition within static platform layout.
 pub fn plan_vmx_launch(
     layout: &StaticPlatformIR,
@@ -64,6 +76,15 @@ pub fn plan_vmx_launch(
     partition_id: &str,
 ) -> Result<VmxLaunchPlan, VmxError> {
     let region = find_guest_region(layout, partition_id)?;
+    plan_vmx_launch_for_region(layout, vmx_plan, region)
+}
+
+fn plan_vmx_launch_for_region(
+    layout: &StaticPlatformIR,
+    vmx_plan: &VmxInitPlan,
+    region: &PlannedGuestMemory,
+) -> Result<VmxLaunchPlan, VmxError> {
+    let _ = layout;
     let guest_entry = region.host_phys;
     let guest_stack = advance_within_region(
         guest_entry,
@@ -81,7 +102,7 @@ pub fn plan_vmx_launch(
         VMX_HOST_EXIT_STUB_OFFSET.saturating_add(0x100),
     )?;
     Ok(VmxLaunchPlan {
-        partition_id: region.partition_id.clone(),
+        partition_id: reference_partition_id_for_region(region),
         vm_id: region.vm_id,
         guest_entry_phys: guest_entry,
         guest_stack_phys: guest_stack,
@@ -90,6 +111,18 @@ pub fn plan_vmx_launch(
         host_stack_phys: host_stack,
         host_cr3: vmx_plan.vmxon_region_phys,
     })
+}
+
+fn reference_partition_id_for_region(region: &PlannedGuestMemory) -> alloc::string::String {
+    if !region.partition_id.is_empty() {
+        return region.partition_id.clone();
+    }
+    match region.vm_id.raw() {
+        0 => alloc::string::String::from("in"),
+        1 => alloc::string::String::from("mid"),
+        2 => alloc::string::String::from("out"),
+        other => alloc::format!("vm{other}"),
+    }
 }
 
 /// Encodes VMCS fields for a launch plan without executing VMWRITE.
@@ -264,6 +297,16 @@ mod tests {
             .fields
             .iter()
             .any(|field| field.field == VMCS_GUEST_RIP && field.value == launch.guest_entry_phys.raw()));
+    }
+
+    #[test]
+    fn plan_vmx_launch_all_partitions_covers_reference_topology() {
+        let yaml = include_str!("../../../configs/qemu.yaml");
+        let compiled = compile_config_from_str(yaml).expect("compile");
+        let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
+        let vmx_plan = plan_vmx_init(&layout.hypervisor_reserve).expect("vmx");
+        let launches = plan_vmx_launch_all_partitions(&layout, &vmx_plan).expect("all");
+        assert_eq!(launches.len(), 3);
     }
 
     #[test]
