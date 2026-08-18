@@ -1,6 +1,6 @@
 [package]
-name = "hv-guest-boot"
-description = "Guest boot info and smoke image helpers for Gate C/D bring-up"
+name = "hv-datapath"
+description = "Guest datapath planning for Gate D foundation"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,7 +11,6 @@ workspace = true
 
 [dependencies]
 hv-guest-abi = { workspace = true }
-hv-datapath = { workspace = true }
 hv-platform-model = { path = "../hv-platform-model", default-features = false }
 hv-types = { workspace = true }
 

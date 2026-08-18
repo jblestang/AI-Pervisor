@@ -6,14 +6,16 @@ extern crate alloc;
 mod boot;
 mod error;
 mod gate_c;
+#[cfg(feature = "datapath-foundation")]
+mod gate_d;
 mod snapshot;
 mod transfer;
 mod vmx;
 
 pub use boot::boot_check;
 pub use hv_boot_abi::{
-    REAL_HW_BOOT_SUCCESS_MARKER, REAL_HW_EPT_EXECUTED_MARKER, REAL_HW_VMLAUNCH_EXECUTED_MARKER,
-    REAL_HW_VMXON_EXECUTED_MARKER,
+    GATE_D_BOOT_INFO_BUILT_MARKER, GATE_D_DATAPATH_FOUNDATION_MARKER, REAL_HW_BOOT_SUCCESS_MARKER,
+    REAL_HW_EPT_EXECUTED_MARKER, REAL_HW_VMLAUNCH_EXECUTED_MARKER, REAL_HW_VMXON_EXECUTED_MARKER,
 };
 pub use error::{BootCheckError, BootCheckErrorKind};
 pub use gate_c::{
@@ -43,6 +45,13 @@ pub use gate_c::{
 pub use gate_c::{
     boot_check_and_init_gate_c_vmx_launch, boot_from_transfer_and_init_gate_c_vmx_launch,
     boot_from_transfer_and_init_gate_c_vmx_launch_from_snapshots, GateCVmxLaunchResult,
+};
+#[cfg(feature = "datapath-foundation")]
+pub use gate_d::{
+    boot_check_and_init_gate_d_datapath_foundation,
+    boot_from_transfer_and_init_gate_d_datapath_foundation,
+    boot_from_transfer_and_init_gate_d_datapath_foundation_from_snapshots,
+    GateDDatapathFoundationResult,
 };
 pub use snapshot::{
     layout_snapshot_from_platform_ir, platform_requirements_from_snapshot,

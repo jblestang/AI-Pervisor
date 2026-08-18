@@ -42,6 +42,10 @@ pub struct PlannedIpcMemory {
     pub channel_name: String,
     /// Assigned channel identifier.
     pub channel_id: IpcChannelId,
+    /// Producer VM id for the channel.
+    pub producer_vm_id: VmId,
+    /// Consumer VM id for the channel.
+    pub consumer_vm_id: VmId,
     /// Host physical base address.
     pub host_phys: HostPhysAddr,
     /// Region size in bytes.

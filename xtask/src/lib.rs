@@ -23,6 +23,7 @@ use constants::{
     DEFAULT_LIVE_BOOT_CHAIN_OUTPUT_DIR, DEFAULT_LIVE_QEMU_SMOKE_TIMEOUT_SECS,
     DEFAULT_OVMF_SMOKE_CONFIG_PATH, DEFAULT_OVMF_SMOKE_TIMEOUT_SECS,
     HYPERVISOR_EFI_REAL_HW_FEATURE, HYPERVISOR_EFI_VMX_LAUNCH_FEATURE,
+    HYPERVISOR_EFI_DATAPATH_FOUNDATION_FEATURE,
 };
 use hv_config::constants::DEFAULT_CONFIG_OUTPUT_DIR;
 
@@ -330,7 +331,7 @@ fn build_hypervisor_efi_image_live(
         workspace,
         digest_path,
         config_path,
-        &[HYPERVISOR_EFI_REAL_HW_FEATURE, HYPERVISOR_EFI_VMX_LAUNCH_FEATURE],
+        &[HYPERVISOR_EFI_REAL_HW_FEATURE, HYPERVISOR_EFI_VMX_LAUNCH_FEATURE, HYPERVISOR_EFI_DATAPATH_FOUNDATION_FEATURE],
         run_command,
     )
 }
@@ -591,6 +592,22 @@ fn spawn_llvm_cov_summary_with(
         "hv-x86-cpu",
         "--features",
         "execute-instructions,std,firmware-live-execution,vmx-launch",
+    ]) {
+        return Ok((String::new(), String::new(), false));
+    }
+    if !pass_runner(&[
+        "-p",
+        "hv-hypervisor-boot",
+        "--features",
+        "datapath-foundation",
+    ]) {
+        return Ok((String::new(), String::new(), false));
+    }
+    if !pass_runner(&[
+        "-p",
+        "hv-hypervisor-efi",
+        "--features",
+        "datapath-foundation",
     ]) {
         return Ok((String::new(), String::new(), false));
     }

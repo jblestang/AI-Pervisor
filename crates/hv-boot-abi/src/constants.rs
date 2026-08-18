@@ -44,3 +44,7 @@ pub const REAL_HW_VMXON_EXECUTED_MARKER: &str = "REAL_HW: VMXON Executed";
 pub const REAL_HW_EPT_EXECUTED_MARKER: &str = "REAL_HW: EPT pointer Executed";
 /// Serial log marker emitted when VMLAUNCH executes under REAL_HW Gate C.
 pub const REAL_HW_VMLAUNCH_EXECUTED_MARKER: &str = "REAL_HW: VMLAUNCH Executed";
+/// Serial log marker emitted after successful Gate D datapath foundation init.
+pub const GATE_D_DATAPATH_FOUNDATION_MARKER: &str = "hypervisor Gate D datapath foundation succeeded";
+/// Serial log marker emitted when guest boot info is built for all partitions.
+pub const GATE_D_BOOT_INFO_BUILT_MARKER: &str = "Gate D: guest boot info built for all partitions";

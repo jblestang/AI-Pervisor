@@ -7,7 +7,14 @@
 extern crate alloc;
 
 use hv_boot_abi::HypervisorTransferHeader;
-#[cfg(feature = "vmx-launch")]
+#[cfg(feature = "datapath-foundation")]
+use hv_hypervisor_efi::{
+    boot_hypervisor_from_transfer_datapath_foundation, DatapathFoundationBootMarkers,
+    GATE_D_BOOT_INFO_BUILT_MARKER, GATE_D_DATAPATH_FOUNDATION_MARKER, RealHwBootMarkers,
+    VmxLaunchBootMarkers, REAL_HW_BOOT_SUCCESS_MARKER, REAL_HW_EPT_EXECUTED_MARKER,
+    REAL_HW_VMLAUNCH_EXECUTED_MARKER, REAL_HW_VMXON_EXECUTED_MARKER, UefiPageAllocator,
+};
+#[cfg(all(feature = "vmx-launch", not(feature = "datapath-foundation")))]
 use hv_hypervisor_efi::{
     boot_hypervisor_from_transfer_vmx_launch, RealHwBootMarkers, VmxLaunchBootMarkers,
     REAL_HW_BOOT_SUCCESS_MARKER, REAL_HW_EPT_EXECUTED_MARKER, REAL_HW_VMLAUNCH_EXECUTED_MARKER,
@@ -44,7 +51,24 @@ fn efi_main() -> Status {
 
 fn run_hypervisor() -> Result<(), &'static str> {
     let transfer = locate_transfer_blob()?;
-    #[cfg(feature = "vmx-launch")]
+    #[cfg(feature = "datapath-foundation")]
+    {
+        let mut allocator = UefiPageAllocator::new();
+        let markers = boot_hypervisor_from_transfer_datapath_foundation(
+            transfer,
+            &CONFIG_DIGEST,
+            &REQUIREMENTS_SNAPSHOT,
+            &LAYOUT_SNAPSHOT,
+            &mut allocator,
+        )
+        .map_err(|err| {
+            log::error!("hypervisor Gate D datapath foundation boot failed: {err}");
+            "hypervisor Gate D datapath foundation boot failed"
+        })?;
+        log_datapath_foundation_markers(&markers);
+        log::info!("{GATE_D_DATAPATH_FOUNDATION_MARKER}");
+    }
+    #[cfg(all(feature = "vmx-launch", not(feature = "datapath-foundation")))]
     {
         let mut allocator = UefiPageAllocator::new();
         let markers = boot_hypervisor_from_transfer_vmx_launch(
@@ -105,7 +129,15 @@ fn log_real_hw_markers(markers: &RealHwBootMarkers) {
     }
 }
 
-#[cfg(feature = "vmx-launch")]
+#[cfg(feature = "datapath-foundation")]
+fn log_datapath_foundation_markers(markers: &DatapathFoundationBootMarkers) {
+    log_vmx_launch_markers(&markers.vmx_launch);
+    if markers.datapath_boot_infos_built {
+        log::info!("{GATE_D_BOOT_INFO_BUILT_MARKER}");
+    }
+}
+
+#[cfg(any(feature = "vmx-launch", feature = "datapath-foundation"))]
 fn log_vmx_launch_markers(markers: &VmxLaunchBootMarkers) {
     if markers.real_hw.vmxon_executed {
         log::info!("{REAL_HW_VMXON_EXECUTED_MARKER}");

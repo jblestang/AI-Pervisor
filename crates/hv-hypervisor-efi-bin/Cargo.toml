@@ -19,6 +19,7 @@ uefi = { version = "0.31", features = ["global_allocator", "logger", "panic_hand
 default = []
 real-hw-execution = ["hv-hypervisor-efi/real-hw-execution"]
 vmx-launch = ["hv-hypervisor-efi/vmx-launch"]
+datapath-foundation = ["hv-hypervisor-efi/datapath-foundation"]
 
 [profile.dev]
 panic = "abort"
