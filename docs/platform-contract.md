@@ -62,4 +62,5 @@ If observed hardware does not satisfy `PlatformRequirements`, boot must be refus
 | Layout snapshot ABI | Implemented (Phase 11: `LayoutSnapshot` in `hv-boot-abi`) |
 | UEFI Gate C boot | Implemented (Phase 11: embedded layout snapshot + mock VMX/EPT/VT-d init via `hv-hypervisor-efi`) |
 | Gate C hardware programming (host) | Implemented (Phase 12: `Programming*Backend`, structure encoding without CPU instructions) |
-| Real VMXON/EPT/VT-d CPU enablement | Not started (future Gate C hardware phase) |
+| Gate C CPU instruction seams (host) | Implemented (Phase 13: `hv-x86-cpu`, `CpuSeam*Backend`, validate-only disposition via `cpu-seams` feature) |
+| Live VMXON/EPT/VT-d privileged instruction execution | Not started (future Gate C hardware phase) |

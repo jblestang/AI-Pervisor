@@ -1,6 +1,6 @@
 # AI-Pervisor
 
-Static x86-64 hypervisor workspace (Phases 0–12: config pipeline, platform validation, boot path, UEFI Gate C, hardware programming foundation).
+Static x86-64 hypervisor workspace (Phases 0–13: config pipeline, platform validation, boot path, UEFI Gate C, hardware programming, CPU instruction seams).
 
 ## Commands
 
@@ -32,6 +32,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 - [Phase 10 expert review](docs/reviews/phase-10-expert-review.md)
 - [Phase 11 expert review](docs/reviews/phase-11-expert-review.md)
 - [Phase 12 expert review](docs/reviews/phase-12-expert-review.md)
+- [Phase 13 expert review](docs/reviews/phase-13-expert-review.md)
 - [OVMF boot](docs/ovmf-boot.md)
 - [Fuzzing](docs/fuzzing.md)
 - [No-panic policy](docs/no-panic.md)

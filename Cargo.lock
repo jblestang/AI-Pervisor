@@ -311,6 +311,8 @@ dependencies = [
  "hv-observation-types",
  "hv-platform-model",
  "hv-types",
+ "hv-vmx",
+ "hv-x86-cpu",
 ]
 
 [[package]]
@@ -326,6 +328,7 @@ dependencies = [
  "hv-types",
  "hv-vmx",
  "hv-vtd",
+ "hv-x86-cpu",
 ]
 
 [[package]]
@@ -408,6 +411,17 @@ dependencies = [
  "hv-config-model",
  "hv-platform-model",
  "hv-types",
+]
+
+[[package]]
+name = "hv-x86-cpu"
+version = "0.1.0"
+dependencies = [
+ "hv-config-model",
+ "hv-ept",
+ "hv-platform-model",
+ "hv-vmx",
+ "hv-vtd",
 ]
 
 [[package]]

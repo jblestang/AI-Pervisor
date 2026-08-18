@@ -12,6 +12,7 @@ workspace = true
 [features]
 default = ["std"]
 std = ["hv-config-model/std", "hv-platform-model/std"]
+cpu-seams = ["dep:hv-x86-cpu"]
 
 [dependencies]
 hv-boot-abi = { path = "../hv-boot-abi" }
@@ -22,6 +23,7 @@ hv-platform-model = { path = "../hv-platform-model", default-features = false, f
 hv-types = { path = "../hv-types" }
 hv-vtd = { path = "../hv-vtd", default-features = false, features = [] }
 hv-vmx = { path = "../hv-vmx", default-features = false, features = [] }
+hv-x86-cpu = { path = "../hv-x86-cpu", optional = true }
 
 [dev-dependencies]
 hv-config-model = { workspace = true, features = ["std"] }
@@ -30,3 +32,9 @@ hv-platform-model = { workspace = true, features = ["std"] }
 hv-ept = { workspace = true }
 hv-vtd = { workspace = true }
 hv-vmx = { workspace = true }
+hv-x86-cpu = { workspace = true }
+
+[[test]]
+name = "cpu_seams"
+path = "tests/cpu_seams.rs"
+required-features = ["cpu-seams"]

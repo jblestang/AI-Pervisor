@@ -18,3 +18,8 @@ pub use hv_hypervisor_boot::{
     static_platform_ir_from_layout_snapshot, BootAndVmxResult, BootCheckError, BootCheckErrorKind,
     GateCInitResult, GateCProgrammingResult,
 };
+#[cfg(feature = "cpu-seams")]
+pub use hv_hypervisor_boot::{
+    boot_check_and_init_gate_c_cpu_seam, boot_from_transfer_and_init_gate_c_cpu_seam,
+    boot_from_transfer_and_init_gate_c_cpu_seam_from_snapshots, GateCCpuSeamResult,
+};

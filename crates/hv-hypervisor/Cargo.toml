@@ -9,14 +9,20 @@ rust-version.workspace = true
 [lints]
 workspace = true
 
+[features]
+default = ["cpu-seams"]
+cpu-seams = ["hv-hypervisor-boot/cpu-seams"]
+
 [dependencies]
-hv-hypervisor-boot = { workspace = true }
+hv-hypervisor-boot = { workspace = true, features = ["cpu-seams"] }
 
 [dev-dependencies]
 hv-boot-abi = { workspace = true }
 hv-config-model = { workspace = true }
-hv-hypervisor-boot = { workspace = true }
+hv-hypervisor-boot = { workspace = true, features = ["cpu-seams"] }
 hv-loader = { workspace = true }
 hv-observation-types = { workspace = true }
 hv-platform-model = { workspace = true }
 hv-types = { workspace = true }
+hv-vmx = { workspace = true }
+hv-x86-cpu = { workspace = true }
