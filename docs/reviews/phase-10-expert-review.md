@@ -93,4 +93,4 @@ Multi-domain review of Gate C foundation: EPT/VT-d init planning, mock backends,
 
 ## Review status
 
-All MUST and SHOULD items above are applied. Phase 9 deferrals #11 and #12 are partially closed (planning + mock backends; hardware programming deferred). Remaining deferred items are documented with explicit phase ownership.
+All MUST and SHOULD items above are applied. Phase 9 deferrals #11 and #12 are partially closed (planning + mock backends; hardware programming deferred). Remaining deferred items are documented with explicit phase ownership. PR **#11** is ready for human review.
