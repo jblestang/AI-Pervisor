@@ -16,6 +16,7 @@ real-hw-execution = ["hv-hypervisor-boot/real-hw-execution", "dep:uefi", "dep:hv
 vmx-launch = ["real-hw-execution", "hv-hypervisor-boot/vmx-launch"]
 datapath-foundation = ["vmx-launch", "hv-hypervisor-boot/datapath-foundation"]
 datapath-live = ["datapath-foundation", "hv-hypervisor-boot/datapath-live"]
+datapath-malicious = ["datapath-live", "hv-hypervisor-boot/datapath-malicious"]
 
 [dependencies]
 hv-boot-abi = { path = "../hv-boot-abi" }
@@ -27,8 +28,9 @@ uefi = { version = "0.31", optional = true }
 
 [dev-dependencies]
 hv-config-model = { workspace = true }
+hv-datapath = { workspace = true }
 hv-hypervisor = { workspace = true }
-hv-hypervisor-boot = { workspace = true, features = ["real-hw-execution", "vmx-launch", "datapath-foundation", "datapath-live"] }
+hv-hypervisor-boot = { workspace = true, features = ["real-hw-execution", "vmx-launch", "datapath-foundation", "datapath-live", "datapath-malicious"] }
 hv-loader = { workspace = true }
 hv-observation-types = { workspace = true }
 hv-platform-model = { workspace = true }
@@ -48,6 +50,11 @@ required-features = ["datapath-foundation"]
 name = "datapath_live"
 path = "tests/datapath_live.rs"
 required-features = ["datapath-live"]
+
+[[test]]
+name = "datapath_malicious"
+path = "tests/datapath_malicious.rs"
+required-features = ["datapath-malicious"]
 
 [[test]]
 name = "real_hw"

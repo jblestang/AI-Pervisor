@@ -1,7 +1,8 @@
 //! Datapath live runtime backend and seam outcomes.
 
 use crate::error::DatapathError;
-use crate::forward::{forward_synthetic_frame, DatapathForwardPlan};
+use crate::forward::forward_synthetic_frame;
+use crate::topology::DatapathForwardPlan;
 
 /// How a datapath live seam completed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

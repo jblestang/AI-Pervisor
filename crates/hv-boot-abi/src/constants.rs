@@ -54,3 +54,7 @@ pub const GATE_D_DATAPATH_LIVE_MARKER: &str = "hypervisor Gate D datapath live s
 pub const GATE_D_IPC_FORWARD_MARKER: &str = "Gate D: IPC frame forwarded in→mid→out";
 /// Serial log marker emitted when e1000 MMIO is handled on the live datapath path.
 pub const GATE_D_E1000_MMIO_MARKER: &str = "Gate D: e1000 MMIO handled";
+/// Serial log marker emitted after successful Gate D datapath malicious init.
+pub const GATE_D_DATAPATH_MALICIOUS_MARKER: &str = "hypervisor Gate D datapath malicious succeeded";
+/// Serial log marker emitted when IPC integrity checks pass on the malicious datapath path.
+pub const GATE_D_IPC_INTEGRITY_MARKER: &str = "Gate D: IPC integrity checks passed";

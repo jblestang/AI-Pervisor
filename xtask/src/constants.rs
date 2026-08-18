@@ -12,6 +12,9 @@ pub const HYPERVISOR_EFI_DATAPATH_FOUNDATION_FEATURE: &str = "datapath-foundatio
 /// Cargo feature enabling Gate D datapath live on the REAL_HW hypervisor EFI path.
 pub const HYPERVISOR_EFI_DATAPATH_LIVE_FEATURE: &str = "datapath-live";
 
+/// Cargo feature enabling Gate D datapath malicious on the REAL_HW hypervisor EFI path.
+pub const HYPERVISOR_EFI_DATAPATH_MALICIOUS_FEATURE: &str = "datapath-malicious";
+
 /// OVMF serial marker emitted when BDS attempts to boot an application.
 pub const OVMF_BOOT_ATTEMPT_MARKER: &str = "BdsDxe: starting Boot";
 

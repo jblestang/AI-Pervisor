@@ -18,6 +18,7 @@ real-hw-execution = ["live-execution", "hv-x86-cpu/firmware-live-execution"]
 vmx-launch = ["real-hw-execution", "dep:hv-guest-boot", "hv-vmx/launch", "hv-x86-cpu/vmx-launch"]
 datapath-foundation = ["vmx-launch", "dep:hv-datapath"]
 datapath-live = ["datapath-foundation", "hv-x86-cpu/datapath-live"]
+datapath-malicious = ["datapath-live"]
 
 [dependencies]
 hv-boot-abi = { path = "../hv-boot-abi" }
@@ -71,3 +72,8 @@ required-features = ["datapath-foundation"]
 name = "datapath_live"
 path = "tests/datapath_live.rs"
 required-features = ["datapath-live"]
+
+[[test]]
+name = "datapath_malicious"
+path = "tests/datapath_malicious.rs"
+required-features = ["datapath-malicious"]
