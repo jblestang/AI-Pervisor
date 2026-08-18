@@ -14,9 +14,12 @@ default = []
 execute-instructions = []
 std = []
 firmware-live-execution = ["execute-instructions"]
+vmx-launch = ["execute-instructions"]
 
 [dependencies]
 hv-ept = { path = "../hv-ept" }
+hv-guest-boot = { path = "../hv-guest-boot", optional = true }
+hv-types = { workspace = true }
 hv-vmx = { path = "../hv-vmx" }
 hv-vtd = { path = "../hv-vtd" }
 
@@ -26,6 +29,12 @@ hv-ept = { workspace = true }
 hv-platform-model = { workspace = true, features = ["std"] }
 hv-vmx = { workspace = true }
 hv-vtd = { workspace = true }
+hv-guest-boot = { workspace = true }
+
+[[test]]
+name = "vmx_launch"
+path = "tests/vmx_launch.rs"
+required-features = ["execute-instructions", "std", "vmx-launch"]
 
 [[test]]
 name = "live_instructions"

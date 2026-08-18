@@ -83,6 +83,23 @@ pub fn install_vmcs_region<A: PageAllocator>(
     Ok(host_phys)
 }
 
+/// Installs a guest image into freshly allocated host physical pages.
+pub fn install_guest_image<A: PageAllocator>(
+    allocator: &mut A,
+    image: &[u8],
+) -> Result<u64, CpuSeamError> {
+    if image.is_empty() {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "guest image bytes must not be empty",
+        ));
+    }
+    let size = core::cmp::max(image.len(), VMXON_REGION_MIN_BYTES as usize);
+    let host_phys = allocator.allocate_pages(size, VMXON_REGION_ALIGNMENT_BYTES)?;
+    allocator.copy_to_pages(host_phys, image)?;
+    Ok(host_phys)
+}
+
 /// Mock page allocator for host tests: records installs without real mapping.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct MockPageAllocator {

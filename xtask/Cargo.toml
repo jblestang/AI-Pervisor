@@ -22,6 +22,7 @@ workspace = true
 clap = { workspace = true }
 hv-config = { path = "../tools/hv-config", package = "hv-config" }
 hv-boot-abi = { workspace = true }
+hv-guest-boot = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3.27.0"

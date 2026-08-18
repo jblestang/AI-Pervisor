@@ -15,11 +15,13 @@ std = ["hv-config-model/std", "hv-platform-model/std"]
 cpu-seams = ["dep:hv-x86-cpu"]
 live-execution = ["cpu-seams", "hv-x86-cpu/execute-instructions", "hv-x86-cpu/std"]
 real-hw-execution = ["live-execution", "hv-x86-cpu/firmware-live-execution"]
+vmx-launch = ["real-hw-execution", "dep:hv-guest-boot", "hv-vmx/launch", "hv-x86-cpu/vmx-launch"]
 
 [dependencies]
 hv-boot-abi = { path = "../hv-boot-abi" }
 hv-config-model = { path = "../hv-config-model", default-features = false, features = [] }
 hv-ept = { path = "../hv-ept", default-features = false, features = [] }
+hv-guest-boot = { path = "../hv-guest-boot", optional = true }
 hv-observation-types = { path = "../hv-observation-types" }
 hv-platform-model = { path = "../hv-platform-model", default-features = false, features = [] }
 hv-types = { path = "../hv-types" }
@@ -50,3 +52,8 @@ required-features = ["live-execution"]
 name = "real_hw_execution"
 path = "tests/real_hw_execution.rs"
 required-features = ["real-hw-execution"]
+
+[[test]]
+name = "vmx_launch"
+path = "tests/vmx_launch.rs"
+required-features = ["vmx-launch"]

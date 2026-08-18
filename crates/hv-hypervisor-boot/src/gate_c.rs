@@ -26,8 +26,18 @@ use hv_x86_cpu::{
 use hv_x86_cpu::live_execution_environment_ready;
 #[cfg(feature = "real-hw-execution")]
 use hv_x86_cpu::{
-    PageAllocator, ResidentCpuSeamEptBackend, ResidentCpuSeamVmxBackend, ResidentCpuSeamVtdBackend,
+    install_guest_image, PageAllocator, ResidentCpuSeamEptBackend, ResidentCpuSeamVmxBackend,
+    ResidentCpuSeamVtdBackend,
 };
+#[cfg(feature = "vmx-launch")]
+use hv_guest_boot::{build_guest_boot_info_for_partition, GUEST_SMOKE_IMAGE};
+#[cfg(feature = "vmx-launch")]
+use hv_vmx::{
+    patch_guest_entry_in_fields, plan_vmx_launch, program_vmcs_fields,
+    DEFAULT_SMOKE_GUEST_PARTITION_ID,
+};
+#[cfg(feature = "vmx-launch")]
+use hv_x86_cpu::{run_vmx_launch_cpu_seam, CpuSeamError, VmxLaunchCpuSeamOutcome};
 
 use crate::boot::boot_check;
 use crate::error::{BootCheckError, BootCheckErrorKind};
@@ -322,6 +332,125 @@ fn init_gate_c_real_hw_from_validated<A: PageAllocator>(
         live: wrap_gate_c_live_execution(cpu_seam),
         vmcs_phys,
     })
+}
+
+/// Result of Gate C init with REAL_HW resident install and VMX launch bring-up.
+#[cfg(feature = "vmx-launch")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GateCVmxLaunchResult {
+    /// REAL_HW Gate C init output including CPU seam dispositions.
+    pub real_hw: GateCRealHwResult,
+    /// VMX launch CPU seam outcome when launch ran.
+    pub launch_seam: Option<VmxLaunchCpuSeamOutcome>,
+    /// Host physical guest entry after smoke image installation.
+    pub guest_entry_phys: Option<u64>,
+    /// Built guest boot info bytes for the smoke partition.
+    pub guest_boot_info: Option<alloc::vec::Vec<u8>>,
+}
+
+/// Runs transfer boot checks and VMX launch Gate C init using embedded snapshots.
+#[cfg(feature = "vmx-launch")]
+pub fn boot_from_transfer_and_init_gate_c_vmx_launch_from_snapshots<A: PageAllocator>(
+    transfer: &[u8],
+    requirements: &RequirementsSnapshot,
+    layout: &LayoutSnapshot,
+    allocator: &mut A,
+) -> Result<GateCVmxLaunchResult, BootCheckError> {
+    let platform_requirements = platform_requirements_from_snapshot(requirements)?;
+    let static_layout = static_platform_ir_from_layout_snapshot(layout, requirements)?;
+    let (validated, warnings) =
+        boot_from_transfer(transfer, &requirements.config_digest, &platform_requirements)?;
+    init_gate_c_vmx_launch_from_validated(
+        &platform_requirements,
+        &static_layout,
+        &validated,
+        warnings,
+        allocator,
+    )
+}
+
+/// Runs transfer boot checks and VMX launch Gate C init using snapshot + layout metadata.
+#[cfg(feature = "vmx-launch")]
+pub fn boot_from_transfer_and_init_gate_c_vmx_launch<A: PageAllocator>(
+    transfer: &[u8],
+    snapshot: &RequirementsSnapshot,
+    layout: &StaticPlatformIR,
+    allocator: &mut A,
+) -> Result<GateCVmxLaunchResult, BootCheckError> {
+    let requirements = platform_requirements_from_snapshot(snapshot)?;
+    let (validated, warnings) =
+        boot_from_transfer(transfer, &snapshot.config_digest, &requirements)?;
+    init_gate_c_vmx_launch_from_validated(&requirements, layout, &validated, warnings, allocator)
+}
+
+/// Runs boot checks from raw inputs and VMX launch Gate C init.
+#[cfg(feature = "vmx-launch")]
+pub fn boot_check_and_init_gate_c_vmx_launch<A: PageAllocator>(
+    boot_info_bytes: &[u8],
+    expected_config_digest: &[u8; SHA256_DIGEST_BYTES],
+    requirements: &PlatformRequirements,
+    observation: &hv_platform_model::ObservationInputs,
+    layout: &StaticPlatformIR,
+    allocator: &mut A,
+) -> Result<GateCVmxLaunchResult, BootCheckError> {
+    let (validated, warnings) = boot_check(
+        boot_info_bytes,
+        expected_config_digest,
+        requirements,
+        observation,
+    )?;
+    init_gate_c_vmx_launch_from_validated(requirements, layout, &validated, warnings, allocator)
+}
+
+#[cfg(feature = "vmx-launch")]
+fn init_gate_c_vmx_launch_from_validated<A: PageAllocator>(
+    requirements: &PlatformRequirements,
+    layout: &StaticPlatformIR,
+    validated: &ValidatedPlatform,
+    warnings: alloc::vec::Vec<PlatformWarning>,
+    allocator: &mut A,
+) -> Result<GateCVmxLaunchResult, BootCheckError> {
+    let real_hw = init_gate_c_real_hw_from_validated(
+        requirements,
+        layout,
+        validated,
+        warnings,
+        allocator,
+    )?;
+    let vmcs_phys = real_hw.vmcs_phys.ok_or_else(|| {
+        BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "VMX launch requires an installed VMCS region from REAL_HW EPT init",
+        )
+    })?;
+    let guest_boot_info =
+        build_guest_boot_info_for_partition(layout, DEFAULT_SMOKE_GUEST_PARTITION_ID).map_err(
+            |err| BootCheckError::new(BootCheckErrorKind::Platform, err.message),
+        )?;
+    let guest_entry_phys = install_guest_image(allocator, GUEST_SMOKE_IMAGE).map_err(map_cpu_seam_error)?;
+    let launch_plan = plan_vmx_launch(layout, &real_hw.live.cpu_seam.programming.init.vmx_plan, DEFAULT_SMOKE_GUEST_PARTITION_ID)
+        .map_err(map_vmx_error)?;
+    let mut vmcs_fields = program_vmcs_fields(&launch_plan);
+    patch_guest_entry_in_fields(
+        &mut vmcs_fields,
+        guest_entry_phys,
+        launch_plan.guest_stack_phys.raw(),
+    );
+    let launch_seam = Some(
+        run_vmx_launch_cpu_seam(vmcs_phys, &vmcs_fields, launch_plan.vm_id)
+            .map_err(map_cpu_seam_error)?,
+    );
+    Ok(GateCVmxLaunchResult {
+        real_hw,
+        launch_seam,
+        guest_entry_phys: Some(guest_entry_phys),
+        guest_boot_info: Some(guest_boot_info),
+    })
+}
+
+#[cfg(feature = "vmx-launch")]
+fn map_cpu_seam_error(err: CpuSeamError) -> BootCheckError {
+    BootCheckError::new(BootCheckErrorKind::Platform, err.message)
 }
 
 /// Runs transfer boot checks and mock-backed Gate C init using embedded snapshots.

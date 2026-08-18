@@ -37,6 +37,7 @@ Each critical requirement declares its validation level using these categories:
 | VMX / EPT / VT-d CPU instruction seams | UNIT + REVIEW (Phase 13 validate-only seams) |
 | VMX / EPT / VT-d live privileged instructions | REVIEW + REAL_HW (Phase 14 modules; CI validate-only fallback) |
 | REAL_HW resident install + VMCS prepare | UNIT + REVIEW + REAL_HW (Phase 15) |
-| VMX launch + datapath | QEMU + REAL_HW + PERFORMANCE (Phase 15 KVM harness; VMLAUNCH deferred) |
+| VMX launch (VMCS fields + VMLAUNCH) | UNIT + REVIEW + REAL_HW (Phase 16) |
+| Guest datapath smoke | QEMU + REAL_HW (Phase 16 smoke guest; PERFORMANCE deferred) |
 
 QEMU is not sufficient proof for silicon-specific properties.

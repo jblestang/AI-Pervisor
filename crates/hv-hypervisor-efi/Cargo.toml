@@ -13,9 +13,11 @@ workspace = true
 [features]
 default = []
 real-hw-execution = ["hv-hypervisor-boot/real-hw-execution", "dep:uefi", "dep:hv-x86-cpu"]
+vmx-launch = ["real-hw-execution", "hv-hypervisor-boot/vmx-launch"]
 
 [dependencies]
 hv-boot-abi = { path = "../hv-boot-abi" }
+hv-guest-boot = { path = "../hv-guest-boot" }
 hv-hypervisor-boot = { path = "../hv-hypervisor-boot", default-features = false, features = [] }
 hv-types = { path = "../hv-types" }
 hv-x86-cpu = { path = "../hv-x86-cpu", optional = true }
@@ -24,11 +26,16 @@ uefi = { version = "0.31", optional = true }
 [dev-dependencies]
 hv-config-model = { workspace = true }
 hv-hypervisor = { workspace = true }
-hv-hypervisor-boot = { workspace = true, features = ["real-hw-execution"] }
+hv-hypervisor-boot = { workspace = true, features = ["real-hw-execution", "vmx-launch"] }
 hv-loader = { workspace = true }
 hv-observation-types = { workspace = true }
 hv-platform-model = { workspace = true }
 hv-x86-cpu = { workspace = true, features = ["execute-instructions", "std", "firmware-live-execution"] }
+
+[[test]]
+name = "vmx_launch"
+path = "tests/vmx_launch.rs"
+required-features = ["vmx-launch"]
 
 [[test]]
 name = "real_hw"

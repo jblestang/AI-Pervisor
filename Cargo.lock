@@ -307,6 +307,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "hv-guest-boot"
+version = "0.1.0"
+dependencies = [
+ "hv-config-model",
+ "hv-guest-abi",
+ "hv-platform-model",
+ "hv-types",
+]
+
+[[package]]
 name = "hv-hypervisor"
 version = "0.1.0"
 dependencies = [
@@ -328,6 +338,7 @@ dependencies = [
  "hv-boot-abi",
  "hv-config-model",
  "hv-ept",
+ "hv-guest-boot",
  "hv-loader",
  "hv-observation-types",
  "hv-platform-model",
@@ -343,6 +354,7 @@ version = "0.1.0"
 dependencies = [
  "hv-boot-abi",
  "hv-config-model",
+ "hv-guest-boot",
  "hv-hypervisor",
  "hv-hypervisor-boot",
  "hv-loader",
@@ -427,7 +439,9 @@ version = "0.1.0"
 dependencies = [
  "hv-config-model",
  "hv-ept",
+ "hv-guest-boot",
  "hv-platform-model",
+ "hv-types",
  "hv-vmx",
  "hv-vtd",
 ]
@@ -932,6 +946,7 @@ dependencies = [
  "clap",
  "hv-boot-abi",
  "hv-config",
+ "hv-guest-boot",
  "tempfile",
 ]
 

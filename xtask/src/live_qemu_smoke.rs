@@ -10,8 +10,10 @@ use crate::constants::{
 };
 use crate::{run, run_build_boot_chain_live};
 pub use hv_boot_abi::{
-    REAL_HW_BOOT_SUCCESS_MARKER, REAL_HW_EPT_EXECUTED_MARKER, REAL_HW_VMXON_EXECUTED_MARKER,
+    REAL_HW_BOOT_SUCCESS_MARKER, REAL_HW_EPT_EXECUTED_MARKER, REAL_HW_VMLAUNCH_EXECUTED_MARKER,
+    REAL_HW_VMXON_EXECUTED_MARKER,
 };
+pub use hv_guest_boot::GUEST_SMOKE_RUNNING_MARKER;
 
 /// Evaluates OVMF serial output for a successful REAL_HW Gate C boot.
 pub fn evaluate_live_qemu_smoke_serial(log: &str) -> Result<(), String> {
@@ -21,7 +23,12 @@ pub fn evaluate_live_qemu_smoke_serial(log: &str) -> Result<(), String> {
             "serial log missing REAL_HW Gate C success marker",
         ));
     }
-    let _ = (log.contains(REAL_HW_VMXON_EXECUTED_MARKER), log.contains(REAL_HW_EPT_EXECUTED_MARKER));
+    let _ = (
+        log.contains(REAL_HW_VMXON_EXECUTED_MARKER),
+        log.contains(REAL_HW_EPT_EXECUTED_MARKER),
+        log.contains(REAL_HW_VMLAUNCH_EXECUTED_MARKER),
+        log.contains(GUEST_SMOKE_RUNNING_MARKER),
+    );
     Ok(())
 }
 

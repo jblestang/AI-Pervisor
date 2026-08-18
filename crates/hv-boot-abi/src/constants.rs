@@ -42,3 +42,5 @@ pub const REAL_HW_BOOT_SUCCESS_MARKER: &str = "hypervisor Gate C REAL_HW boot su
 pub const REAL_HW_VMXON_EXECUTED_MARKER: &str = "REAL_HW: VMXON Executed";
 /// Serial log marker emitted when EPT pointer load executes under REAL_HW Gate C.
 pub const REAL_HW_EPT_EXECUTED_MARKER: &str = "REAL_HW: EPT pointer Executed";
+/// Serial log marker emitted when VMLAUNCH executes under REAL_HW Gate C.
+pub const REAL_HW_VMLAUNCH_EXECUTED_MARKER: &str = "REAL_HW: VMLAUNCH Executed";

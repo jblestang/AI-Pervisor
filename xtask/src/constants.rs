@@ -3,6 +3,9 @@
 /// Cargo feature enabling REAL_HW hypervisor EFI builds.
 pub const HYPERVISOR_EFI_REAL_HW_FEATURE: &str = "real-hw-execution";
 
+/// Cargo feature enabling VMX launch on the REAL_HW hypervisor EFI path.
+pub const HYPERVISOR_EFI_VMX_LAUNCH_FEATURE: &str = "vmx-launch";
+
 /// OVMF serial marker emitted when BDS attempts to boot an application.
 pub const OVMF_BOOT_ATTEMPT_MARKER: &str = "BdsDxe: starting Boot";
 
