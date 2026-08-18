@@ -122,4 +122,4 @@ Fresh run: `cargo xtask coverage` (2026-08-18).
 
 ## Review status
 
-All MUST and SHOULD items above are applied. Phase 10 deferrals for UEFI Gate C and layout embedding are closed. Remaining deferred items are documented with explicit phase ownership.
+All MUST and SHOULD items above are applied. Phase 10 deferrals for UEFI Gate C and layout embedding are closed. Remaining deferred items are documented with explicit phase ownership. PR **#12** is ready for human review.
