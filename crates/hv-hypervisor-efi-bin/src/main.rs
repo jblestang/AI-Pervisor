@@ -7,7 +7,17 @@
 extern crate alloc;
 
 use hv_boot_abi::HypervisorTransferHeader;
-#[cfg(feature = "datapath-malicious")]
+#[cfg(feature = "datapath-guests")]
+use hv_hypervisor_efi::{
+    boot_hypervisor_from_transfer_datapath_guests, DatapathFoundationBootMarkers,
+    DatapathGuestsBootMarkers, DatapathLiveBootMarkers, DatapathMaliciousBootMarkers,
+    GATE_D_BOOT_INFO_BUILT_MARKER, GATE_D_DATAPATH_GUESTS_MARKER, GATE_D_DATAPATH_LIVE_MARKER,
+    GATE_D_DATAPATH_MALICIOUS_MARKER, GATE_D_E1000_MMIO_MARKER, GATE_D_GUEST_ELF_INSTALLED_MARKER,
+    GATE_D_IPC_FORWARD_MARKER, GATE_D_IPC_INTEGRITY_MARKER, GATE_D_MULTI_VMLAUNCH_MARKER,
+    RealHwBootMarkers, VmxLaunchBootMarkers, REAL_HW_BOOT_SUCCESS_MARKER, REAL_HW_EPT_EXECUTED_MARKER,
+    REAL_HW_VMLAUNCH_EXECUTED_MARKER, REAL_HW_VMXON_EXECUTED_MARKER, UefiPageAllocator,
+};
+#[cfg(all(feature = "datapath-malicious", not(feature = "datapath-guests")))]
 use hv_hypervisor_efi::{
     boot_hypervisor_from_transfer_datapath_malicious, DatapathFoundationBootMarkers,
     DatapathLiveBootMarkers, DatapathMaliciousBootMarkers, GATE_D_BOOT_INFO_BUILT_MARKER,
@@ -16,7 +26,7 @@ use hv_hypervisor_efi::{
     VmxLaunchBootMarkers, REAL_HW_BOOT_SUCCESS_MARKER, REAL_HW_EPT_EXECUTED_MARKER,
     REAL_HW_VMLAUNCH_EXECUTED_MARKER, REAL_HW_VMXON_EXECUTED_MARKER, UefiPageAllocator,
 };
-#[cfg(all(feature = "datapath-live", not(feature = "datapath-malicious")))]
+#[cfg(all(feature = "datapath-live", not(any(feature = "datapath-malicious", feature = "datapath-guests"))))]
 use hv_hypervisor_efi::{
     boot_hypervisor_from_transfer_datapath_live, DatapathFoundationBootMarkers,
     DatapathLiveBootMarkers, GATE_D_BOOT_INFO_BUILT_MARKER, GATE_D_DATAPATH_LIVE_MARKER,
@@ -24,7 +34,7 @@ use hv_hypervisor_efi::{
     REAL_HW_BOOT_SUCCESS_MARKER, REAL_HW_EPT_EXECUTED_MARKER, REAL_HW_VMLAUNCH_EXECUTED_MARKER,
     REAL_HW_VMXON_EXECUTED_MARKER, UefiPageAllocator,
 };
-#[cfg(all(feature = "datapath-foundation", not(any(feature = "datapath-live", feature = "datapath-malicious"))))]
+#[cfg(all(feature = "datapath-foundation", not(any(feature = "datapath-live", feature = "datapath-malicious", feature = "datapath-guests"))))]
 use hv_hypervisor_efi::{
     boot_hypervisor_from_transfer_datapath_foundation, DatapathFoundationBootMarkers,
     GATE_D_BOOT_INFO_BUILT_MARKER, GATE_D_DATAPATH_FOUNDATION_MARKER, RealHwBootMarkers,
@@ -68,7 +78,24 @@ fn efi_main() -> Status {
 
 fn run_hypervisor() -> Result<(), &'static str> {
     let transfer = locate_transfer_blob()?;
-    #[cfg(feature = "datapath-malicious")]
+    #[cfg(feature = "datapath-guests")]
+    {
+        let mut allocator = UefiPageAllocator::new();
+        let markers = boot_hypervisor_from_transfer_datapath_guests(
+            transfer,
+            &CONFIG_DIGEST,
+            &REQUIREMENTS_SNAPSHOT,
+            &LAYOUT_SNAPSHOT,
+            &mut allocator,
+        )
+        .map_err(|err| {
+            log::error!("hypervisor Gate D datapath guests boot failed: {err}");
+            "hypervisor Gate D datapath guests boot failed"
+        })?;
+        log_datapath_guests_markers(&markers);
+        log::info!("{GATE_D_DATAPATH_GUESTS_MARKER}");
+    }
+    #[cfg(all(feature = "datapath-malicious", not(feature = "datapath-guests")))]
     {
         let mut allocator = UefiPageAllocator::new();
         let markers = boot_hypervisor_from_transfer_datapath_malicious(
@@ -85,7 +112,7 @@ fn run_hypervisor() -> Result<(), &'static str> {
         log_datapath_malicious_markers(&markers);
         log::info!("{GATE_D_DATAPATH_MALICIOUS_MARKER}");
     }
-    #[cfg(all(feature = "datapath-live", not(feature = "datapath-malicious")))]
+    #[cfg(all(feature = "datapath-live", not(any(feature = "datapath-malicious", feature = "datapath-guests"))))]
     {
         let mut allocator = UefiPageAllocator::new();
         let markers = boot_hypervisor_from_transfer_datapath_live(
@@ -102,7 +129,7 @@ fn run_hypervisor() -> Result<(), &'static str> {
         log_datapath_live_markers(&markers);
         log::info!("{GATE_D_DATAPATH_LIVE_MARKER}");
     }
-    #[cfg(all(feature = "datapath-foundation", not(any(feature = "datapath-live", feature = "datapath-malicious"))))]
+    #[cfg(all(feature = "datapath-foundation", not(any(feature = "datapath-live", feature = "datapath-malicious", feature = "datapath-guests"))))]
     {
         let mut allocator = UefiPageAllocator::new();
         let markers = boot_hypervisor_from_transfer_datapath_foundation(
@@ -180,7 +207,7 @@ fn log_real_hw_markers(markers: &RealHwBootMarkers) {
     }
 }
 
-#[cfg(any(feature = "datapath-foundation", feature = "datapath-live", feature = "datapath-malicious"))]
+#[cfg(any(feature = "datapath-foundation", feature = "datapath-live", feature = "datapath-malicious", feature = "datapath-guests"))]
 fn log_datapath_foundation_markers(markers: &DatapathFoundationBootMarkers) {
     log_vmx_launch_markers(&markers.vmx_launch);
     if markers.datapath_boot_infos_built {
@@ -188,7 +215,7 @@ fn log_datapath_foundation_markers(markers: &DatapathFoundationBootMarkers) {
     }
 }
 
-#[cfg(any(feature = "datapath-live", feature = "datapath-malicious"))]
+#[cfg(any(feature = "datapath-live", feature = "datapath-malicious", feature = "datapath-guests"))]
 fn log_datapath_live_markers(markers: &DatapathLiveBootMarkers) {
     log_datapath_foundation_markers(&markers.foundation);
     if markers.ipc_forward_executed {
@@ -199,7 +226,7 @@ fn log_datapath_live_markers(markers: &DatapathLiveBootMarkers) {
     }
 }
 
-#[cfg(feature = "datapath-malicious")]
+#[cfg(any(feature = "datapath-malicious", feature = "datapath-guests"))]
 fn log_datapath_malicious_markers(markers: &DatapathMaliciousBootMarkers) {
     log_datapath_live_markers(&markers.live);
     if markers.integrity_checks_passed {
@@ -207,7 +234,18 @@ fn log_datapath_malicious_markers(markers: &DatapathMaliciousBootMarkers) {
     }
 }
 
-#[cfg(any(feature = "vmx-launch", feature = "datapath-foundation", feature = "datapath-live", feature = "datapath-malicious"))]
+#[cfg(feature = "datapath-guests")]
+fn log_datapath_guests_markers(markers: &DatapathGuestsBootMarkers) {
+    log_datapath_malicious_markers(&markers.malicious);
+    if markers.elf_images_installed == 3 {
+        log::info!("{GATE_D_GUEST_ELF_INSTALLED_MARKER}");
+    }
+    if markers.multi_partition_vmlaunch {
+        log::info!("{GATE_D_MULTI_VMLAUNCH_MARKER}");
+    }
+}
+
+#[cfg(any(feature = "vmx-launch", feature = "datapath-foundation", feature = "datapath-live", feature = "datapath-malicious", feature = "datapath-guests"))]
 fn log_vmx_launch_markers(markers: &VmxLaunchBootMarkers) {
     if markers.real_hw.vmxon_executed {
         log::info!("{REAL_HW_VMXON_EXECUTED_MARKER}");

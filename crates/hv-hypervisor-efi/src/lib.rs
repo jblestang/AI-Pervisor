@@ -32,12 +32,15 @@ use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_foundation_f
 use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_live_from_snapshots;
 #[cfg(feature = "datapath-malicious")]
 use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_malicious_from_snapshots;
+#[cfg(feature = "datapath-guests")]
+use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_guests_from_snapshots;
 
 pub use error::{HypervisorEfiError, HypervisorEfiErrorKind};
 pub use hv_hypervisor_boot::{
     GATE_D_BOOT_INFO_BUILT_MARKER, GATE_D_DATAPATH_FOUNDATION_MARKER, GATE_D_DATAPATH_LIVE_MARKER,
-    GATE_D_DATAPATH_MALICIOUS_MARKER, GATE_D_E1000_MMIO_MARKER, GATE_D_IPC_FORWARD_MARKER,
-    GATE_D_IPC_INTEGRITY_MARKER, REAL_HW_BOOT_SUCCESS_MARKER, REAL_HW_EPT_EXECUTED_MARKER,
+    GATE_D_DATAPATH_MALICIOUS_MARKER, GATE_D_DATAPATH_GUESTS_MARKER, GATE_D_E1000_MMIO_MARKER,
+    GATE_D_GUEST_ELF_INSTALLED_MARKER, GATE_D_IPC_FORWARD_MARKER, GATE_D_IPC_INTEGRITY_MARKER,
+    GATE_D_MULTI_VMLAUNCH_MARKER, REAL_HW_BOOT_SUCCESS_MARKER, REAL_HW_EPT_EXECUTED_MARKER,
     REAL_HW_VMLAUNCH_EXECUTED_MARKER, REAL_HW_VMXON_EXECUTED_MARKER,
 };
 pub use hv_guest_boot::GUEST_SMOKE_RUNNING_MARKER;
@@ -97,6 +100,18 @@ pub struct DatapathMaliciousBootMarkers {
     pub integrity_checks_passed: bool,
     /// Number of reference compromised-guest scenarios blocked.
     pub compromised_scenarios_blocked: u32,
+}
+
+/// Gate D datapath guests boot outcome markers for serial-log verification.
+#[cfg(feature = "datapath-guests")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DatapathGuestsBootMarkers {
+    /// Datapath malicious boot markers.
+    pub malicious: DatapathMaliciousBootMarkers,
+    /// Number of reference guest ELF images installed.
+    pub elf_images_installed: u32,
+    /// Whether multi-partition VMLAUNCH seams completed for all reference partitions.
+    pub multi_partition_vmlaunch: bool,
 }
 
 /// Runs full Gate B validation and mock-backed Gate C init from a transfer blob.
@@ -358,10 +373,48 @@ pub fn boot_hypervisor_from_transfer_datapath_malicious<A: PageAllocator>(
         allocator,
     )
     .map_err(HypervisorEfiError::from)?;
-    Ok(DatapathMaliciousBootMarkers {
+    Ok(boot_hypervisor_from_transfer_datapath_malicious_markers(&result))
+}
+
+#[cfg(feature = "datapath-malicious")]
+fn boot_hypervisor_from_transfer_datapath_malicious_markers(
+    result: &hv_hypervisor_boot::GateDDatapathMaliciousResult,
+) -> DatapathMaliciousBootMarkers {
+    DatapathMaliciousBootMarkers {
         live: boot_hypervisor_from_transfer_datapath_live_markers(&result.live),
         integrity_checks_passed: result.integrity_checks_passed,
         compromised_scenarios_blocked: result.compromised_scenarios_blocked,
+    }
+}
+
+/// Runs Gate B validation and Gate D datapath guests init with resident page installation.
+#[cfg(feature = "datapath-guests")]
+pub fn boot_hypervisor_from_transfer_datapath_guests<A: PageAllocator>(
+    transfer: &[u8],
+    expected_config_digest: &[u8; SHA256_DIGEST_BYTES],
+    requirements: &RequirementsSnapshot,
+    layout: &LayoutSnapshot,
+    allocator: &mut A,
+) -> Result<DatapathGuestsBootMarkers, HypervisorEfiError> {
+    if requirements.config_digest != *expected_config_digest {
+        return Err(HypervisorEfiError::new(
+            HypervisorEfiErrorKind::Requirements,
+            "requirements snapshot digest mismatch",
+        ));
+    }
+    let result = boot_from_transfer_and_init_gate_d_datapath_guests_from_snapshots(
+        transfer,
+        requirements,
+        layout,
+        allocator,
+    )
+    .map_err(HypervisorEfiError::from)?;
+    use hv_guest_boot::REFERENCE_GUEST_PARTITION_IDS;
+    Ok(DatapathGuestsBootMarkers {
+        malicious: boot_hypervisor_from_transfer_datapath_malicious_markers(&result.malicious),
+        elf_images_installed: result.elf_images_installed,
+        multi_partition_vmlaunch: result.multi_launch_seam.launches.len()
+            == REFERENCE_GUEST_PARTITION_IDS.len(),
     })
 }
 

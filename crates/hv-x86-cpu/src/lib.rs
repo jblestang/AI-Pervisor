@@ -45,6 +45,8 @@ pub use resident::{
     install_ept_tables, install_guest_image, install_vmxon_region, install_vmcs_region,
     resolve_vmxon_revision, MockPageAllocator, PageAllocator, VMCS_REGION_BYTES,
 };
+#[cfg(feature = "datapath-guests")]
+pub use resident::install_guest_elf;
 pub use resident_backends::{
     ResidentCpuSeamEptBackend, ResidentCpuSeamVmxBackend, ResidentCpuSeamVtdBackend,
 };
@@ -53,5 +55,7 @@ pub use seams::{
     run_vmx_launch_cpu_seam, CpuInstructionDisposition, EptCpuSeamOutcome, VmxCpuSeamOutcome,
     VmxLaunchCpuSeamOutcome, VtdCpuSeamOutcome,
 };
+#[cfg(feature = "datapath-guests")]
+pub use seams::{run_multi_vmx_launch_cpu_seam, MultiVmxLaunchCpuSeamOutcome};
 #[cfg(feature = "datapath-live")]
 pub use seams::{run_datapath_live_cpu_seam, DatapathLiveCpuSeamOutcome};

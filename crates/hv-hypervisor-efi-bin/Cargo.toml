@@ -22,6 +22,7 @@ vmx-launch = ["hv-hypervisor-efi/vmx-launch"]
 datapath-foundation = ["hv-hypervisor-efi/datapath-foundation"]
 datapath-live = ["hv-hypervisor-efi/datapath-live"]
 datapath-malicious = ["hv-hypervisor-efi/datapath-malicious"]
+datapath-guests = ["hv-hypervisor-efi/datapath-guests"]
 
 [profile.dev]
 panic = "abort"

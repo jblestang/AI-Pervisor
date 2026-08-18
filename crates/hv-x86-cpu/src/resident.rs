@@ -100,6 +100,41 @@ pub fn install_guest_image<A: PageAllocator>(
     Ok(host_phys)
 }
 
+/// Installs a parsed guest ELF image into freshly allocated host physical pages.
+#[cfg(feature = "datapath-guests")]
+pub fn install_guest_elf<A: PageAllocator>(
+    allocator: &mut A,
+    elf_bytes: &[u8],
+) -> Result<u64, CpuSeamError> {
+    use hv_guest_boot::parse_elf64;
+
+    let image = parse_elf64(elf_bytes).map_err(|err| {
+        CpuSeamError::new(CpuSeamErrorKind::InvalidInput, err.message)
+    })?;
+    let mut image_end = 0u64;
+    for segment in &image.load_segments {
+        let end = segment
+            .vaddr
+            .checked_add(segment.bytes.len() as u64)
+            .ok_or_else(|| CpuSeamError::new(CpuSeamErrorKind::InvalidInput, "elf segment overflow"))?;
+        image_end = image_end.max(end);
+    }
+    let alloc_size = core::cmp::max(
+        image_end as usize,
+        VMXON_REGION_MIN_BYTES as usize,
+    );
+    let host_phys = allocator.allocate_pages(alloc_size, VMXON_REGION_ALIGNMENT_BYTES)?;
+    for segment in &image.load_segments {
+        let dest = host_phys
+            .checked_add(segment.vaddr)
+            .ok_or_else(|| CpuSeamError::new(CpuSeamErrorKind::InvalidInput, "elf segment address overflow"))?;
+        allocator.copy_to_pages(dest, &segment.bytes)?;
+    }
+    host_phys
+        .checked_add(image.entry_vaddr)
+        .ok_or_else(|| CpuSeamError::new(CpuSeamErrorKind::InvalidInput, "elf entry overflow"))
+}
+
 /// Mock page allocator for host tests: records installs without real mapping.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct MockPageAllocator {

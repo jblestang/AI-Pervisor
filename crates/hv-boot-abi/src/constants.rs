@@ -58,3 +58,9 @@ pub const GATE_D_E1000_MMIO_MARKER: &str = "Gate D: e1000 MMIO handled";
 pub const GATE_D_DATAPATH_MALICIOUS_MARKER: &str = "hypervisor Gate D datapath malicious succeeded";
 /// Serial log marker emitted when IPC integrity checks pass on the malicious datapath path.
 pub const GATE_D_IPC_INTEGRITY_MARKER: &str = "Gate D: IPC integrity checks passed";
+/// Serial log marker emitted after successful Gate D datapath guests init.
+pub const GATE_D_DATAPATH_GUESTS_MARKER: &str = "hypervisor Gate D datapath guests succeeded";
+/// Serial log marker emitted when guest ELF images are installed for all partitions.
+pub const GATE_D_GUEST_ELF_INSTALLED_MARKER: &str = "Gate D: guest ELF installed for all partitions";
+/// Serial log marker emitted when multi-partition VMLAUNCH seams complete.
+pub const GATE_D_MULTI_VMLAUNCH_MARKER: &str = "Gate D: multi-partition VMLAUNCH executed";

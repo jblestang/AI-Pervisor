@@ -357,7 +357,7 @@ pub fn boot_check_and_init_gate_d_datapath_malicious<A: PageAllocator>(
 }
 
 #[cfg(feature = "datapath-malicious")]
-fn init_gate_d_datapath_malicious_from_validated<A: PageAllocator>(
+pub(crate) fn init_gate_d_datapath_malicious_from_validated<A: PageAllocator>(
     requirements: &PlatformRequirements,
     layout: &StaticPlatformIR,
     validated: &ValidatedPlatform,
@@ -382,5 +382,194 @@ fn init_gate_d_datapath_malicious_from_validated<A: PageAllocator>(
         live,
         integrity_checks_passed,
         compromised_scenarios_blocked,
+    })
+}
+
+/// One partition guest ELF install and VMX launch record.
+#[cfg(feature = "datapath-guests")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PartitionGuestLaunchRecord {
+    /// Partition identifier.
+    pub partition_id: alloc::string::String,
+    /// Guest VM identifier.
+    pub vm_id: VmId,
+    /// Host physical guest entry after ELF installation.
+    pub guest_entry_phys: u64,
+    /// Installed VMCS region host physical address.
+    pub vmcs_phys: u64,
+    /// VMX launch CPU seam outcome for this partition.
+    pub launch_seam: hv_x86_cpu::VmxLaunchCpuSeamOutcome,
+}
+
+/// Result of Gate D datapath guests init atop datapath malicious.
+#[cfg(feature = "datapath-guests")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GateDDatapathGuestsResult {
+    /// Datapath malicious output including integrity checks.
+    pub malicious: GateDDatapathMaliciousResult,
+    /// Per-partition ELF install and launch records.
+    pub partition_launches: alloc::vec::Vec<PartitionGuestLaunchRecord>,
+    /// Number of reference guest ELF images installed.
+    pub elf_images_installed: u32,
+    /// Multi-partition launch CPU seam batch outcome.
+    pub multi_launch_seam: hv_x86_cpu::MultiVmxLaunchCpuSeamOutcome,
+}
+
+/// Runs transfer boot checks and Gate D datapath guests init using embedded snapshots.
+#[cfg(feature = "datapath-guests")]
+pub fn boot_from_transfer_and_init_gate_d_datapath_guests_from_snapshots<A: PageAllocator>(
+    transfer: &[u8],
+    requirements: &RequirementsSnapshot,
+    layout: &LayoutSnapshot,
+    allocator: &mut A,
+) -> Result<GateDDatapathGuestsResult, BootCheckError> {
+    let platform_requirements = platform_requirements_from_snapshot(requirements)?;
+    let static_layout = static_platform_ir_from_layout_snapshot(layout, requirements)?;
+    let (validated, warnings) =
+        boot_from_transfer(transfer, &requirements.config_digest, &platform_requirements)?;
+    init_gate_d_datapath_guests_from_validated(
+        &platform_requirements,
+        &static_layout,
+        &validated,
+        warnings,
+        allocator,
+    )
+}
+
+/// Runs transfer boot checks and Gate D datapath guests init using snapshot + layout metadata.
+#[cfg(feature = "datapath-guests")]
+pub fn boot_from_transfer_and_init_gate_d_datapath_guests<A: PageAllocator>(
+    transfer: &[u8],
+    snapshot: &RequirementsSnapshot,
+    layout: &StaticPlatformIR,
+    allocator: &mut A,
+) -> Result<GateDDatapathGuestsResult, BootCheckError> {
+    let requirements = platform_requirements_from_snapshot(snapshot)?;
+    let (validated, warnings) =
+        boot_from_transfer(transfer, &snapshot.config_digest, &requirements)?;
+    init_gate_d_datapath_guests_from_validated(
+        &requirements,
+        layout,
+        &validated,
+        warnings,
+        allocator,
+    )
+}
+
+/// Runs boot checks from raw inputs and Gate D datapath guests init.
+#[cfg(feature = "datapath-guests")]
+pub fn boot_check_and_init_gate_d_datapath_guests<A: PageAllocator>(
+    boot_info_bytes: &[u8],
+    expected_config_digest: &[u8; SHA256_DIGEST_BYTES],
+    requirements: &PlatformRequirements,
+    observation: &hv_platform_model::ObservationInputs,
+    layout: &StaticPlatformIR,
+    allocator: &mut A,
+) -> Result<GateDDatapathGuestsResult, BootCheckError> {
+    let (validated, warnings) = boot_check(
+        boot_info_bytes,
+        expected_config_digest,
+        requirements,
+        observation,
+    )?;
+    init_gate_d_datapath_guests_from_validated(
+        requirements,
+        layout,
+        &validated,
+        warnings,
+        allocator,
+    )
+}
+
+#[cfg(feature = "datapath-guests")]
+fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
+    requirements: &PlatformRequirements,
+    layout: &StaticPlatformIR,
+    validated: &ValidatedPlatform,
+    warnings: alloc::vec::Vec<PlatformWarning>,
+    allocator: &mut A,
+) -> Result<GateDDatapathGuestsResult, BootCheckError> {
+    use hv_guest_boot::{reference_guest_elf, REFERENCE_GUEST_PARTITION_IDS};
+    use hv_vmx::{patch_guest_entry_in_fields, plan_vmx_launch_all_partitions, program_vmcs_fields};
+    use hv_x86_cpu::{install_guest_elf, install_vmcs_region, run_multi_vmx_launch_cpu_seam};
+
+    let malicious = init_gate_d_datapath_malicious_from_validated(
+        requirements,
+        layout,
+        validated,
+        warnings,
+        allocator,
+    )?;
+
+    let vmx_plan = &malicious
+        .live
+        .foundation
+        .vmx_launch
+        .real_hw
+        .live
+        .cpu_seam
+        .programming
+        .init
+        .vmx_plan;
+    let launch_plans = plan_vmx_launch_all_partitions(layout, vmx_plan)
+        .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
+
+    let mut partition_launches = alloc::vec::Vec::with_capacity(launch_plans.len());
+    let mut seam_inputs = alloc::vec::Vec::with_capacity(launch_plans.len());
+    let mut elf_images_installed = 0u32;
+
+    for launch_plan in &launch_plans {
+        let elf_bytes = reference_guest_elf(&launch_plan.partition_id).ok_or_else(|| {
+            BootCheckError::new(
+                BootCheckErrorKind::Platform,
+                "missing reference guest elf for partition",
+            )
+        })?;
+        hv_guest_boot::parse_elf64(elf_bytes).map_err(|err| {
+            BootCheckError::new(BootCheckErrorKind::Platform, err.message)
+        })?;
+        let guest_entry_phys =
+            install_guest_elf(allocator, elf_bytes).map_err(map_cpu_seam_error)?;
+        elf_images_installed = elf_images_installed.saturating_add(1);
+        let vmcs_phys = install_vmcs_region(allocator).map_err(map_cpu_seam_error)?;
+        let mut vmcs_fields = program_vmcs_fields(launch_plan);
+        patch_guest_entry_in_fields(
+            &mut vmcs_fields,
+            guest_entry_phys,
+            launch_plan.guest_stack_phys.raw(),
+        );
+        seam_inputs.push((vmcs_phys, vmcs_fields, launch_plan.vm_id));
+        partition_launches.push(PartitionGuestLaunchRecord {
+            partition_id: launch_plan.partition_id.clone(),
+            guest_entry_phys,
+            vmcs_phys,
+            vm_id: launch_plan.vm_id,
+            launch_seam: hv_x86_cpu::VmxLaunchCpuSeamOutcome {
+                disposition: hv_x86_cpu::CpuInstructionDisposition::SeamValidated,
+                guest_vm_id: launch_plan.vm_id,
+            },
+        });
+    }
+
+    if elf_images_installed != REFERENCE_GUEST_PARTITION_IDS.len() as u32 {
+        return Err(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "guest elf install count mismatch with reference partitions",
+        ));
+    }
+
+    let multi_launch_seam = run_multi_vmx_launch_cpu_seam(&seam_inputs).map_err(map_cpu_seam_error)?;
+    for (record, outcome) in partition_launches
+        .iter_mut()
+        .zip(multi_launch_seam.launches.iter())
+    {
+        record.launch_seam = outcome.clone();
+    }
+
+    Ok(GateDDatapathGuestsResult {
+        malicious,
+        partition_launches,
+        elf_images_installed,
+        multi_launch_seam,
     })
 }

@@ -148,6 +148,26 @@ pub fn run_vmx_launch_cpu_seam(
     })
 }
 
+/// Outcome of a multi-partition VMX launch CPU seam batch.
+#[cfg(feature = "datapath-guests")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MultiVmxLaunchCpuSeamOutcome {
+    /// Per-partition launch seam outcomes in planning order.
+    pub launches: alloc::vec::Vec<VmxLaunchCpuSeamOutcome>,
+}
+
+/// Validates (and optionally executes) VMX launch seams for multiple partitions.
+#[cfg(feature = "datapath-guests")]
+pub fn run_multi_vmx_launch_cpu_seam(
+    launches: &[(u64, VmcsProgrammedFields, hv_types::VmId)],
+) -> Result<MultiVmxLaunchCpuSeamOutcome, CpuSeamError> {
+    let mut outcomes = alloc::vec::Vec::with_capacity(launches.len());
+    for (vmcs_phys, fields, guest_vm_id) in launches {
+        outcomes.push(run_vmx_launch_cpu_seam(*vmcs_phys, fields, *guest_vm_id)?);
+    }
+    Ok(MultiVmxLaunchCpuSeamOutcome { launches: outcomes })
+}
+
 /// Validates (and optionally executes) a Gate D datapath live seam.
 #[cfg(feature = "datapath-live")]
 pub fn run_datapath_live_cpu_seam(

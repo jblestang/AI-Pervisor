@@ -21,7 +21,8 @@
 | 17 | D (start) | Layout snapshot IPC/device IDs, datapath planning, full guest boot info, `datapath-foundation` orchestration |
 | 18 | D | IPC queue runtime, e1000 MMIO smoke, synthetic in→mid→out forwarding, `datapath-live` orchestration |
 | 19 | D | Compromised-guest malicious IPC tests, pre-forward integrity enforcement, `datapath-malicious` orchestration |
-| 20+ | D | Performance benchmark, multi-partition VMLAUNCH, real guest ELFs |
+| 20 | D | Reference guest ELF64 images, multi-partition VMLAUNCH orchestration, `datapath-guests` |
+| 21+ | D | Performance benchmark (200 Mbit/s), live guest datapath runtime |
 
 Phases 0–3 complete Gate A. Phase 4 begins Gate B with host-side platform validation and deterministic layout planning.
 
