@@ -20,10 +20,10 @@ pub use guest_runtime::{
     GuestDatapathRuntime, GUEST_DATAPATH_IPC_HOPS,
 };
 pub use benchmark::{
-    mock_throughput_mbit, run_mock_datapath_benchmark, throughput_mbit_from_frames,
-    DatapathBenchmarkConfig, DatapathBenchmarkResult, DatapathBenchmarkRunStats,
-    BENCHMARK_MEASUREMENT_SECS, BENCHMARK_MIN_RUNS, BENCHMARK_WARMUP_SECS,
-    TARGET_THROUGHPUT_MBIT_PER_SEC,
+    compute_benchmark_run_stats, mock_throughput_mbit, run_mock_datapath_benchmark,
+    throughput_mbit_from_frames, DatapathBenchmarkConfig, DatapathBenchmarkResult,
+    DatapathBenchmarkRunStats, BENCHMARK_MEASUREMENT_SECS, BENCHMARK_MIN_RUNS,
+    BENCHMARK_WARMUP_SECS, TARGET_THROUGHPUT_MBIT_PER_SEC,
 };
 pub use compromised::{
     apply_compromised_guest_write, enforce_forward_integrity, scan_ipc_queue_integrity,
@@ -39,8 +39,8 @@ pub use e1000::{
 pub use error::{DatapathError, DatapathErrorKind};
 pub use topology::{DatapathForwardPlan, IpcChannelRuntime};
 pub use forward::{
-    forward_synthetic_frame, is_compromised_action_blocked, plan_datapath_forward,
-    run_reference_compromised_scenarios, SYNTHETIC_FRAME_PAYLOAD,
+    forward_frame_in_mid_out, forward_synthetic_frame, is_compromised_action_blocked,
+    plan_datapath_forward, run_reference_compromised_scenarios, SYNTHETIC_FRAME_PAYLOAD,
 };
 pub use ipc::{
     queue_storage_bytes, IpcQueueHeader, IpcQueueView, IpcSlotHeader, REFERENCE_IPC_QUEUE_SLOTS,

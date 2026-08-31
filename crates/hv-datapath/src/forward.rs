@@ -44,18 +44,17 @@ pub fn plan_datapath_forward(layout: &StaticPlatformIR) -> Result<DatapathForwar
     })
 }
 
-/// Forwards one synthetic frame in→mid→out through IPC queues.
-pub fn forward_synthetic_frame(plan: &mut DatapathForwardPlan) -> Result<(), DatapathError> {
-    validate_reference_topology(plan)?;
-    enforce_forward_integrity(plan)?;
-    handle_e1000_mmio_write(&mut plan.in_e1000, E1000_REG_TDT, 1)?;
-
+/// Forwards one payload in→mid→out through IPC queues and verifies OUT egress.
+pub fn forward_frame_in_mid_out(
+    plan: &mut DatapathForwardPlan,
+    payload: &[u8],
+) -> Result<(), DatapathError> {
     let mut chan_a = IpcQueueView::open(
         &mut plan.chan_a.bytes,
         REFERENCE_IPC_QUEUE_SLOTS,
         REFERENCE_IPC_SLOT_SIZE_BYTES,
     )?;
-    chan_a.enqueue(SYNTHETIC_FRAME_PAYLOAD)?;
+    chan_a.enqueue(payload)?;
 
     let mut mid_buffer = vec![0u8; REFERENCE_IPC_SLOT_SIZE_BYTES as usize];
     let len = chan_a.dequeue(&mut mid_buffer)?;
@@ -64,19 +63,19 @@ pub fn forward_synthetic_frame(plan: &mut DatapathForwardPlan) -> Result<(), Dat
         REFERENCE_IPC_QUEUE_SLOTS,
         REFERENCE_IPC_SLOT_SIZE_BYTES,
     )?;
-    if let Some(payload) = mid_buffer.get(0..len) {
-        chan_b.enqueue(payload)?;
+    if let Some(mid_payload) = mid_buffer.get(0..len) {
+        chan_b.enqueue(mid_payload)?;
     }
 
     let mut out_buffer = vec![0u8; REFERENCE_IPC_SLOT_SIZE_BYTES as usize];
     let out_len = chan_b.dequeue(&mut out_buffer)?;
-    if out_len != SYNTHETIC_FRAME_PAYLOAD.len() {
+    if out_len != payload.len() {
         return Err(DatapathError::new(
             DatapathErrorKind::IpcViolation,
             "forwarded frame length mismatch",
         ));
     }
-    if out_buffer.get(0..out_len) != Some(SYNTHETIC_FRAME_PAYLOAD) {
+    if out_buffer.get(0..out_len) != Some(payload) {
         return Err(DatapathError::new(
             DatapathErrorKind::IpcViolation,
             "forwarded frame payload mismatch",
@@ -84,6 +83,14 @@ pub fn forward_synthetic_frame(plan: &mut DatapathForwardPlan) -> Result<(), Dat
     }
     plan.out_e1000.rdh = plan.out_e1000.rdh.saturating_add(1);
     Ok(())
+}
+
+/// Forwards one synthetic frame in→mid→out through IPC queues.
+pub fn forward_synthetic_frame(plan: &mut DatapathForwardPlan) -> Result<(), DatapathError> {
+    validate_reference_topology(plan)?;
+    enforce_forward_integrity(plan)?;
+    handle_e1000_mmio_write(&mut plan.in_e1000, E1000_REG_TDT, 1)?;
+    forward_frame_in_mid_out(plan, SYNTHETIC_FRAME_PAYLOAD)
 }
 
 /// Returns whether a compromised action is blocked by integrity enforcement or forwarding.

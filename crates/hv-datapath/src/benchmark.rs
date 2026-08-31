@@ -142,7 +142,7 @@ pub fn run_mock_datapath_benchmark(
         run_throughputs.push(mbit);
     }
 
-    let stats = compute_run_stats(&run_throughputs);
+    let stats = compute_benchmark_run_stats(&run_throughputs);
     let target_met = stats.min_mbit_per_sec >= TARGET_THROUGHPUT_MBIT_PER_SEC;
 
     Ok(DatapathBenchmarkResult {
@@ -154,7 +154,8 @@ pub fn run_mock_datapath_benchmark(
     })
 }
 
-fn compute_run_stats(values: &[u64]) -> DatapathBenchmarkRunStats {
+/// Computes min/mean/median/p95 throughput statistics across benchmark runs.
+pub fn compute_benchmark_run_stats(values: &[u64]) -> DatapathBenchmarkRunStats {
     if values.is_empty() {
         return DatapathBenchmarkRunStats {
             min_mbit_per_sec: 0,

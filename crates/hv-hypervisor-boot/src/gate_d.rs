@@ -273,7 +273,7 @@ pub(crate) fn init_gate_d_datapath_live_from_validated<A: PageAllocator>(
     })
 }
 
-#[cfg(feature = "datapath-live")]
+#[cfg(any(feature = "datapath-live", feature = "datapath-guests", feature = "datapath-runtime"))]
 fn map_cpu_seam_error(err: hv_x86_cpu::CpuSeamError) -> BootCheckError {
     BootCheckError::new(BootCheckErrorKind::Platform, err.message)
 }
@@ -433,6 +433,7 @@ pub fn boot_from_transfer_and_init_gate_d_datapath_guests_from_snapshots<A: Page
         &validated,
         warnings,
         allocator,
+        hv_guest_boot::GuestElfKind::Standard,
     )
 }
 
@@ -453,6 +454,7 @@ pub fn boot_from_transfer_and_init_gate_d_datapath_guests<A: PageAllocator>(
         &validated,
         warnings,
         allocator,
+        hv_guest_boot::GuestElfKind::Standard,
     )
 }
 
@@ -478,6 +480,7 @@ pub fn boot_check_and_init_gate_d_datapath_guests<A: PageAllocator>(
         &validated,
         warnings,
         allocator,
+        hv_guest_boot::GuestElfKind::Standard,
     )
 }
 
@@ -488,8 +491,9 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
     validated: &ValidatedPlatform,
     warnings: alloc::vec::Vec<PlatformWarning>,
     allocator: &mut A,
+    elf_kind: hv_guest_boot::GuestElfKind,
 ) -> Result<GateDDatapathGuestsResult, BootCheckError> {
-    use hv_guest_boot::{reference_guest_elf, REFERENCE_GUEST_PARTITION_IDS};
+    use hv_guest_boot::{reference_guest_elf_for_kind, REFERENCE_GUEST_PARTITION_IDS};
     use hv_vmx::{patch_guest_entry_in_fields, plan_vmx_launch_all_partitions, program_vmcs_fields};
     use hv_x86_cpu::{install_guest_elf, install_vmcs_region, run_multi_vmx_launch_cpu_seam};
 
@@ -519,7 +523,7 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
     let mut elf_images_installed = 0u32;
 
     for launch_plan in &launch_plans {
-        let elf_bytes = reference_guest_elf(&launch_plan.partition_id).ok_or_else(|| {
+        let elf_bytes = reference_guest_elf_for_kind(&launch_plan.partition_id, elf_kind).ok_or_else(|| {
             BootCheckError::new(
                 BootCheckErrorKind::Platform,
                 "missing reference guest elf for partition",
@@ -664,6 +668,7 @@ pub(crate) fn init_gate_d_datapath_benchmark_from_validated<A: PageAllocator>(
         validated,
         warnings,
         allocator,
+        hv_guest_boot::GuestElfKind::Standard,
     )?;
 
     let benchmark = hv_datapath::run_mock_datapath_benchmark(
@@ -763,27 +768,41 @@ pub fn boot_check_and_init_gate_d_datapath_runtime<A: PageAllocator>(
 }
 
 #[cfg(feature = "datapath-runtime")]
-fn init_gate_d_datapath_runtime_from_validated<A: PageAllocator>(
+pub(crate) fn init_gate_d_datapath_runtime_from_validated<A: PageAllocator>(
     requirements: &PlatformRequirements,
     layout: &StaticPlatformIR,
     validated: &ValidatedPlatform,
     warnings: alloc::vec::Vec<PlatformWarning>,
     allocator: &mut A,
 ) -> Result<GateDDatapathRuntimeResult, BootCheckError> {
-    use hv_guest_boot::{reference_datapath_guest_elf, REFERENCE_GUEST_PARTITION_IDS};
+    use hv_guest_boot::GuestElfKind;
     use hv_vmx::plan_vmx_launch_all_partitions;
-    use hv_x86_cpu::{install_guest_elf, run_datapath_runtime_cpu_seam};
+    use hv_x86_cpu::run_datapath_runtime_cpu_seam;
 
-    let benchmark = init_gate_d_datapath_benchmark_from_validated(
+    let guests = init_gate_d_datapath_guests_from_validated(
         requirements,
         layout,
         validated,
         warnings,
         allocator,
+        GuestElfKind::Datapath,
     )?;
+    let datapath_elf_images_installed = guests.elf_images_installed;
 
-    let vmx_plan = &benchmark
-        .guests
+    let benchmark = hv_datapath::run_mock_datapath_benchmark(
+        layout,
+        &hv_datapath::DatapathBenchmarkConfig::default(),
+    )
+    .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
+
+    if !benchmark.target_met {
+        return Err(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "datapath benchmark target not met",
+        ));
+    }
+
+    let vmx_plan = &guests
         .malicious
         .live
         .foundation
@@ -797,28 +816,6 @@ fn init_gate_d_datapath_runtime_from_validated<A: PageAllocator>(
     let launch_plans = plan_vmx_launch_all_partitions(layout, vmx_plan)
         .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
 
-    let mut datapath_elf_images_installed = 0u32;
-    for launch_plan in &launch_plans {
-        let elf_bytes = reference_datapath_guest_elf(&launch_plan.partition_id).ok_or_else(|| {
-            BootCheckError::new(
-                BootCheckErrorKind::Platform,
-                "missing datapath guest elf for partition",
-            )
-        })?;
-        hv_guest_boot::parse_elf64(elf_bytes).map_err(|err| {
-            BootCheckError::new(BootCheckErrorKind::Platform, err.message)
-        })?;
-        install_guest_elf(allocator, elf_bytes).map_err(map_cpu_seam_error)?;
-        datapath_elf_images_installed = datapath_elf_images_installed.saturating_add(1);
-    }
-
-    if datapath_elf_images_installed != REFERENCE_GUEST_PARTITION_IDS.len() as u32 {
-        return Err(BootCheckError::new(
-            BootCheckErrorKind::Platform,
-            "datapath guest elf install count mismatch with reference partitions",
-        ));
-    }
-
     let (_forward_plan, runtime) = hv_datapath::run_guest_datapath_runtime(layout).map_err(|err| {
         BootCheckError::new(BootCheckErrorKind::Platform, err.message)
     })?;
@@ -830,26 +827,24 @@ fn init_gate_d_datapath_runtime_from_validated<A: PageAllocator>(
         ));
     }
 
-    let mut seam_inputs = alloc::vec::Vec::with_capacity(benchmark.guests.partition_launches.len());
-    for (record, launch_plan) in benchmark
-        .guests
-        .partition_launches
-        .iter()
-        .zip(launch_plans.iter())
-    {
-        if record.partition_id != launch_plan.partition_id {
-            return Err(BootCheckError::new(
-                BootCheckErrorKind::Platform,
-                "partition launch record mismatch for datapath runtime seam",
-            ));
-        }
+    let mut seam_inputs = alloc::vec::Vec::with_capacity(guests.partition_launches.len());
+    for record in &guests.partition_launches {
+        let launch_plan = launch_plans
+            .iter()
+            .find(|plan| plan.vm_id == record.vm_id)
+            .ok_or_else(|| {
+                BootCheckError::new(
+                    BootCheckErrorKind::Platform,
+                    "missing launch plan for datapath runtime seam",
+                )
+            })?;
         seam_inputs.push((record.vmcs_phys, launch_plan.host_exit_phys.raw()));
     }
 
     let runtime_seam = run_datapath_runtime_cpu_seam(&seam_inputs).map_err(map_cpu_seam_error)?;
 
     Ok(GateDDatapathRuntimeResult {
-        benchmark,
+        benchmark: GateDDatapathBenchmarkResult { guests, benchmark },
         runtime,
         runtime_seam,
         datapath_elf_images_installed,

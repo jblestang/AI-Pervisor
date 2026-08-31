@@ -4,8 +4,8 @@ use std::time::{Duration, Instant};
 
 use hv_config_model::compile_config_from_str;
 use hv_datapath::{
-    forward_synthetic_frame, plan_datapath_forward, run_mock_datapath_benchmark,
-    throughput_mbit_from_frames, DatapathBenchmarkConfig, DatapathBenchmarkRunStats,
+    compute_benchmark_run_stats, forward_synthetic_frame, plan_datapath_forward,
+    run_mock_datapath_benchmark, throughput_mbit_from_frames, DatapathBenchmarkConfig,
     SYNTHETIC_FRAME_PAYLOAD, TARGET_THROUGHPUT_MBIT_PER_SEC,
 };
 use hv_platform_model::plan_static_platform_ir;
@@ -108,7 +108,7 @@ pub fn run_datapath_benchmark(config_path: &str) -> i32 {
         run_throughputs.push(mbit);
     }
 
-    let stats = compute_run_stats(&run_throughputs);
+    let stats = compute_benchmark_run_stats(&run_throughputs);
     let target_met = stats.min_mbit_per_sec >= TARGET_THROUGHPUT_MBIT_PER_SEC;
 
     eprintln!("datapath benchmark (host wall-clock)");
@@ -136,44 +136,13 @@ pub fn run_datapath_benchmark(config_path: &str) -> i32 {
     if target_met { 0 } else { 1 }
 }
 
-fn compute_run_stats(values: &[u64]) -> DatapathBenchmarkRunStats {
-    if values.is_empty() {
-        return DatapathBenchmarkRunStats {
-            min_mbit_per_sec: 0,
-            mean_mbit_per_sec: 0,
-            median_mbit_per_sec: 0,
-            p95_mbit_per_sec: 0,
-        };
-    }
-    let mut sorted = values.to_vec();
-    sorted.sort_unstable();
-    let min = *sorted.first().unwrap_or(&0);
-    let sum: u64 = sorted.iter().sum();
-    let mean = if sorted.is_empty() {
-        0
-    } else {
-        sum / sorted.len() as u64
-    };
-    let median = *sorted.get(sorted.len() / 2).unwrap_or(&0);
-    let p95_idx = sorted.len().saturating_mul(95).saturating_add(99) / 100;
-    let p95_idx = p95_idx.saturating_sub(1).min(sorted.len().saturating_sub(1));
-    let p95 = *sorted.get(p95_idx).unwrap_or(&0);
-    DatapathBenchmarkRunStats {
-        min_mbit_per_sec: min,
-        mean_mbit_per_sec: mean,
-        median_mbit_per_sec: median,
-        p95_mbit_per_sec: p95,
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use hv_datapath::DatapathBenchmarkRunStats;
+    use hv_datapath::{compute_benchmark_run_stats, DatapathBenchmarkRunStats};
 
     #[test]
-    fn compute_run_stats_reports_min_mean_median_p95() {
-        let stats = compute_run_stats(&[100, 200, 300, 400, 500]);
+    fn compute_benchmark_run_stats_reports_min_mean_median_p95() {
+        let stats = compute_benchmark_run_stats(&[100, 200, 300, 400, 500]);
         assert_eq!(
             stats,
             DatapathBenchmarkRunStats {

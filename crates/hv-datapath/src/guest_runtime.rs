@@ -1,7 +1,5 @@
 //! Guest-driven datapath runtime under VMX (validate-only default).
 
-use alloc::vec;
-
 use hv_guest_abi::GuestIpcRole;
 use hv_platform_model::StaticPlatformIR;
 use hv_types::VmId;
@@ -9,9 +7,8 @@ use hv_types::VmId;
 use crate::compromised::enforce_forward_integrity;
 use crate::e1000::{handle_e1000_mmio_write, E1000_REG_TDT};
 use crate::error::{DatapathError, DatapathErrorKind};
-use crate::forward::{plan_datapath_forward, SYNTHETIC_FRAME_PAYLOAD};
-use crate::ipc::{IpcQueueView, REFERENCE_IPC_QUEUE_SLOTS, REFERENCE_IPC_SLOT_SIZE_BYTES};
-use crate::plan::{plan_datapath_for_partition, plan_datapath_for_vm_id};
+use crate::forward::{forward_frame_in_mid_out, plan_datapath_forward, SYNTHETIC_FRAME_PAYLOAD};
+use crate::plan::plan_datapath_for_vm_id;
 use crate::topology::DatapathForwardPlan;
 
 /// IPC hops completed by the in→mid→out guest relay (chan_a producer + chan_b producer).
@@ -75,29 +72,12 @@ impl GuestDatapathRuntime {
         }
         handle_e1000_mmio_write(&mut self.forward_plan.in_e1000, E1000_REG_TDT, 1)?;
 
-        let mut chan_a = IpcQueueView::open(
-            &mut self.forward_plan.chan_a.bytes,
-            REFERENCE_IPC_QUEUE_SLOTS,
-            REFERENCE_IPC_SLOT_SIZE_BYTES,
-        )?;
-        chan_a.enqueue(SYNTHETIC_FRAME_PAYLOAD)?;
-
         let mid_plan = plan_datapath_for_vm_id(layout, VmId::new(1))?;
         if mid_plan.ipc_regions.len() < 2 {
             return Err(DatapathError::new(
                 DatapathErrorKind::InvalidInput,
                 "mid guest requires two IPC roles for datapath runtime",
             ));
-        }
-        let mut mid_buffer = vec![0u8; REFERENCE_IPC_SLOT_SIZE_BYTES as usize];
-        let len = chan_a.dequeue(&mut mid_buffer)?;
-        let mut chan_b = IpcQueueView::open(
-            &mut self.forward_plan.chan_b.bytes,
-            REFERENCE_IPC_QUEUE_SLOTS,
-            REFERENCE_IPC_SLOT_SIZE_BYTES,
-        )?;
-        if let Some(payload) = mid_buffer.get(0..len) {
-            chan_b.enqueue(payload)?;
         }
 
         let out_plan = plan_datapath_for_vm_id(layout, VmId::new(2))?;
@@ -107,21 +87,8 @@ impl GuestDatapathRuntime {
                 "out guest requires e1000 device for datapath runtime",
             ));
         }
-        let mut out_buffer = vec![0u8; REFERENCE_IPC_SLOT_SIZE_BYTES as usize];
-        let out_len = chan_b.dequeue(&mut out_buffer)?;
-        if out_len != SYNTHETIC_FRAME_PAYLOAD.len() {
-            return Err(DatapathError::new(
-                DatapathErrorKind::IpcViolation,
-                "guest runtime frame length mismatch at out",
-            ));
-        }
-        if out_buffer.get(0..out_len) != Some(SYNTHETIC_FRAME_PAYLOAD) {
-            return Err(DatapathError::new(
-                DatapathErrorKind::IpcViolation,
-                "guest runtime frame payload mismatch at out",
-            ));
-        }
-        self.forward_plan.out_e1000.rdh = self.forward_plan.out_e1000.rdh.saturating_add(1);
+
+        forward_frame_in_mid_out(&mut self.forward_plan, SYNTHETIC_FRAME_PAYLOAD)?;
 
         let outcome = DatapathRuntimeOutcome {
             disposition: DatapathRuntimeDisposition::ValidatedOnly,
@@ -174,7 +141,6 @@ fn validate_guest_topology(layout: &StaticPlatformIR) -> Result<(), DatapathErro
             "out guest must include an IPC consumer role",
         ));
     }
-    let _ = plan_datapath_for_partition(layout, "in");
     Ok(())
 }
 

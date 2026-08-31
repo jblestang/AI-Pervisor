@@ -8,6 +8,8 @@ extern crate alloc;
 
 use hv_boot_abi::HypervisorTransferHeader;
 #[cfg(feature = "datapath-runtime")]
+use hv_guest_boot::GUEST_DATAPATH_CAPABLE_MARKER;
+#[cfg(feature = "datapath-runtime")]
 use hv_hypervisor_efi::{
     boot_hypervisor_from_transfer_datapath_runtime, DatapathBenchmarkBootMarkers,
     DatapathFoundationBootMarkers, DatapathGuestsBootMarkers, DatapathLiveBootMarkers,
@@ -313,6 +315,9 @@ fn log_datapath_benchmark_markers(markers: &DatapathBenchmarkBootMarkers) {
 #[cfg(feature = "datapath-runtime")]
 fn log_datapath_runtime_markers(markers: &DatapathRuntimeBootMarkers) {
     log_datapath_benchmark_markers(&markers.benchmark);
+    if markers.datapath_elf_images_installed == 3 {
+        log::info!("{GUEST_DATAPATH_CAPABLE_MARKER}");
+    }
     if markers.guest_datapath_frame_forwarded {
         log::info!("{GATE_D_GUEST_DATAPATH_FRAME_MARKER}");
     }
