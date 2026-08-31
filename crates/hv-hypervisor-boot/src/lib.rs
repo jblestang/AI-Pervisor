@@ -19,7 +19,8 @@ pub use hv_boot_abi::{
     GATE_D_BENCHMARK_TARGET_MET_MARKER, GATE_D_DATAPATH_RUNTIME_MARKER, GATE_D_GUEST_DATAPATH_FRAME_MARKER,
     GATE_D_E1000_MMIO_MARKER,
     GATE_D_GUEST_ELF_INSTALLED_MARKER, GATE_D_GUEST_SOURCE_ELF_MARKER,
-    GATE_D_GUEST_BOOT_INFO_INSTALLED_MARKER, GATE_D_GUEST_EXECUTION_MARKER, GATE_D_IPC_FORWARD_MARKER,
+    GATE_D_GUEST_BOOT_INFO_INSTALLED_MARKER, GATE_D_GUEST_EXECUTION_MARKER,
+    GATE_D_GUEST_THROUGHPUT_MARKER, GATE_D_GUEST_THROUGHPUT_TARGET_MET_MARKER, GATE_D_IPC_FORWARD_MARKER,
     GATE_D_IPC_INTEGRITY_MARKER, GATE_D_MULTI_VMLAUNCH_MARKER, REAL_HW_BOOT_SUCCESS_MARKER,
     REAL_HW_EPT_EXECUTED_MARKER,
     REAL_HW_VMLAUNCH_EXECUTED_MARKER, REAL_HW_VMXON_EXECUTED_MARKER,
@@ -112,6 +113,12 @@ pub use gate_d::{
     boot_from_transfer_and_init_gate_d_datapath_guest_execution,
     boot_from_transfer_and_init_gate_d_datapath_guest_execution_from_snapshots,
     GateDDatapathGuestExecutionResult,
+};
+#[cfg(feature = "datapath-guest-throughput")]
+pub use gate_d::{
+    boot_from_transfer_and_init_gate_d_datapath_guest_throughput,
+    boot_from_transfer_and_init_gate_d_datapath_guest_throughput_from_snapshots,
+    GateDDatapathGuestThroughputResult,
 };
 pub use snapshot::{
     layout_snapshot_from_platform_ir, platform_requirements_from_snapshot,

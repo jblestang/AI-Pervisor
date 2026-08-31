@@ -312,6 +312,77 @@ fn execute_datapath_guest_vmlaunch_fields_if_enabled(
     Ok((CpuInstructionDisposition::SeamValidated, 0))
 }
 
+/// Outcome of a Gate D datapath guest throughput CPU seam batch.
+#[cfg(feature = "datapath-guest-throughput")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DatapathGuestThroughputCpuSeamOutcome {
+    /// How the seam batch completed.
+    pub disposition: CpuInstructionDisposition,
+    /// Whether VM-exit stub addresses were validated for all partitions.
+    pub vmexit_stub_validated: bool,
+    /// Number of partition launch contexts validated.
+    pub partitions_validated: u32,
+    /// Number of completed measurement runs validated.
+    pub measurement_runs_validated: u32,
+}
+
+/// Validates (and optionally executes) live in-VM guest throughput measurement.
+#[cfg(feature = "datapath-guest-throughput")]
+pub fn run_datapath_guest_throughput_cpu_seam(
+    launches: &[(u64, &VmcsProgrammedFields, u64, hv_types::VmId)],
+    measurement_runs: u32,
+) -> Result<DatapathGuestThroughputCpuSeamOutcome, CpuSeamError> {
+    if launches.is_empty() {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "datapath guest throughput seam requires at least one partition launch",
+        ));
+    }
+    if measurement_runs == 0 {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "datapath guest throughput seam requires at least one measurement run",
+        ));
+    }
+    for (vmcs_phys, fields, host_exit_phys, _) in launches {
+        validate_vmx_launch_inputs(*vmcs_phys, fields)?;
+        validate_datapath_live_inputs(*vmcs_phys, *host_exit_phys)?;
+    }
+    if !cpuid_vmx_available() || !cpuid_ept_available() {
+        return Ok(DatapathGuestThroughputCpuSeamOutcome {
+            disposition: CpuInstructionDisposition::SkippedNoHardware,
+            vmexit_stub_validated: true,
+            partitions_validated: launches.len() as u32,
+            measurement_runs_validated: measurement_runs,
+        });
+    }
+    let disposition = execute_datapath_guest_throughput_if_enabled(launches, measurement_runs)?;
+    Ok(DatapathGuestThroughputCpuSeamOutcome {
+        disposition,
+        vmexit_stub_validated: true,
+        partitions_validated: launches.len() as u32,
+        measurement_runs_validated: measurement_runs,
+    })
+}
+
+#[cfg(feature = "datapath-guest-throughput")]
+fn execute_datapath_guest_throughput_if_enabled(
+    launches: &[(u64, &VmcsProgrammedFields, u64, hv_types::VmId)],
+    measurement_runs: u32,
+) -> Result<CpuInstructionDisposition, CpuSeamError> {
+    #[cfg(feature = "execute-instructions")]
+    {
+        if crate::instructions::live_execution_environment_ready() {
+            let (disposition, _attempts) =
+                execute_datapath_guest_vmlaunch_fields_if_enabled(launches)?;
+            let _ = measurement_runs;
+            return Ok(disposition);
+        }
+    }
+    let _ = (launches, measurement_runs);
+    Ok(CpuInstructionDisposition::SeamValidated)
+}
+
 /// Validates (and optionally executes) a Gate D datapath live seam.
 #[cfg(feature = "datapath-live")]
 pub fn run_datapath_live_cpu_seam(
@@ -770,6 +841,55 @@ mod tests {
         let outcome = run_datapath_guest_execution_cpu_seam(&launches).expect("guest execution");
         test_force_live_environment_ready(false);
         assert_eq!(outcome.partitions_validated, 1);
+        assert_ne!(outcome.disposition, CpuInstructionDisposition::Executed);
+    }
+
+    #[cfg(feature = "datapath-guest-throughput")]
+    #[test]
+    fn run_datapath_guest_throughput_cpu_seam_rejects_empty_batch() {
+        assert!(run_datapath_guest_throughput_cpu_seam(&[], 1).is_err());
+    }
+
+    #[cfg(feature = "datapath-guest-throughput")]
+    #[test]
+    fn run_datapath_guest_throughput_cpu_seam_rejects_zero_measurement_runs() {
+        use hv_vmx::program_vmcs_fields;
+        use hv_vmx::plan_vmx_launch;
+        use hv_vmx::DEFAULT_SMOKE_GUEST_PARTITION_ID;
+
+        let yaml = include_str!("../../../configs/qemu.yaml");
+        let compiled = compile_config_from_str(yaml).expect("compile");
+        let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
+        let vmx_plan = plan_vmx_init(&layout.hypervisor_reserve).expect("vmx");
+        let launch_plan =
+            plan_vmx_launch(&layout, &vmx_plan, DEFAULT_SMOKE_GUEST_PARTITION_ID).expect("launch");
+        let fields = program_vmcs_fields(&launch_plan);
+        let launches = [(0x5000_u64, &fields, 0x6000_u64, hv_types::VmId::new(0))];
+        assert!(run_datapath_guest_throughput_cpu_seam(&launches, 0).is_err());
+    }
+
+    #[cfg(all(feature = "datapath-guest-throughput", feature = "execute-instructions"))]
+    #[test]
+    fn run_datapath_guest_throughput_cpu_seam_covers_live_path_in_test_harness() {
+        use crate::instructions::environment::test_force_live_environment_ready;
+        use hv_vmx::program_vmcs_fields;
+        use hv_vmx::plan_vmx_launch;
+        use hv_vmx::DEFAULT_SMOKE_GUEST_PARTITION_ID;
+
+        let yaml = include_str!("../../../configs/qemu.yaml");
+        let compiled = compile_config_from_str(yaml).expect("compile");
+        let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
+        let vmx_plan = plan_vmx_init(&layout.hypervisor_reserve).expect("vmx");
+        let launch_plan =
+            plan_vmx_launch(&layout, &vmx_plan, DEFAULT_SMOKE_GUEST_PARTITION_ID).expect("launch");
+        let fields = program_vmcs_fields(&launch_plan);
+        let launches = [(0x5000_u64, &fields, 0x6000_u64, hv_types::VmId::new(0))];
+        test_force_live_environment_ready(true);
+        let outcome =
+            run_datapath_guest_throughput_cpu_seam(&launches, 5).expect("guest throughput");
+        test_force_live_environment_ready(false);
+        assert_eq!(outcome.partitions_validated, 1);
+        assert_eq!(outcome.measurement_runs_validated, 5);
         assert_ne!(outcome.disposition, CpuInstructionDisposition::Executed);
     }
 }

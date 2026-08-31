@@ -44,6 +44,8 @@ use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_guest_source
 use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_guest_live_from_snapshots;
 #[cfg(feature = "datapath-guest-execution")]
 use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_guest_execution_from_snapshots;
+#[cfg(feature = "datapath-guest-throughput")]
+use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_guest_throughput_from_snapshots;
 
 pub use error::{HypervisorEfiError, HypervisorEfiErrorKind};
 pub use hv_hypervisor_boot::{
@@ -52,7 +54,8 @@ pub use hv_hypervisor_boot::{
     GATE_D_BENCHMARK_TARGET_MET_MARKER, GATE_D_DATAPATH_RUNTIME_MARKER, GATE_D_GUEST_DATAPATH_FRAME_MARKER,
     GATE_D_E1000_MMIO_MARKER,
     GATE_D_GUEST_ELF_INSTALLED_MARKER, GATE_D_GUEST_SOURCE_ELF_MARKER,
-    GATE_D_GUEST_BOOT_INFO_INSTALLED_MARKER, GATE_D_GUEST_EXECUTION_MARKER, GATE_D_IPC_FORWARD_MARKER,
+    GATE_D_GUEST_BOOT_INFO_INSTALLED_MARKER, GATE_D_GUEST_EXECUTION_MARKER,
+    GATE_D_GUEST_THROUGHPUT_MARKER, GATE_D_GUEST_THROUGHPUT_TARGET_MET_MARKER, GATE_D_IPC_FORWARD_MARKER,
     GATE_D_IPC_INTEGRITY_MARKER,
     GATE_D_MULTI_VMLAUNCH_MARKER, REAL_HW_BOOT_SUCCESS_MARKER, REAL_HW_EPT_EXECUTED_MARKER,
     REAL_HW_VMLAUNCH_EXECUTED_MARKER, REAL_HW_VMXON_EXECUTED_MARKER,
@@ -184,6 +187,20 @@ pub struct DatapathGuestExecutionBootMarkers {
     pub guest_code_executed: bool,
     /// Whether guest datapath runtime disposition reflects live execution.
     pub runtime_disposition_executed: bool,
+}
+
+/// Gate D datapath guest throughput boot outcome markers for serial-log verification.
+#[cfg(feature = "datapath-guest-throughput")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DatapathGuestThroughputBootMarkers {
+    /// Datapath guest execution boot markers.
+    pub execution: DatapathGuestExecutionBootMarkers,
+    /// Whether the in-VM guest throughput target was met.
+    pub guest_throughput_target_met: bool,
+    /// Minimum observed guest throughput (Mbit/s).
+    pub guest_throughput_min_mbit_per_sec: u64,
+    /// Whether live guest throughput measurement executed under VMX.
+    pub guest_throughput_executed: bool,
 }
 
 /// Runs full Gate B validation and mock-backed Gate C init from a transfer blob.
@@ -662,6 +679,44 @@ fn boot_hypervisor_from_transfer_datapath_guest_execution_markers(
         guest_code_executed: result.execution_seam.disposition == CpuInstructionDisposition::Executed,
         runtime_disposition_executed: result.live.sources.runtime.runtime.disposition
             == DatapathRuntimeDisposition::Executed,
+    }
+}
+
+/// Runs Gate B validation and Gate D datapath guest throughput init with resident page installation.
+#[cfg(feature = "datapath-guest-throughput")]
+pub fn boot_hypervisor_from_transfer_datapath_guest_throughput<A: PageAllocator>(
+    transfer: &[u8],
+    expected_config_digest: &[u8; SHA256_DIGEST_BYTES],
+    requirements: &RequirementsSnapshot,
+    layout: &LayoutSnapshot,
+    allocator: &mut A,
+) -> Result<DatapathGuestThroughputBootMarkers, HypervisorEfiError> {
+    if requirements.config_digest != *expected_config_digest {
+        return Err(HypervisorEfiError::new(
+            HypervisorEfiErrorKind::Requirements,
+            "requirements snapshot digest mismatch",
+        ));
+    }
+    let result = boot_from_transfer_and_init_gate_d_datapath_guest_throughput_from_snapshots(
+        transfer,
+        requirements,
+        layout,
+        allocator,
+    )
+    .map_err(HypervisorEfiError::from)?;
+    Ok(boot_hypervisor_from_transfer_datapath_guest_throughput_markers(&result))
+}
+
+#[cfg(feature = "datapath-guest-throughput")]
+fn boot_hypervisor_from_transfer_datapath_guest_throughput_markers(
+    result: &hv_hypervisor_boot::GateDDatapathGuestThroughputResult,
+) -> DatapathGuestThroughputBootMarkers {
+    use hv_datapath::GuestThroughputDisposition;
+    DatapathGuestThroughputBootMarkers {
+        execution: boot_hypervisor_from_transfer_datapath_guest_execution_markers(&result.execution),
+        guest_throughput_target_met: result.throughput.benchmark.target_met,
+        guest_throughput_min_mbit_per_sec: result.throughput.benchmark.stats.min_mbit_per_sec,
+        guest_throughput_executed: result.throughput.disposition == GuestThroughputDisposition::Executed,
     }
 }
 

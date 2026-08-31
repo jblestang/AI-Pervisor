@@ -25,6 +25,7 @@ datapath-runtime = ["datapath-benchmark", "hv-x86-cpu/datapath-runtime"]
 datapath-guest-sources = ["datapath-runtime"]
 datapath-guest-live = ["datapath-guest-sources", "hv-x86-cpu/datapath-guest-live"]
 datapath-guest-execution = ["datapath-guest-live", "hv-x86-cpu/datapath-guest-execution"]
+datapath-guest-throughput = ["datapath-guest-execution", "hv-x86-cpu/datapath-guest-throughput"]
 
 [dependencies]
 hv-boot-abi = { path = "../hv-boot-abi" }
@@ -108,6 +109,11 @@ required-features = ["datapath-guest-live"]
 name = "datapath_guest_execution"
 path = "tests/datapath_guest_execution.rs"
 required-features = ["datapath-guest-execution"]
+
+[[test]]
+name = "datapath_guest_throughput"
+path = "tests/datapath_guest_throughput.rs"
+required-features = ["datapath-guest-throughput"]
 
 [[test]]
 name = "datapath_runtime"
