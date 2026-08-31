@@ -408,9 +408,9 @@ fn execute_datapath_guest_vmlaunch_fields_if_enabled(
                     };
                 #[cfg(feature = "datapath-guest-relay-measurement")]
                 if let Some(config) = launch_relay_config {
-                    let _ = crate::vmexit_relay_counter::reset_relay_measurement_page_frames(
+                    crate::vmexit_relay_counter::reset_relay_measurement_page_frames(
                         config.measurement_page_host_phys,
-                    );
+                    )?;
                 }
                 if !stub_installed {
                     #[cfg(feature = "datapath-guest-relay-measurement")]

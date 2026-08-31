@@ -1477,7 +1477,13 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
             .and_then(|record| record.relay_measurement_page_host_phys);
         let measurement_page_gpa = plan_relay_measurement_page_gpa(layout)
             .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
-        measurement_page_host_phys.map(|host_phys| VmexitRelayCounterConfig {
+        let host_phys = measurement_page_host_phys.ok_or_else(|| {
+            BootCheckError::new(
+                BootCheckErrorKind::Platform,
+                "guest execution requires installed relay measurement page for VM-exit counting",
+            )
+        })?;
+        Some(VmexitRelayCounterConfig {
             measurement_page_host_phys: host_phys,
             measurement_page_gpa,
         })

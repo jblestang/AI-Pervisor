@@ -239,6 +239,12 @@ pub fn measure_in_vm_relay_from_context(
             guest_boot_info_frames: 0,
         });
     }
+    if execution_seam.vmexit_relay_frames == 0 {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "relay measurement requires non-zero VM-exit relay frame count",
+        ));
+    }
     if context.measurement_page_host_phys.is_none() {
         return Err(CpuSeamError::new(
             CpuSeamErrorKind::InvalidInput,
@@ -304,12 +310,6 @@ pub fn measure_in_vm_relay_from_context(
         return Err(CpuSeamError::new(
             CpuSeamErrorKind::InvalidInput,
             "relay measurement authoritative frame count mismatch with VM-exit counter",
-        ));
-    }
-    if vmexit_relay_frames == 0 {
-        return Err(CpuSeamError::new(
-            CpuSeamErrorKind::InvalidInput,
-            "relay measurement requires non-zero VM-exit relay frame count",
         ));
     }
     Ok(InVmRelayMeasurement {
