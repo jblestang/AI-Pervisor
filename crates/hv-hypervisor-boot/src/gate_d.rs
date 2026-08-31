@@ -146,11 +146,11 @@ pub(crate) fn init_gate_d_datapath_foundation_from_validated<A: PageAllocator>(
 pub struct GateDDatapathLiveResult {
     /// Datapath foundation output including guest boot info for all partitions.
     pub foundation: GateDDatapathFoundationResult,
-    /// Mock/live forward plan used for synthetic frame traversal.
+    /// Synthetic forward plan backing IPC queues (live mock skipped when `datapath-runtime` is enabled).
     pub forward_plan: hv_datapath::DatapathForwardPlan,
-    /// Datapath live CPU seam outcome when the seam ran.
+    /// Smoke-guest datapath live CPU seam outcome (`None` when superseded by runtime).
     pub live_seam: Option<hv_x86_cpu::DatapathLiveCpuSeamOutcome>,
-    /// Mock datapath runtime outcome when forwarding ran.
+    /// Live synthetic forward outcome (`None` when superseded by guest runtime).
     pub live_outcome: Option<hv_datapath::DatapathLiveOutcome>,
 }
 
@@ -236,34 +236,42 @@ pub(crate) fn init_gate_d_datapath_live_from_validated<A: PageAllocator>(
         allocator,
     )?;
 
-    let mut forward_plan = hv_datapath::plan_datapath_forward(layout).map_err(|err| {
+    let forward_plan = hv_datapath::plan_datapath_forward(layout).map_err(|err| {
         BootCheckError::new(BootCheckErrorKind::Platform, err.message)
     })?;
 
-    let vmcs_phys = foundation.vmx_launch.real_hw.vmcs_phys.ok_or_else(|| {
-        BootCheckError::new(
-            BootCheckErrorKind::Platform,
-            "datapath live requires an installed VMCS region from REAL_HW EPT init",
+    #[cfg(not(feature = "datapath-runtime"))]
+    let (forward_plan, live_seam, live_outcome) = {
+        let mut forward_plan = forward_plan;
+        let vmcs_phys = foundation.vmx_launch.real_hw.vmcs_phys.ok_or_else(|| {
+            BootCheckError::new(
+                BootCheckErrorKind::Platform,
+                "datapath live requires an installed VMCS region from REAL_HW EPT init",
+            )
+        })?;
+
+        let launch_plan = hv_vmx::plan_vmx_launch(
+            layout,
+            &foundation.vmx_launch.real_hw.live.cpu_seam.programming.init.vmx_plan,
+            hv_vmx::DEFAULT_SMOKE_GUEST_PARTITION_ID,
         )
-    })?;
+        .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
 
-    let launch_plan = hv_vmx::plan_vmx_launch(
-        layout,
-        &foundation.vmx_launch.real_hw.live.cpu_seam.programming.init.vmx_plan,
-        hv_vmx::DEFAULT_SMOKE_GUEST_PARTITION_ID,
-    )
-    .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
+        let live_seam = Some(
+            hv_x86_cpu::run_datapath_live_cpu_seam(vmcs_phys, launch_plan.host_exit_phys.raw())
+                .map_err(map_cpu_seam_error)?,
+        );
+        let live_outcome = Some(hv_datapath::run_datapath_live_forward(&mut forward_plan).map_err(
+            |err| BootCheckError::new(BootCheckErrorKind::Platform, err.message),
+        )?);
+        (forward_plan, live_seam, live_outcome)
+    };
 
-    let live_seam = Some(
-        hv_x86_cpu::run_datapath_live_cpu_seam(vmcs_phys, launch_plan.host_exit_phys.raw())
-            .map_err(map_cpu_seam_error)?,
-    );
-
-    let mut backend = hv_datapath::MockDatapathBackend::new(forward_plan.clone());
-    let live_outcome = Some(backend.run_live().map_err(|err| {
-        BootCheckError::new(BootCheckErrorKind::Platform, err.message)
-    })?);
-    forward_plan = backend.forward_plan;
+    #[cfg(feature = "datapath-runtime")]
+    let (live_seam, live_outcome): (
+        Option<hv_x86_cpu::DatapathLiveCpuSeamOutcome>,
+        Option<hv_datapath::DatapathLiveOutcome>,
+    ) = (None, None);
 
     Ok(GateDDatapathLiveResult {
         foundation,
@@ -606,6 +614,7 @@ pub fn boot_from_transfer_and_init_gate_d_datapath_benchmark_from_snapshots<A: P
         &validated,
         warnings,
         allocator,
+        hv_guest_boot::GuestElfKind::Standard,
     )
 }
 
@@ -626,6 +635,7 @@ pub fn boot_from_transfer_and_init_gate_d_datapath_benchmark<A: PageAllocator>(
         &validated,
         warnings,
         allocator,
+        hv_guest_boot::GuestElfKind::Standard,
     )
 }
 
@@ -651,6 +661,7 @@ pub fn boot_check_and_init_gate_d_datapath_benchmark<A: PageAllocator>(
         &validated,
         warnings,
         allocator,
+        hv_guest_boot::GuestElfKind::Standard,
     )
 }
 
@@ -661,6 +672,7 @@ pub(crate) fn init_gate_d_datapath_benchmark_from_validated<A: PageAllocator>(
     validated: &ValidatedPlatform,
     warnings: alloc::vec::Vec<PlatformWarning>,
     allocator: &mut A,
+    elf_kind: hv_guest_boot::GuestElfKind,
 ) -> Result<GateDDatapathBenchmarkResult, BootCheckError> {
     let guests = init_gate_d_datapath_guests_from_validated(
         requirements,
@@ -668,7 +680,7 @@ pub(crate) fn init_gate_d_datapath_benchmark_from_validated<A: PageAllocator>(
         validated,
         warnings,
         allocator,
-        hv_guest_boot::GuestElfKind::Standard,
+        elf_kind,
     )?;
 
     let benchmark = hv_datapath::run_mock_datapath_benchmark(
@@ -779,7 +791,7 @@ pub(crate) fn init_gate_d_datapath_runtime_from_validated<A: PageAllocator>(
     use hv_vmx::plan_vmx_launch_all_partitions;
     use hv_x86_cpu::run_datapath_runtime_cpu_seam;
 
-    let guests = init_gate_d_datapath_guests_from_validated(
+    let benchmark = init_gate_d_datapath_benchmark_from_validated(
         requirements,
         layout,
         validated,
@@ -787,22 +799,10 @@ pub(crate) fn init_gate_d_datapath_runtime_from_validated<A: PageAllocator>(
         allocator,
         GuestElfKind::Datapath,
     )?;
-    let datapath_elf_images_installed = guests.elf_images_installed;
+    let datapath_elf_images_installed = benchmark.guests.elf_images_installed;
 
-    let benchmark = hv_datapath::run_mock_datapath_benchmark(
-        layout,
-        &hv_datapath::DatapathBenchmarkConfig::default(),
-    )
-    .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
-
-    if !benchmark.target_met {
-        return Err(BootCheckError::new(
-            BootCheckErrorKind::Platform,
-            "datapath benchmark target not met",
-        ));
-    }
-
-    let vmx_plan = &guests
+    let vmx_plan = &benchmark
+        .guests
         .malicious
         .live
         .foundation
@@ -827,8 +827,8 @@ pub(crate) fn init_gate_d_datapath_runtime_from_validated<A: PageAllocator>(
         ));
     }
 
-    let mut seam_inputs = alloc::vec::Vec::with_capacity(guests.partition_launches.len());
-    for record in &guests.partition_launches {
+    let mut seam_inputs = alloc::vec::Vec::with_capacity(benchmark.guests.partition_launches.len());
+    for record in &benchmark.guests.partition_launches {
         let launch_plan = launch_plans
             .iter()
             .find(|plan| plan.vm_id == record.vm_id)
@@ -844,7 +844,7 @@ pub(crate) fn init_gate_d_datapath_runtime_from_validated<A: PageAllocator>(
     let runtime_seam = run_datapath_runtime_cpu_seam(&seam_inputs).map_err(map_cpu_seam_error)?;
 
     Ok(GateDDatapathRuntimeResult {
-        benchmark: GateDDatapathBenchmarkResult { guests, benchmark },
+        benchmark,
         runtime,
         runtime_seam,
         datapath_elf_images_installed,

@@ -5,8 +5,8 @@ use std::time::{Duration, Instant};
 use hv_config_model::compile_config_from_str;
 use hv_datapath::{
     compute_benchmark_run_stats, forward_synthetic_frame, plan_datapath_forward,
-    run_mock_datapath_benchmark, throughput_mbit_from_frames, DatapathBenchmarkConfig,
-    SYNTHETIC_FRAME_PAYLOAD, TARGET_THROUGHPUT_MBIT_PER_SEC,
+    throughput_mbit_from_frames, DatapathBenchmarkConfig, SYNTHETIC_FRAME_PAYLOAD,
+    TARGET_THROUGHPUT_MBIT_PER_SEC,
 };
 use hv_platform_model::plan_static_platform_ir;
 
@@ -33,14 +33,6 @@ pub fn run_datapath_benchmark(config_path: &str) -> i32 {
         Ok(layout) => layout,
         Err(err) => {
             eprintln!("failed to plan static platform layout: {err}");
-            return 1;
-        }
-    };
-
-    let mock = match run_mock_datapath_benchmark(&layout, &DatapathBenchmarkConfig::default()) {
-        Ok(result) => result,
-        Err(err) => {
-            eprintln!("mock datapath benchmark failed: {}", err.message);
             return 1;
         }
     };
@@ -122,10 +114,6 @@ pub fn run_datapath_benchmark(config_path: &str) -> i32 {
         stats.mean_mbit_per_sec,
         stats.median_mbit_per_sec,
         stats.p95_mbit_per_sec
-    );
-    eprintln!(
-        "  mock validate-only min Mbit/s: {}",
-        mock.stats.min_mbit_per_sec
     );
     eprintln!(
         "  target {} Mbit/s: {}",

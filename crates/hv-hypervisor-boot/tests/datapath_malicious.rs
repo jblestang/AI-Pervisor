@@ -85,6 +85,7 @@ fn reference_handoff_snapshot_and_layout() -> (
 
 fn assert_datapath_malicious_validate_only(result: &GateDDatapathMaliciousResult) {
     assert!(!result.live.foundation.vmx_launch.real_hw.live.live_environment_ready);
+    #[cfg(not(feature = "datapath-runtime"))]
     assert!(result.live.live_outcome.as_ref().is_some_and(|outcome| outcome.synthetic_frame_forwarded));
     assert!(result.integrity_checks_passed);
     assert_eq!(
@@ -94,6 +95,11 @@ fn assert_datapath_malicious_validate_only(result: &GateDDatapathMaliciousResult
     if let Some(seam) = &result.live.live_seam {
         assert_ne!(seam.disposition, CpuInstructionDisposition::Executed);
         assert!(seam.vmexit_stub_validated);
+    }
+    #[cfg(feature = "datapath-runtime")]
+    {
+        assert!(result.live.live_outcome.is_none());
+        assert!(result.live.live_seam.is_none());
     }
 }
 

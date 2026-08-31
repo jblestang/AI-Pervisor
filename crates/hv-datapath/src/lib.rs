@@ -48,5 +48,5 @@ pub use ipc::{
 };
 pub use plan::{plan_datapath_for_partition, plan_datapath_for_vm_id, plan_e1000_mmio_guest_phys, DatapathPartitionPlan};
 pub use runtime::{
-    DatapathLiveDisposition, DatapathLiveOutcome, MockDatapathBackend,
+    run_datapath_live_forward, DatapathLiveDisposition, DatapathLiveOutcome,
 };
