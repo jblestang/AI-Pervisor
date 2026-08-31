@@ -18,8 +18,10 @@ pub const GUEST_DATAPATH_CAPABLE_MARKER: &str = "GUEST: datapath capable";
 pub enum GuestElfKind {
     /// Standard partition smoke guest.
     Standard,
-    /// Datapath-capable partition guest.
+    /// Datapath-capable partition guest (build-time stub).
     Datapath,
+    /// Real partition guest built from `guests/` source trees.
+    Source,
 }
 
 /// Returns the reference ELF image bytes for a partition id.
@@ -30,6 +32,11 @@ pub fn reference_guest_elf(partition_id: &str) -> Option<&'static [u8]> {
 /// Returns the datapath-capable reference ELF image bytes for a partition id.
 pub fn reference_datapath_guest_elf(partition_id: &str) -> Option<&'static [u8]> {
     reference_guest_elf_for_kind(partition_id, GuestElfKind::Datapath)
+}
+
+/// Returns the source-tree ELF image bytes for a partition id.
+pub fn reference_guest_source_elf(partition_id: &str) -> Option<&'static [u8]> {
+    reference_guest_elf_for_kind(partition_id, GuestElfKind::Source)
 }
 
 /// Returns the reference ELF image bytes for a partition id and image kind.
@@ -47,6 +54,13 @@ pub fn reference_guest_elf_for_kind(partition_id: &str, kind: GuestElfKind) -> O
             "out" => Some(GUEST_OUT_DATAPATH_ELF),
             _ => None,
         },
+        GuestElfKind::Source if GUEST_SOURCE_ELFS_AVAILABLE => match partition_id {
+            "in" => Some(GUEST_IN_SOURCE_ELF),
+            "mid" => Some(GUEST_MID_SOURCE_ELF),
+            "out" => Some(GUEST_OUT_SOURCE_ELF),
+            _ => None,
+        },
+        GuestElfKind::Source => None,
     }
 }
 
@@ -71,6 +85,17 @@ mod tests {
         for partition in REFERENCE_GUEST_PARTITION_IDS {
             let bytes = reference_datapath_guest_elf(partition).expect("datapath elf");
             parse_elf64(bytes).expect("parse");
+        }
+    }
+
+    #[test]
+    fn source_partition_elfs_parse_when_embedded() {
+        if !GUEST_SOURCE_ELFS_AVAILABLE {
+            return;
+        }
+        for partition in REFERENCE_GUEST_PARTITION_IDS {
+            let bytes = reference_guest_source_elf(partition).expect("source elf");
+            parse_elf64(bytes).expect("parse source elf");
         }
     }
 }

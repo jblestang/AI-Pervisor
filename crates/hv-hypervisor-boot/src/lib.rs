@@ -93,6 +93,12 @@ pub use gate_d::{
     boot_from_transfer_and_init_gate_d_datapath_runtime_from_snapshots,
     GateDDatapathRuntimeResult,
 };
+#[cfg(feature = "datapath-guest-sources")]
+pub use gate_d::{
+    boot_from_transfer_and_init_gate_d_datapath_guest_sources,
+    boot_from_transfer_and_init_gate_d_datapath_guest_sources_from_snapshots,
+    GateDDatapathGuestSourcesResult,
+};
 pub use snapshot::{
     layout_snapshot_from_platform_ir, platform_requirements_from_snapshot,
     requirements_snapshot_from_platform, static_platform_ir_from_layout_snapshot,

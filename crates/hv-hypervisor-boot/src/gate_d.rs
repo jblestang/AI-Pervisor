@@ -787,7 +787,25 @@ pub(crate) fn init_gate_d_datapath_runtime_from_validated<A: PageAllocator>(
     warnings: alloc::vec::Vec<PlatformWarning>,
     allocator: &mut A,
 ) -> Result<GateDDatapathRuntimeResult, BootCheckError> {
-    use hv_guest_boot::GuestElfKind;
+    init_gate_d_datapath_runtime_with_elf_kind_from_validated(
+        requirements,
+        layout,
+        validated,
+        warnings,
+        allocator,
+        hv_guest_boot::GuestElfKind::Datapath,
+    )
+}
+
+#[cfg(any(feature = "datapath-runtime", feature = "datapath-guest-sources"))]
+pub(crate) fn init_gate_d_datapath_runtime_with_elf_kind_from_validated<A: PageAllocator>(
+    requirements: &PlatformRequirements,
+    layout: &StaticPlatformIR,
+    validated: &ValidatedPlatform,
+    warnings: alloc::vec::Vec<PlatformWarning>,
+    allocator: &mut A,
+    elf_kind: hv_guest_boot::GuestElfKind,
+) -> Result<GateDDatapathRuntimeResult, BootCheckError> {
     use hv_vmx::plan_vmx_launch_all_partitions;
     use hv_x86_cpu::run_datapath_runtime_cpu_seam;
 
@@ -797,7 +815,7 @@ pub(crate) fn init_gate_d_datapath_runtime_from_validated<A: PageAllocator>(
         validated,
         warnings,
         allocator,
-        GuestElfKind::Datapath,
+        elf_kind,
     )?;
     let datapath_elf_images_installed = benchmark.guests.elf_images_installed;
 
@@ -849,4 +867,77 @@ pub(crate) fn init_gate_d_datapath_runtime_from_validated<A: PageAllocator>(
         runtime_seam,
         datapath_elf_images_installed,
     })
+}
+
+/// Result of Gate D datapath guest-sources init using built `guests/` ELFs.
+#[cfg(feature = "datapath-guest-sources")]
+pub struct GateDDatapathGuestSourcesResult {
+    /// Datapath runtime output using source-tree guest ELFs.
+    pub runtime: GateDDatapathRuntimeResult,
+}
+
+/// Runs transfer boot checks and Gate D guest-sources init using embedded snapshots.
+#[cfg(feature = "datapath-guest-sources")]
+pub fn boot_from_transfer_and_init_gate_d_datapath_guest_sources_from_snapshots<A: PageAllocator>(
+    transfer: &[u8],
+    requirements: &RequirementsSnapshot,
+    layout: &LayoutSnapshot,
+    allocator: &mut A,
+) -> Result<GateDDatapathGuestSourcesResult, BootCheckError> {
+    let platform_requirements = platform_requirements_from_snapshot(requirements)?;
+    let static_layout = static_platform_ir_from_layout_snapshot(layout, requirements)?;
+    let (validated, warnings) =
+        boot_from_transfer(transfer, &requirements.config_digest, &platform_requirements)?;
+    init_gate_d_datapath_guest_sources_from_validated(
+        &platform_requirements,
+        &static_layout,
+        &validated,
+        warnings,
+        allocator,
+    )
+}
+
+/// Runs transfer boot checks and Gate D guest-sources init.
+#[cfg(feature = "datapath-guest-sources")]
+pub fn boot_from_transfer_and_init_gate_d_datapath_guest_sources<A: PageAllocator>(
+    transfer: &[u8],
+    snapshot: &RequirementsSnapshot,
+    layout: &StaticPlatformIR,
+    allocator: &mut A,
+) -> Result<GateDDatapathGuestSourcesResult, BootCheckError> {
+    let requirements = platform_requirements_from_snapshot(snapshot)?;
+    let (validated, warnings) =
+        boot_from_transfer(transfer, &snapshot.config_digest, &requirements)?;
+    init_gate_d_datapath_guest_sources_from_validated(
+        &requirements,
+        layout,
+        &validated,
+        warnings,
+        allocator,
+    )
+}
+
+#[cfg(feature = "datapath-guest-sources")]
+pub(crate) fn init_gate_d_datapath_guest_sources_from_validated<A: PageAllocator>(
+    requirements: &PlatformRequirements,
+    layout: &StaticPlatformIR,
+    validated: &ValidatedPlatform,
+    warnings: alloc::vec::Vec<PlatformWarning>,
+    allocator: &mut A,
+) -> Result<GateDDatapathGuestSourcesResult, BootCheckError> {
+    if !hv_guest_boot::GUEST_SOURCE_ELFS_AVAILABLE {
+        return Err(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "guest source ELFs not embedded; run cargo xtask build-guests first",
+        ));
+    }
+    let runtime = init_gate_d_datapath_runtime_with_elf_kind_from_validated(
+        requirements,
+        layout,
+        validated,
+        warnings,
+        allocator,
+        hv_guest_boot::GuestElfKind::Source,
+    )?;
+    Ok(GateDDatapathGuestSourcesResult { runtime })
 }
