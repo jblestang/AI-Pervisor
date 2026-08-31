@@ -116,17 +116,84 @@ pub struct GuestDeviceRegion {
     pub mmio_size: u64,
 }
 
-/// Size of the relay-frame counter tail appended to guest boot info blobs (Phase 29).
-pub const GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES: usize = 8;
+/// Magic identifying the relay measurement extension (`RLAY`).
+pub const GUEST_RELAY_MEASUREMENT_MAGIC: u32 = 0x5941_4C52;
 
-/// Returns the byte offset of the relay-frame counter in a boot info blob.
-pub fn guest_boot_info_relay_frames_offset(total_size: u32) -> Option<usize> {
+/// Relay measurement extension schema version.
+pub const GUEST_RELAY_MEASUREMENT_EXTENSION_VERSION: u32 = 1;
+
+/// Explicit ABI v2 relay measurement extension appended to guest boot info blobs.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GuestBootInfoRelayMeasurement {
+    /// Extension magic (`GUEST_RELAY_MEASUREMENT_MAGIC`).
+    pub magic: u32,
+    /// Extension schema version.
+    pub version: u32,
+    /// Out-partition end-to-end relay frames completed.
+    pub frames_completed: u64,
+    /// TSC value captured before the sustained relay loop.
+    pub tsc_start: u64,
+    /// TSC value captured after the sustained relay loop.
+    pub tsc_end: u64,
+}
+
+/// Size of the relay measurement extension tail appended to guest boot info blobs.
+pub const GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES: usize =
+    core::mem::size_of::<GuestBootInfoRelayMeasurement>();
+
+/// Returns the byte offset of the relay measurement extension in a boot info blob.
+pub fn guest_boot_info_relay_measurement_offset(total_size: u32) -> Option<usize> {
     let total = total_size as usize;
     if total < core::mem::size_of::<GuestBootInfoHeader>() + GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES
     {
         return None;
     }
     Some(total - GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES)
+}
+
+/// Legacy alias retained for callers referencing relay-frame counter tail sizing.
+pub fn guest_boot_info_relay_frames_offset(total_size: u32) -> Option<usize> {
+    guest_boot_info_relay_measurement_offset(total_size)
+        .map(|offset| offset + core::mem::offset_of!(GuestBootInfoRelayMeasurement, frames_completed))
+}
+
+/// Parses and validates the relay measurement extension from a boot info blob.
+pub fn parse_guest_boot_info_relay_measurement(
+    bytes: &[u8],
+) -> Option<GuestBootInfoRelayMeasurement> {
+    if bytes.len() < core::mem::size_of::<GuestBootInfoHeader>() {
+        return None;
+    }
+    let total_size = read_u32(bytes, 12)?;
+    let offset = guest_boot_info_relay_measurement_offset(total_size)?;
+    let tail = bytes.get(offset..offset + GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES)?;
+    let extension = GuestBootInfoRelayMeasurement {
+        magic: read_u32(tail, 0)?,
+        version: read_u32(tail, 4)?,
+        frames_completed: read_u64(tail, 8)?,
+        tsc_start: read_u64(tail, 16)?,
+        tsc_end: read_u64(tail, 24)?,
+    };
+    if extension.magic != GUEST_RELAY_MEASUREMENT_MAGIC {
+        return None;
+    }
+    if extension.version == 0 || extension.version > GUEST_RELAY_MEASUREMENT_EXTENSION_VERSION {
+        return None;
+    }
+    Some(extension)
+}
+
+fn read_u32(bytes: &[u8], offset: usize) -> Option<u32> {
+    let slice = bytes.get(offset..offset + 4)?;
+    Some(u32::from_le_bytes([slice[0], slice[1], slice[2], slice[3]]))
+}
+
+fn read_u64(bytes: &[u8], offset: usize) -> Option<u64> {
+    let slice = bytes.get(offset..offset + 8)?;
+    Some(u64::from_le_bytes([
+        slice[0], slice[1], slice[2], slice[3], slice[4], slice[5], slice[6], slice[7],
+    ]))
 }
 
 /// Returns whether a guest boot info header matches the supported ABI.
@@ -138,8 +205,12 @@ pub fn guest_abi_is_compatible(header: &GuestBootInfoHeader) -> bool {
 
 /// Returns whether the header declares the relay measurement tail (ABI v2+).
 pub fn guest_boot_info_has_relay_measurement_tail(header: &GuestBootInfoHeader) -> bool {
-    header.version >= 2
-        && guest_boot_info_relay_frames_offset(header.size).is_some()
+    header.version >= 2 && guest_boot_info_relay_measurement_offset(header.size).is_some()
+}
+
+/// Returns elapsed TSC ticks when `tsc_end >= tsc_start`.
+pub fn guest_relay_measurement_elapsed_tsc(extension: &GuestBootInfoRelayMeasurement) -> u64 {
+    extension.tsc_end.saturating_sub(extension.tsc_start)
 }
 
 #[cfg(test)]
@@ -207,5 +278,24 @@ mod tests {
             device_region_count: 0,
         };
         assert!(guest_boot_info_has_relay_measurement_tail(&header));
+        assert_eq!(size_of::<GuestBootInfoRelayMeasurement>(), 32);
+    }
+
+    #[test]
+    fn parse_guest_boot_info_relay_measurement_validates_magic() {
+        let mut blob = [0u8; 48 + 32];
+        blob[0..8].copy_from_slice(&GUEST_BOOT_INFO_MAGIC);
+        blob[8..12].copy_from_slice(&2u32.to_le_bytes());
+        let total = blob.len() as u32;
+        blob[12..16].copy_from_slice(&total.to_le_bytes());
+        let offset = guest_boot_info_relay_measurement_offset(total).expect("offset");
+        blob[offset..offset + 4].copy_from_slice(&GUEST_RELAY_MEASUREMENT_MAGIC.to_le_bytes());
+        blob[offset + 4..offset + 8].copy_from_slice(&1u32.to_le_bytes());
+        blob[offset + 8..offset + 16].copy_from_slice(&64u64.to_le_bytes());
+        blob[offset + 16..offset + 24].copy_from_slice(&100u64.to_le_bytes());
+        blob[offset + 24..offset + 32].copy_from_slice(&1_000_100u64.to_le_bytes());
+        let extension = parse_guest_boot_info_relay_measurement(&blob).expect("parse");
+        assert_eq!(extension.frames_completed, 64);
+        assert_eq!(guest_relay_measurement_elapsed_tsc(&extension), 1_000_000);
     }
 }

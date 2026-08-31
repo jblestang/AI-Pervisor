@@ -4,8 +4,9 @@ use core::mem::size_of;
 
 use hv_guest_abi::{
     guest_abi_is_compatible, guest_boot_info_has_relay_measurement_tail,
-    guest_boot_info_relay_frames_offset, GuestBootInfoHeader, GuestDeviceKind, GuestDeviceRegion,
-    GuestIpcRegion, GuestIpcRole, GuestMemoryKind, GuestMemoryRegion,
+    guest_boot_info_relay_frames_offset, parse_guest_boot_info_relay_measurement,
+    GuestBootInfoHeader, GuestDeviceKind, GuestDeviceRegion, GuestIpcRegion, GuestIpcRole,
+    GuestMemoryKind, GuestMemoryRegion,
 };
 use hv_types::{GuestPhysAddr, VcpuId, VmId};
 
@@ -203,7 +204,7 @@ impl<'a> GuestBootInfoView<'a> {
                 "device table exceeds declared guest boot info size",
             ));
         }
-        if guest_boot_info_has_relay_measurement_tail(&self.header)
+        if self.header.version >= 2
             && guest_boot_info_relay_frames_offset(self.header.size).is_none()
         {
             return Err(GuestBootInfoParseError::new(
@@ -212,11 +213,11 @@ impl<'a> GuestBootInfoView<'a> {
             ));
         }
         if guest_boot_info_has_relay_measurement_tail(&self.header)
-            && guest_boot_info_relay_frames_offset(self.header.size).is_none()
+            && parse_guest_boot_info_relay_measurement(bounded).is_none()
         {
             return Err(GuestBootInfoParseError::new(
-                GuestBootInfoParseErrorKind::Bounds,
-                "guest boot info ABI v2 requires relay measurement tail",
+                GuestBootInfoParseErrorKind::Incompatible,
+                "guest boot info relay measurement extension invalid",
             ));
         }
         if bounded.len() < self.header.size as usize {

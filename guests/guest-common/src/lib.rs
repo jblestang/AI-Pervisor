@@ -35,6 +35,7 @@ pub fn run(role: Role, boot_info: *const u8) -> ! {
     let layout = boot::resolve_layout_for_role(role, boot_info);
     serial::write_line(role.running_marker());
     serial::write_line(GUEST_DATAPATH_CAPABLE_MARKER);
+    relay::init_relay_measurement(boot_info);
 
     match role {
         Role::In => run_in_sustained(boot_info, &layout, GUEST_RELAY_BENCHMARK_FRAMES),
@@ -62,10 +63,12 @@ fn run_mid_sustained(boot_info: *const u8, layout: &layout::ResolvedLayout, fram
 }
 
 fn run_out_sustained(boot_info: *const u8, layout: &layout::ResolvedLayout, frames: u32) {
+    relay::set_relay_measurement_tsc_start(boot_info);
     for _ in 0..frames {
         run_out(layout);
         relay::record_relay_frame_completed(boot_info);
     }
+    relay::set_relay_measurement_tsc_end(boot_info);
 }
 
 fn run_in(layout: &layout::ResolvedLayout) {

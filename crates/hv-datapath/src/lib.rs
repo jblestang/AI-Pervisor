@@ -33,10 +33,10 @@ pub use guest_runtime::{
     GuestDatapathRuntime, GUEST_DATAPATH_IPC_HOPS,
 };
 pub use benchmark::{
-    compute_benchmark_run_stats, mock_throughput_mbit, run_mock_datapath_benchmark,
-    throughput_mbit_from_frames, DatapathBenchmarkConfig, DatapathBenchmarkResult,
-    DatapathBenchmarkRunStats, BENCHMARK_MEASUREMENT_SECS, BENCHMARK_MIN_RUNS,
-    BENCHMARK_WARMUP_SECS, TARGET_THROUGHPUT_MBIT_PER_SEC,
+    compute_benchmark_run_stats, elapsed_nanos_from_tsc, mock_throughput_mbit,
+    run_mock_datapath_benchmark, throughput_mbit_from_frames, DatapathBenchmarkConfig,
+    DatapathBenchmarkResult, DatapathBenchmarkRunStats, BENCHMARK_MEASUREMENT_SECS,
+    BENCHMARK_MIN_RUNS, BENCHMARK_WARMUP_SECS, TARGET_THROUGHPUT_MBIT_PER_SEC,
 };
 pub use compromised::{
     apply_compromised_guest_write, enforce_forward_integrity, scan_ipc_queue_integrity,
@@ -60,7 +60,10 @@ pub use ipc::{
     queue_storage_bytes, IpcQueueHeader, IpcQueueView, IpcSlotHeader, REFERENCE_IPC_QUEUE_SLOTS,
     REFERENCE_IPC_SLOT_SIZE_BYTES,
 };
-pub use plan::{plan_datapath_for_partition, plan_datapath_for_vm_id, plan_e1000_mmio_guest_phys, DatapathPartitionPlan};
+pub use plan::{
+    plan_datapath_for_partition, plan_datapath_for_vm_id, plan_e1000_mmio_guest_phys,
+    plan_out_ipc_consumer_guest_phys, DatapathPartitionPlan,
+};
 pub use runtime::{
     run_datapath_live_forward, DatapathLiveDisposition, DatapathLiveOutcome,
 };

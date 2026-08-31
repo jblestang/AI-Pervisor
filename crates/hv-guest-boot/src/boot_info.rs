@@ -7,8 +7,9 @@ use core::mem::size_of;
 use hv_datapath::{plan_datapath_for_partition, plan_datapath_for_vm_id, DatapathPartitionPlan};
 use hv_guest_abi::{
     guest_abi_is_compatible, GuestBootInfoHeader, GuestDeviceRegion, GuestIpcRegion,
-    GuestMemoryRegion, GUEST_ABI_VERSION, GUEST_BOOT_INFO_MAGIC,
-    GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES,
+    GuestMemoryRegion, GuestBootInfoRelayMeasurement, GUEST_ABI_VERSION, GUEST_BOOT_INFO_MAGIC,
+    GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES, GUEST_RELAY_MEASUREMENT_EXTENSION_VERSION,
+    GUEST_RELAY_MEASUREMENT_MAGIC,
 };
 use hv_platform_model::StaticPlatformIR;
 use hv_types::VmId;
@@ -116,11 +117,31 @@ fn serialize_guest_boot_info(plan: &DatapathPartitionPlan) -> Result<Vec<u8>, Gu
         let offset = device_table_offset as usize + index * size_of::<GuestDeviceRegion>();
         write_guest_device_region(&mut bytes, offset, region);
     }
-    // Relay-frame counter tail (guest increments under live VMX; hypervisor reads after execution).
+    // Relay measurement extension tail (guest updates under live VMX; hypervisor reads after execution).
     let tail_offset = tables_size as usize;
-    bytes[tail_offset..tail_offset + GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES]
-        .copy_from_slice(&0u64.to_le_bytes());
+    let extension = GuestBootInfoRelayMeasurement {
+        magic: GUEST_RELAY_MEASUREMENT_MAGIC,
+        version: GUEST_RELAY_MEASUREMENT_EXTENSION_VERSION,
+        frames_completed: 0,
+        tsc_start: 0,
+        tsc_end: 0,
+    };
+    write_relay_measurement_extension(&mut bytes, tail_offset, &extension);
     Ok(bytes)
+}
+
+fn write_relay_measurement_extension(
+    bytes: &mut [u8],
+    tail_offset: usize,
+    extension: &GuestBootInfoRelayMeasurement,
+) {
+    if let Some(slice) = bytes.get_mut(tail_offset..tail_offset + GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES) {
+        slice[0..4].copy_from_slice(&extension.magic.to_le_bytes());
+        slice[4..8].copy_from_slice(&extension.version.to_le_bytes());
+        slice[8..16].copy_from_slice(&extension.frames_completed.to_le_bytes());
+        slice[16..24].copy_from_slice(&extension.tsc_start.to_le_bytes());
+        slice[24..32].copy_from_slice(&extension.tsc_end.to_le_bytes());
+    }
 }
 
 fn write_guest_boot_info_header(bytes: &mut [u8], header: &GuestBootInfoHeader) {

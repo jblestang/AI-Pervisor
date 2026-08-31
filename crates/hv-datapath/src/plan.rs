@@ -155,6 +155,22 @@ pub fn plan_e1000_mmio_guest_phys(vm_id: VmId) -> Result<GuestPhysAddr, Datapath
     Ok(GuestPhysAddr::new(base))
 }
 
+/// Returns the out-partition IPC consumer queue guest physical address.
+pub fn plan_out_ipc_consumer_guest_phys(layout: &StaticPlatformIR) -> Result<u64, DatapathError> {
+    let plan = plan_datapath_for_vm_id(layout, VmId::new(2))?;
+    let consumer = plan
+        .ipc_regions
+        .iter()
+        .find(|region| region.role == GuestIpcRole::Consumer)
+        .ok_or_else(|| {
+            DatapathError::new(
+                DatapathErrorKind::InvalidInput,
+                "out partition missing IPC consumer region",
+            )
+        })?;
+    Ok(consumer.guest_phys.raw())
+}
+
 #[cfg(test)]
 #[allow(clippy::expect_used)]
 mod tests {

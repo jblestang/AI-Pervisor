@@ -32,6 +32,8 @@ pub struct DatapathBenchmarkConfig {
     pub mock_nanos_per_frame: u64,
     /// Assumed frames per second when converting seconds to frame counts.
     pub mock_frames_per_sec: u64,
+    /// Assumed invariant TSC frequency in Hz for live in-VM timing conversion.
+    pub tsc_hz: u64,
 }
 
 impl Default for DatapathBenchmarkConfig {
@@ -43,8 +45,17 @@ impl Default for DatapathBenchmarkConfig {
             // 8-byte payload => throughput_mbit = payload * 8 * 1000 / nanos = 64000/nanos
             mock_nanos_per_frame: 320,
             mock_frames_per_sec: 100,
+            tsc_hz: 2_400_000_000,
         }
     }
+}
+
+/// Converts elapsed TSC ticks to nanoseconds using the configured TSC frequency.
+pub fn elapsed_nanos_from_tsc(elapsed_tsc: u64, tsc_hz: u64) -> Option<u64> {
+    if elapsed_tsc == 0 || tsc_hz == 0 {
+        return None;
+    }
+    Some(elapsed_tsc.saturating_mul(1_000_000_000) / tsc_hz)
 }
 
 /// Aggregate throughput statistics across benchmark runs (Mbit/s).
