@@ -36,12 +36,15 @@ use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_malicious_fr
 use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_guests_from_snapshots;
 #[cfg(feature = "datapath-benchmark")]
 use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_benchmark_from_snapshots;
+#[cfg(feature = "datapath-runtime")]
+use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_runtime_from_snapshots;
 
 pub use error::{HypervisorEfiError, HypervisorEfiErrorKind};
 pub use hv_hypervisor_boot::{
     GATE_D_BOOT_INFO_BUILT_MARKER, GATE_D_DATAPATH_FOUNDATION_MARKER, GATE_D_DATAPATH_LIVE_MARKER,
     GATE_D_DATAPATH_MALICIOUS_MARKER, GATE_D_DATAPATH_GUESTS_MARKER, GATE_D_DATAPATH_BENCHMARK_MARKER,
-    GATE_D_BENCHMARK_TARGET_MET_MARKER, GATE_D_E1000_MMIO_MARKER,
+    GATE_D_BENCHMARK_TARGET_MET_MARKER, GATE_D_DATAPATH_RUNTIME_MARKER, GATE_D_GUEST_DATAPATH_FRAME_MARKER,
+    GATE_D_E1000_MMIO_MARKER,
     GATE_D_GUEST_ELF_INSTALLED_MARKER, GATE_D_IPC_FORWARD_MARKER, GATE_D_IPC_INTEGRITY_MARKER,
     GATE_D_MULTI_VMLAUNCH_MARKER, REAL_HW_BOOT_SUCCESS_MARKER, REAL_HW_EPT_EXECUTED_MARKER,
     REAL_HW_VMLAUNCH_EXECUTED_MARKER, REAL_HW_VMXON_EXECUTED_MARKER,
@@ -127,6 +130,20 @@ pub struct DatapathBenchmarkBootMarkers {
     pub benchmark_target_met: bool,
     /// Minimum observed throughput across benchmark runs (Mbit/s).
     pub benchmark_min_mbit_per_sec: u64,
+}
+
+/// Gate D datapath runtime boot outcome markers for serial-log verification.
+#[cfg(feature = "datapath-runtime")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DatapathRuntimeBootMarkers {
+    /// Datapath benchmark boot markers.
+    pub benchmark: DatapathBenchmarkBootMarkers,
+    /// Whether a guest-driven frame was forwarded in→mid→out.
+    pub guest_datapath_frame_forwarded: bool,
+    /// Number of datapath-capable guest ELF images installed.
+    pub datapath_elf_images_installed: u32,
+    /// Whether VM-exit dispatch was validated for all partitions.
+    pub vmexit_dispatch_validated: bool,
 }
 
 /// Runs full Gate B validation and mock-backed Gate C init from a transfer blob.
@@ -467,6 +484,48 @@ pub fn boot_hypervisor_from_transfer_datapath_benchmark<A: PageAllocator>(
         },
         benchmark_target_met: result.benchmark.target_met,
         benchmark_min_mbit_per_sec: result.benchmark.stats.min_mbit_per_sec,
+    })
+}
+
+/// Runs Gate B validation and Gate D datapath runtime init with resident page installation.
+#[cfg(feature = "datapath-runtime")]
+pub fn boot_hypervisor_from_transfer_datapath_runtime<A: PageAllocator>(
+    transfer: &[u8],
+    expected_config_digest: &[u8; SHA256_DIGEST_BYTES],
+    requirements: &RequirementsSnapshot,
+    layout: &LayoutSnapshot,
+    allocator: &mut A,
+) -> Result<DatapathRuntimeBootMarkers, HypervisorEfiError> {
+    if requirements.config_digest != *expected_config_digest {
+        return Err(HypervisorEfiError::new(
+            HypervisorEfiErrorKind::Requirements,
+            "requirements snapshot digest mismatch",
+        ));
+    }
+    let result = boot_from_transfer_and_init_gate_d_datapath_runtime_from_snapshots(
+        transfer,
+        requirements,
+        layout,
+        allocator,
+    )
+    .map_err(HypervisorEfiError::from)?;
+    use hv_guest_boot::REFERENCE_GUEST_PARTITION_IDS;
+    Ok(DatapathRuntimeBootMarkers {
+        benchmark: DatapathBenchmarkBootMarkers {
+            guests: DatapathGuestsBootMarkers {
+                malicious: boot_hypervisor_from_transfer_datapath_malicious_markers(
+                    &result.benchmark.guests.malicious,
+                ),
+                elf_images_installed: result.benchmark.guests.elf_images_installed,
+                multi_partition_vmlaunch: result.benchmark.guests.multi_launch_seam.launches.len()
+                    == REFERENCE_GUEST_PARTITION_IDS.len(),
+            },
+            benchmark_target_met: result.benchmark.benchmark.target_met,
+            benchmark_min_mbit_per_sec: result.benchmark.benchmark.stats.min_mbit_per_sec,
+        },
+        guest_datapath_frame_forwarded: result.runtime.guest_frame_forwarded,
+        datapath_elf_images_installed: result.datapath_elf_images_installed,
+        vmexit_dispatch_validated: result.runtime.vmexit_dispatch_validated,
     })
 }
 

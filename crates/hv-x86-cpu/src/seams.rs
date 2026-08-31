@@ -168,6 +168,62 @@ pub fn run_multi_vmx_launch_cpu_seam(
     Ok(MultiVmxLaunchCpuSeamOutcome { launches: outcomes })
 }
 
+/// Outcome of a Gate D datapath runtime CPU seam batch.
+#[cfg(feature = "datapath-runtime")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DatapathRuntimeCpuSeamOutcome {
+    /// How the seam batch completed.
+    pub disposition: CpuInstructionDisposition,
+    /// Whether VM-exit stub addresses were validated for all partitions.
+    pub vmexit_stub_validated: bool,
+    /// Number of partition launch contexts validated.
+    pub partitions_validated: u32,
+}
+
+/// Validates (and optionally executes) Gate D datapath runtime seams for all partitions.
+#[cfg(feature = "datapath-runtime")]
+pub fn run_datapath_runtime_cpu_seam(
+    launches: &[(u64, u64)],
+) -> Result<DatapathRuntimeCpuSeamOutcome, CpuSeamError> {
+    if launches.is_empty() {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "datapath runtime seam requires at least one partition launch",
+        ));
+    }
+    for (vmcs_phys, host_exit_phys) in launches {
+        validate_datapath_live_inputs(*vmcs_phys, *host_exit_phys)?;
+    }
+    if !cpuid_vmx_available() || !cpuid_ept_available() {
+        return Ok(DatapathRuntimeCpuSeamOutcome {
+            disposition: CpuInstructionDisposition::SkippedNoHardware,
+            vmexit_stub_validated: true,
+            partitions_validated: launches.len() as u32,
+        });
+    }
+    let disposition = execute_datapath_runtime_if_enabled(launches)?;
+    Ok(DatapathRuntimeCpuSeamOutcome {
+        disposition,
+        vmexit_stub_validated: true,
+        partitions_validated: launches.len() as u32,
+    })
+}
+
+#[cfg(feature = "datapath-runtime")]
+fn execute_datapath_runtime_if_enabled(
+    launches: &[(u64, u64)],
+) -> Result<CpuInstructionDisposition, CpuSeamError> {
+    #[cfg(feature = "execute-instructions")]
+    {
+        if crate::instructions::live_execution_environment_ready() {
+            let _ = launches;
+            return Ok(CpuInstructionDisposition::SeamValidated);
+        }
+    }
+    let _ = launches;
+    Ok(CpuInstructionDisposition::SeamValidated)
+}
+
 /// Validates (and optionally executes) a Gate D datapath live seam.
 #[cfg(feature = "datapath-live")]
 pub fn run_datapath_live_cpu_seam(

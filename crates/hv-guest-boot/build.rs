@@ -21,6 +21,19 @@ fn guest_code(marker: u8) -> [u8; 24] {
     ]
 }
 
+fn guest_datapath_code(marker: u8) -> [u8; 32] {
+    [
+        0x48, 0xC7, 0xC0, marker, 0x00, 0x00, 0x00, // mov rax, marker
+        0x48, 0xC7, 0xC2, 0xF8, 0x03, 0x00, 0x00, // mov rdx, 0x3F8
+        0xEE, // out dx, al
+        0x48, 0xC7, 0xC0, b'D', 0x00, 0x00, 0x00, // mov rax, 'D'
+        0xEE, // out dx, al
+        0x48, 0xC7, 0xC0, 0x0A, 0x00, 0x00, 0x00, // mov rax, '\n'
+        0xEE, // out dx, al
+        0xF4, // hlt
+    ]
+}
+
 fn build_minimal_elf64(code: &[u8]) -> Vec<u8> {
     let mut elf = vec![0u8; CODE_OFFSET + code.len()];
     elf[0..4].copy_from_slice(b"\x7fELF");
@@ -75,6 +88,18 @@ fn write_elf_module(out_dir: &PathBuf) {
         let const_name = format!("GUEST_{}_ELF", partition.to_uppercase());
         source.push_str(&format!("#[allow(dead_code)]\npub const {const_name}: &[u8] = &[\n"));
         for chunk in elf.chunks(16) {
+            source.push_str("    ");
+            for byte in chunk {
+                source.push_str(&format!("0x{byte:02X}, "));
+            }
+            source.push('\n');
+        }
+        source.push_str("];\n\n");
+
+        let datapath_elf = build_minimal_elf64(&guest_datapath_code(marker));
+        let datapath_name = format!("GUEST_{}_DATAPATH_ELF", partition.to_uppercase());
+        source.push_str(&format!("#[allow(dead_code)]\npub const {datapath_name}: &[u8] = &[\n"));
+        for chunk in datapath_elf.chunks(16) {
             source.push_str("    ");
             for byte in chunk {
                 source.push_str(&format!("0x{byte:02X}, "));

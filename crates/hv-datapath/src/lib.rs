@@ -9,16 +9,21 @@ mod constants;
 mod e1000;
 mod error;
 mod forward;
+mod guest_runtime;
 mod ipc;
 mod plan;
 mod runtime;
 mod topology;
 
+pub use guest_runtime::{
+    run_guest_datapath_runtime, DatapathRuntimeDisposition, DatapathRuntimeOutcome,
+    GuestDatapathRuntime, GUEST_DATAPATH_IPC_HOPS,
+};
 pub use benchmark::{
-    mock_throughput_mbit, run_mock_datapath_benchmark, throughput_mbit_from_frames,
-    DatapathBenchmarkConfig, DatapathBenchmarkResult, DatapathBenchmarkRunStats,
-    BENCHMARK_MEASUREMENT_SECS, BENCHMARK_MIN_RUNS, BENCHMARK_WARMUP_SECS,
-    TARGET_THROUGHPUT_MBIT_PER_SEC,
+    compute_benchmark_run_stats, mock_throughput_mbit, run_mock_datapath_benchmark,
+    throughput_mbit_from_frames, DatapathBenchmarkConfig, DatapathBenchmarkResult,
+    DatapathBenchmarkRunStats, BENCHMARK_MEASUREMENT_SECS, BENCHMARK_MIN_RUNS,
+    BENCHMARK_WARMUP_SECS, TARGET_THROUGHPUT_MBIT_PER_SEC,
 };
 pub use compromised::{
     apply_compromised_guest_write, enforce_forward_integrity, scan_ipc_queue_integrity,
@@ -34,8 +39,8 @@ pub use e1000::{
 pub use error::{DatapathError, DatapathErrorKind};
 pub use topology::{DatapathForwardPlan, IpcChannelRuntime};
 pub use forward::{
-    forward_synthetic_frame, is_compromised_action_blocked, plan_datapath_forward,
-    run_reference_compromised_scenarios, SYNTHETIC_FRAME_PAYLOAD,
+    forward_frame_in_mid_out, forward_synthetic_frame, is_compromised_action_blocked,
+    plan_datapath_forward, run_reference_compromised_scenarios, SYNTHETIC_FRAME_PAYLOAD,
 };
 pub use ipc::{
     queue_storage_bytes, IpcQueueHeader, IpcQueueView, IpcSlotHeader, REFERENCE_IPC_QUEUE_SLOTS,
@@ -43,5 +48,5 @@ pub use ipc::{
 };
 pub use plan::{plan_datapath_for_partition, plan_datapath_for_vm_id, plan_e1000_mmio_guest_phys, DatapathPartitionPlan};
 pub use runtime::{
-    DatapathLiveDisposition, DatapathLiveOutcome, MockDatapathBackend,
+    run_datapath_live_forward, DatapathLiveDisposition, DatapathLiveOutcome,
 };

@@ -59,3 +59,5 @@ pub use seams::{
 pub use seams::{run_multi_vmx_launch_cpu_seam, MultiVmxLaunchCpuSeamOutcome};
 #[cfg(feature = "datapath-live")]
 pub use seams::{run_datapath_live_cpu_seam, DatapathLiveCpuSeamOutcome};
+#[cfg(feature = "datapath-runtime")]
+pub use seams::{run_datapath_runtime_cpu_seam, DatapathRuntimeCpuSeamOutcome};

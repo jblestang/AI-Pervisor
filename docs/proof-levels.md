@@ -42,5 +42,6 @@ Each critical requirement declares its validation level using these categories:
 | IPC forwarding integrity | UNIT (Phase 18 enqueue bounds; Phase 19 compromised-guest integrity scanner) |
 | Guest ELF install + multi-partition launch | UNIT + REVIEW (Phase 20: reference ELF64 stubs + validate-only VMLAUNCH seams) |
 | Datapath throughput benchmark | UNIT + PERFORMANCE (Phase 21: mock + host wall-clock benchmark per `docs/benchmark.md`) |
+| Guest datapath runtime under VMX | UNIT + REVIEW (Phase 22: guest-role IPC/e1000 hops + multi-partition VM-exit seam validation) |
 
 QEMU is not sufficient proof for silicon-specific properties.

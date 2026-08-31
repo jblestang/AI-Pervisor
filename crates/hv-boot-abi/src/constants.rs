@@ -68,3 +68,7 @@ pub const GATE_D_MULTI_VMLAUNCH_MARKER: &str = "Gate D: multi-partition VMLAUNCH
 pub const GATE_D_DATAPATH_BENCHMARK_MARKER: &str = "hypervisor Gate D datapath benchmark succeeded";
 /// Serial log marker emitted when the 200 Mbit/s benchmark target is met.
 pub const GATE_D_BENCHMARK_TARGET_MET_MARKER: &str = "Gate D: benchmark target 200 Mbit/s met";
+/// Serial log marker emitted after successful Gate D datapath runtime init.
+pub const GATE_D_DATAPATH_RUNTIME_MARKER: &str = "hypervisor Gate D datapath runtime succeeded";
+/// Serial log marker emitted when a guest-driven frame traverses in→mid→out under VMX.
+pub const GATE_D_GUEST_DATAPATH_FRAME_MARKER: &str = "Gate D: guest datapath frame forwarded in→mid→out";
