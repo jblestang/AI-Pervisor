@@ -41,6 +41,17 @@ pub fn hypervisor_elapsed_tsc(start: u64, end: u64) -> u64 {
     end.saturating_sub(start)
 }
 
+/// Rejects inverted hypervisor TSC brackets before publish.
+pub fn validate_hypervisor_tsc_bracket(start: u64, end: u64) -> Result<(), CpuSeamError> {
+    if end < start {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "hypervisor TSC bracket is inverted",
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -64,5 +75,12 @@ mod tests {
     fn hypervisor_elapsed_tsc_saturates_on_underflow() {
         assert_eq!(hypervisor_elapsed_tsc(100, 250), 150);
         assert_eq!(hypervisor_elapsed_tsc(250, 100), 0);
+    }
+
+    #[test]
+    fn validate_hypervisor_tsc_bracket_rejects_inverted_range() {
+        assert!(validate_hypervisor_tsc_bracket(200, 100).is_err());
+        assert!(validate_hypervisor_tsc_bracket(100, 100).is_ok());
+        assert!(validate_hypervisor_tsc_bracket(100, 200).is_ok());
     }
 }
