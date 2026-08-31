@@ -85,6 +85,17 @@ pub fn run_vmxon_cpu_seam(region: &VmxonProgrammedRegion) -> Result<VmxCpuSeamOu
     })
 }
 
+/// Outcome of an EPT pointer reload CPU seam (INVEPT + per-VMCS EPT pointer VMWRITE).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EptPointerReloadCpuSeamOutcome {
+    /// How the seam completed.
+    pub disposition: CpuInstructionDisposition,
+    /// Encoded EPT pointer value (root table physical address with control bits).
+    pub ept_pointer: u64,
+    /// Number of VMCS regions that received an EPT pointer reload.
+    pub vmcs_reloads: u32,
+}
+
 /// Validates (and optionally executes) an EPT pointer load seam.
 pub fn run_ept_pointer_cpu_seam(
     tables: &EptProgrammedTables,
@@ -102,6 +113,34 @@ pub fn run_ept_pointer_cpu_seam(
     Ok(EptCpuSeamOutcome {
         disposition,
         ept_pointer,
+    })
+}
+
+/// Invalidates EPT derived caches after runtime table updates, then reloads the EPT pointer on each VMCS.
+pub fn run_ept_pointer_reload_cpu_seam_batch(
+    tables: &EptProgrammedTables,
+    vmcs_phys_list: &[u64],
+) -> Result<EptPointerReloadCpuSeamOutcome, CpuSeamError> {
+    validate_ept_tables(tables)?;
+    let ept_pointer = encode_ept_pointer(tables.root_table_phys);
+    if !cpuid_ept_available() {
+        return Ok(EptPointerReloadCpuSeamOutcome {
+            disposition: CpuInstructionDisposition::SkippedNoHardware,
+            ept_pointer,
+            vmcs_reloads: vmcs_phys_list.len() as u32,
+        });
+    }
+    let mut disposition = execute_invept_if_enabled(ept_pointer)?;
+    for vmcs_phys in vmcs_phys_list {
+        disposition = merge_cpu_instruction_disposition(
+            disposition,
+            execute_ept_pointer_if_enabled(ept_pointer, Some(*vmcs_phys))?,
+        );
+    }
+    Ok(EptPointerReloadCpuSeamOutcome {
+        disposition,
+        ept_pointer,
+        vmcs_reloads: vmcs_phys_list.len() as u32,
     })
 }
 
@@ -599,6 +638,36 @@ fn execute_ept_pointer_if_enabled(
     Ok(CpuInstructionDisposition::SeamValidated)
 }
 
+fn execute_invept_if_enabled(
+    ept_pointer: u64,
+) -> Result<CpuInstructionDisposition, CpuSeamError> {
+    #[cfg(feature = "execute-instructions")]
+    {
+        match crate::instructions::ept::execute_invept_single_context(ept_pointer) {
+            Ok(()) => return Ok(CpuInstructionDisposition::Executed),
+            Err(err) if err.kind == CpuSeamErrorKind::Unavailable => {}
+            Err(err) => return Err(err),
+        }
+    }
+    let _ = ept_pointer;
+    Ok(CpuInstructionDisposition::SeamValidated)
+}
+
+fn merge_cpu_instruction_disposition(
+    left: CpuInstructionDisposition,
+    right: CpuInstructionDisposition,
+) -> CpuInstructionDisposition {
+    if left == CpuInstructionDisposition::Executed || right == CpuInstructionDisposition::Executed {
+        CpuInstructionDisposition::Executed
+    } else if left == CpuInstructionDisposition::SkippedNoHardware
+        || right == CpuInstructionDisposition::SkippedNoHardware
+    {
+        CpuInstructionDisposition::SkippedNoHardware
+    } else {
+        CpuInstructionDisposition::SeamValidated
+    }
+}
+
 fn execute_vtd_enable_if_enabled(
     interrupt_remapping: bool,
 ) -> Result<CpuInstructionDisposition, CpuSeamError> {
@@ -734,6 +803,46 @@ mod tests {
                 CpuInstructionDisposition::SkippedNoHardware
             );
         }
+    }
+
+    #[test]
+    fn run_ept_pointer_reload_cpu_seam_batch_validates_reference_tables() {
+        let tables = reference_ept_tables();
+        let vmcs_list = [0x4000u64, 0x5000];
+        let outcome =
+            run_ept_pointer_reload_cpu_seam_batch(&tables, &vmcs_list).expect("reload seam");
+        if cpuid_ept_available() {
+            assert_eq!(outcome.disposition, CpuInstructionDisposition::SeamValidated);
+        } else {
+            assert_eq!(
+                outcome.disposition,
+                CpuInstructionDisposition::SkippedNoHardware
+            );
+        }
+        assert_eq!(outcome.vmcs_reloads, 2);
+        assert_ne!(outcome.ept_pointer & EPT_PAGE_OFFSET_MASK, 0);
+    }
+
+    #[cfg(feature = "execute-instructions")]
+    #[test]
+    fn run_ept_pointer_reload_cpu_seam_batch_propagates_execution_failure_with_live_env() {
+        use crate::instructions::environment::test_force_live_environment_ready;
+        let tables = reference_ept_tables();
+        test_force_live_environment_ready(true);
+        let result = run_ept_pointer_reload_cpu_seam_batch(&tables, &[0x6000]);
+        test_force_live_environment_ready(false);
+        if cpuid_ept_available() {
+            assert!(result.is_err());
+        } else {
+            assert!(result.is_ok());
+        }
+    }
+
+    #[test]
+    fn run_ept_pointer_reload_cpu_seam_batch_rejects_empty_mappings() {
+        let mut tables = reference_ept_tables();
+        tables.mappings.clear();
+        assert!(run_ept_pointer_reload_cpu_seam_batch(&tables, &[0x4000]).is_err());
     }
 
     #[test]

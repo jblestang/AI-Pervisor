@@ -807,7 +807,7 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
 
     #[cfg(feature = "datapath-guest-relay-measurement")]
     if relay_measurement_install.is_some() && !seam_inputs.is_empty() {
-        use hv_x86_cpu::run_ept_pointer_cpu_seam;
+        use hv_x86_cpu::run_ept_pointer_reload_cpu_seam_batch;
         let ept_tables = malicious
             .live
             .foundation
@@ -824,9 +824,10 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
                     "relay measurement requires installed EPT tables for pointer reload",
                 )
             })?;
-        for (vmcs_phys, _, _) in &seam_inputs {
-            run_ept_pointer_cpu_seam(ept_tables, Some(*vmcs_phys)).map_err(map_cpu_seam_error)?;
-        }
+        let vmcs_phys_list: alloc::vec::Vec<u64> =
+            seam_inputs.iter().map(|(vmcs_phys, _, _)| *vmcs_phys).collect();
+        run_ept_pointer_reload_cpu_seam_batch(ept_tables, &vmcs_phys_list)
+            .map_err(map_cpu_seam_error)?;
     }
 
     let multi_launch_seam = run_multi_vmx_launch_cpu_seam(&seam_inputs).map_err(map_cpu_seam_error)?;
