@@ -148,17 +148,20 @@ pub fn vmread(field: u32) -> Result<u64, CpuSeamError> {
 pub fn vmlaunch_to_host() -> Result<(), CpuSeamError> {
     let mut cf: u8;
     let mut zf: u8;
-    // SAFETY: HOST_RIP points at the installed exit stub; stub `ret` resumes at the host label.
+    // SAFETY: HOST_RIP points at the installed exit stub; stub `ret` resumes at label `3`.
     unsafe {
         core::arch::asm!(
-            "call 2f",
-            "2:",
-            "pop rax",
-            "push rax",
+            "lea {resume}, [3f]",
+            "push {resume}",
             "vmlaunch",
             "add rsp, 8",
             "setc {cf}",
             "setz {zf}",
+            "2:",
+            "jmp 4f",
+            "3:",
+            "4:",
+            resume = out(reg) _,
             cf = out(reg_byte) cf,
             zf = out(reg_byte) zf,
             options(nostack),
@@ -177,17 +180,20 @@ pub fn vmlaunch_to_host() -> Result<(), CpuSeamError> {
 pub fn vmresume_to_host() -> Result<(), CpuSeamError> {
     let mut cf: u8;
     let mut zf: u8;
-    // SAFETY: HOST_RIP points at the installed exit stub; stub `ret` resumes at the host label.
+    // SAFETY: HOST_RIP points at the installed exit stub; stub `ret` resumes at label `3`.
     unsafe {
         core::arch::asm!(
-            "call 2f",
-            "2:",
-            "pop rax",
-            "push rax",
+            "lea {resume}, [3f]",
+            "push {resume}",
             "vmresume",
             "add rsp, 8",
             "setc {cf}",
             "setz {zf}",
+            "2:",
+            "jmp 4f",
+            "3:",
+            "4:",
+            resume = out(reg) _,
             cf = out(reg_byte) cf,
             zf = out(reg_byte) zf,
             options(nostack),

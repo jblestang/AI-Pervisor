@@ -59,7 +59,7 @@ fn run_vmx_guest_vmexit_dispatch_loop(
     use super::live_asm::{vmlaunch_to_host, vmread, vmresume_to_host, vmwrite};
     use crate::vmexit_relay_counter::{
         handle_relay_frame_vmexit, VMCS_EXIT_QUALIFICATION, VMCS_GUEST_PHYSICAL_ADDRESS,
-        VMCS_VM_EXIT_REASON, VM_EXIT_REASON_HLT,
+        VMCS_VM_EXIT_REASON, VM_EXIT_REASON_EPT_VIOLATION, VM_EXIT_REASON_HLT,
     };
 
     let mut relay_frames = 0u64;
@@ -72,17 +72,35 @@ fn run_vmx_guest_vmexit_dispatch_loop(
         if let Some(config) = relay_config {
             let guest_phys = vmread(VMCS_GUEST_PHYSICAL_ADDRESS)?;
             let exit_qualification = vmread(VMCS_EXIT_QUALIFICATION)?;
-            if handle_relay_frame_vmexit(
-                exit_reason as u32,
-                guest_phys,
-                exit_qualification,
-                &config,
-            )? {
+            if exit_reason == u64::from(VM_EXIT_REASON_EPT_VIOLATION) {
+                if !handle_relay_frame_vmexit(
+                    exit_reason as u32,
+                    guest_phys,
+                    exit_qualification,
+                    &config,
+                )? {
+                    return Err(CpuSeamError::new(
+                        CpuSeamErrorKind::InvalidInput,
+                        "unexpected EPT violation during relay measurement guest run",
+                    ));
+                }
                 relay_frames = relay_frames.saturating_add(1);
                 advance_guest_rip(&vmread, &vmwrite)?;
             }
         }
         vmresume_to_host()?;
+    }
+    if let Some(config) = relay_config {
+        let page_frames = crate::vmexit_relay_counter::read_relay_measurement_page_frames(
+            config.measurement_page_host_phys,
+        )?;
+        if page_frames != relay_frames {
+            return Err(CpuSeamError::new(
+                CpuSeamErrorKind::InvalidInput,
+                "relay measurement page frame count mismatch with VM-exit dispatch loop",
+            ));
+        }
+        relay_frames = page_frames;
     }
     Ok(relay_frames)
 }
