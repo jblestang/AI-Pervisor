@@ -2,14 +2,14 @@
 
 use hv_ept::{resolve_guest_phys_range_to_host, EptProgrammedTables};
 use hv_guest_abi::{
-    guest_relay_measurement_elapsed_tsc, parse_guest_boot_info_relay_measurement,
-    parse_relay_measurement_page_header, GuestBootInfoRelayMeasurement,
-    GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES, GUEST_RELAY_MEASUREMENT_EXTENSION_VERSION,
-    GUEST_RELAY_MEASUREMENT_MAGIC,
+    parse_guest_boot_info_relay_measurement, parse_relay_measurement_page_header,
+    GuestBootInfoRelayMeasurement, GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES,
+    GUEST_RELAY_MEASUREMENT_EXTENSION_VERSION, GUEST_RELAY_MEASUREMENT_MAGIC,
 };
 use hv_types::VmId;
 
 use crate::error::{CpuSeamError, CpuSeamErrorKind};
+use crate::instructions::hypervisor_elapsed_tsc;
 use crate::seams::{CpuInstructionDisposition, DatapathGuestExecutionCpuSeamOutcome};
 
 /// VM id for the reference `out` partition whose counter reflects delivered frames.
@@ -158,6 +158,8 @@ pub fn read_ipc_delivered_frames_from_guest(
 pub fn publish_relay_measurement_page_authoritative(
     context: &GuestRelayMeasurementContext,
     expected_frames: u64,
+    hypervisor_tsc_start: u64,
+    hypervisor_tsc_end: u64,
 ) -> Result<(), CpuSeamError> {
     let host_phys = context.measurement_page_host_phys.ok_or_else(|| {
         CpuSeamError::new(
@@ -177,8 +179,8 @@ pub fn publish_relay_measurement_page_authoritative(
         magic: boot_extension.magic,
         version: boot_extension.version,
         frames_completed,
-        tsc_start: boot_extension.tsc_start,
-        tsc_end: boot_extension.tsc_end,
+        tsc_start: hypervisor_tsc_start,
+        tsc_end: hypervisor_tsc_end,
         measurement_page_gpa: boot_extension.measurement_page_gpa,
     };
     write_host_measurement_extension(host_phys, &published)?;
@@ -187,6 +189,14 @@ pub fn publish_relay_measurement_page_authoritative(
         return Err(CpuSeamError::new(
             CpuSeamErrorKind::InvalidInput,
             "published relay measurement page frame count mismatch",
+        ));
+    }
+    if host_extension.tsc_start != hypervisor_tsc_start
+        || host_extension.tsc_end != hypervisor_tsc_end
+    {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "published relay measurement page TSC bracket mismatch",
         ));
     }
     Ok(())
@@ -230,11 +240,25 @@ pub fn measure_in_vm_relay_from_context(
         context.out_boot_info_guest_phys,
         context.boot_info_size,
     )?;
-    publish_relay_measurement_page_authoritative(context, expected_frames)?;
+    publish_relay_measurement_page_authoritative(
+        context,
+        expected_frames,
+        execution_seam.hypervisor_tsc_start,
+        execution_seam.hypervisor_tsc_end,
+    )?;
     let host_extension = read_relay_measurement_extension_from_guest(context)?;
     let guest_boot_info_frames = guest_boot_extension.frames_completed;
     let extension_frames = host_extension.frames_completed;
-    let elapsed_tsc = guest_relay_measurement_elapsed_tsc(&host_extension);
+    let elapsed_tsc = hypervisor_elapsed_tsc(
+        execution_seam.hypervisor_tsc_start,
+        execution_seam.hypervisor_tsc_end,
+    );
+    if execution_seam.disposition == CpuInstructionDisposition::Executed && elapsed_tsc == 0 {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "relay measurement requires non-zero hypervisor TSC elapsed time",
+        ));
+    }
     let ipc_delivered_frames = read_ipc_delivered_frames_from_guest(context)?;
     if ipc_delivered_frames == 0 {
         return Err(CpuSeamError::new(
@@ -450,6 +474,8 @@ mod tests {
             vmexit_stub_validated: true,
             partitions_validated: 3,
             vmlaunch_attempts: 3,
+            hypervisor_tsc_start: 0,
+            hypervisor_tsc_end: 0,
         };
         let context = GuestRelayMeasurementContext {
             ept_tables: sample_ept(),
@@ -488,6 +514,8 @@ mod tests {
             vmexit_stub_validated: true,
             partitions_validated: 3,
             vmlaunch_attempts: 3,
+            hypervisor_tsc_start: 0,
+            hypervisor_tsc_end: 0,
         };
         let site = GuestBootInfoMeasurementSite {
             vm_id: VmId::new(0),

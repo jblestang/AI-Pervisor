@@ -1730,7 +1730,7 @@ pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAlloca
         {
             return Err(BootCheckError::new(
                 BootCheckErrorKind::Platform,
-                "relay measurement requires non-zero in-VM TSC elapsed time",
+                "relay measurement requires non-zero hypervisor TSC elapsed time",
             ));
         }
         (measurement.frames, measurement.elapsed_tsc)

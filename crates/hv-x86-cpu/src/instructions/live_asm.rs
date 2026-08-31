@@ -223,6 +223,21 @@ pub fn vmlaunch_wait_for_hlt_exit() -> Result<(), CpuSeamError> {
 /// Byte offset from the `pop` in the call/pop sequence to label `3` (`guest_hlt_done`).
 const GUEST_HLT_DONE_OFFSET: u64 = 19;
 
+pub fn rdtsc() -> Result<u64, CpuSeamError> {
+    let lo: u32;
+    let hi: u32;
+    // SAFETY: RDTSC is defined on x86_64 in ring 0.
+    unsafe {
+        core::arch::asm!(
+            "rdtsc",
+            out("eax") lo,
+            out("edx") hi,
+            options(nomem, nostack, preserves_flags),
+        );
+    }
+    Ok((u64::from(hi) << 32) | u64::from(lo))
+}
+
 pub fn rdmsr(msr: u32) -> Result<(u32, u32), CpuSeamError> {
     let mut low: u32;
     let mut high: u32;

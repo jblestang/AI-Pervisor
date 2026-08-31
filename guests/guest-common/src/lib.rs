@@ -63,13 +63,12 @@ fn run_mid_sustained(boot_info: *const u8, layout: &layout::ResolvedLayout, fram
 }
 
 fn run_out_sustained(boot_info: *const u8, layout: &layout::ResolvedLayout, frames: u32) {
-    relay::set_relay_measurement_tsc_start(boot_info);
+    let _ = boot_info;
     for _ in 0..frames {
         if run_out(layout) {
             relay::record_relay_frame_completed(boot_info);
         }
     }
-    relay::set_relay_measurement_tsc_end(boot_info);
 }
 
 fn run_in(layout: &layout::ResolvedLayout) {
