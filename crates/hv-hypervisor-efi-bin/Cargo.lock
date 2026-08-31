@@ -81,6 +81,7 @@ dependencies = [
  "hv-config-model",
  "hv-datapath",
  "hv-ept",
+ "hv-guest-abi",
  "hv-guest-boot",
  "hv-observation-types",
  "hv-platform-model",

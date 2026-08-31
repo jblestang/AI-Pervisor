@@ -14,7 +14,10 @@
 use hv_types::{GuestPhysAddr, VcpuId, VmId};
 
 /// Current guest ABI version.
-pub const GUEST_ABI_VERSION: u32 = 1;
+pub const GUEST_ABI_VERSION: u32 = 2;
+
+/// Minimum supported guest ABI version.
+pub const GUEST_ABI_VERSION_MIN: u32 = 1;
 
 /// Magic bytes for `GuestBootInfoHeader`.
 pub const GUEST_BOOT_INFO_MAGIC: [u8; 8] = *b"HVGUEST\0";
@@ -128,7 +131,15 @@ pub fn guest_boot_info_relay_frames_offset(total_size: u32) -> Option<usize> {
 
 /// Returns whether a guest boot info header matches the supported ABI.
 pub fn guest_abi_is_compatible(header: &GuestBootInfoHeader) -> bool {
-    header.magic == GUEST_BOOT_INFO_MAGIC && header.version == GUEST_ABI_VERSION
+    header.magic == GUEST_BOOT_INFO_MAGIC
+        && header.version >= GUEST_ABI_VERSION_MIN
+        && header.version <= GUEST_ABI_VERSION
+}
+
+/// Returns whether the header declares the relay measurement tail (ABI v2+).
+pub fn guest_boot_info_has_relay_measurement_tail(header: &GuestBootInfoHeader) -> bool {
+    header.version >= 2
+        && guest_boot_info_relay_frames_offset(header.size).is_some()
 }
 
 #[cfg(test)]
@@ -171,5 +182,30 @@ mod tests {
             ..ok
         };
         assert!(!guest_abi_is_compatible(&bad_version));
+
+        let v1 = GuestBootInfoHeader {
+            version: 1,
+            ..ok
+        };
+        assert!(guest_abi_is_compatible(&v1));
+    }
+
+    #[test]
+    fn guest_boot_info_relay_tail_requires_v2_size() {
+        let header = GuestBootInfoHeader {
+            magic: GUEST_BOOT_INFO_MAGIC,
+            version: 2,
+            size: (size_of::<GuestBootInfoHeader>() + GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES)
+                as u32,
+            vm_id: VmId::new(0),
+            vcpu_id: VcpuId::new(0),
+            memory_table_offset: size_of::<GuestBootInfoHeader>() as u32,
+            memory_region_count: 0,
+            ipc_table_offset: size_of::<GuestBootInfoHeader>() as u32,
+            ipc_region_count: 0,
+            device_table_offset: size_of::<GuestBootInfoHeader>() as u32,
+            device_region_count: 0,
+        };
+        assert!(guest_boot_info_has_relay_measurement_tail(&header));
     }
 }

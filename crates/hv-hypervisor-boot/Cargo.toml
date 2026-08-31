@@ -35,6 +35,7 @@ hv-boot-abi = { path = "../hv-boot-abi" }
 hv-config-model = { path = "../hv-config-model", default-features = false, features = [] }
 hv-ept = { path = "../hv-ept", default-features = false, features = [] }
 hv-guest-boot = { path = "../hv-guest-boot", optional = true }
+hv-guest-abi = { workspace = true }
 hv-datapath = { path = "../hv-datapath", optional = true }
 hv-observation-types = { path = "../hv-observation-types" }
 hv-platform-model = { path = "../hv-platform-model", default-features = false, features = [] }
