@@ -42,9 +42,9 @@ pub fn run_datapath_live_forward(
 #[allow(clippy::expect_used)]
 mod tests {
     use super::*;
+    use crate::forward::plan_datapath_forward;
     use hv_config_model::compile_config_from_str;
     use hv_platform_model::plan_static_platform_ir;
-    use crate::forward::plan_datapath_forward;
 
     #[test]
     fn run_datapath_live_forward_traverses_in_mid_out() {

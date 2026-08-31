@@ -5,8 +5,8 @@
 use hv_config_model::compile_config_from_str;
 use hv_hypervisor_boot::{
     boot_check_and_init_gate_c_live_execution, boot_from_transfer_and_init_gate_c_live_execution,
-    boot_from_transfer_and_init_gate_c_live_execution_from_snapshots, layout_snapshot_from_platform_ir,
-    requirements_snapshot_from_platform,
+    boot_from_transfer_and_init_gate_c_live_execution_from_snapshots,
+    layout_snapshot_from_platform_ir, requirements_snapshot_from_platform,
 };
 use hv_loader::{
     build_hypervisor_transfer, build_loader_handoff, encode_qemu_reference_firmware,
@@ -34,7 +34,8 @@ fn reference_handoff_snapshot_and_layout() -> (
             compiled.digest.bytes,
             {
                 let mut memory_map = vec![0u8; 48];
-                memory_map[0..4].copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
+                memory_map[0..4]
+                    .copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
                 memory_map[24..32].copy_from_slice(&(2_097_152u64).to_le_bytes());
                 memory_map
             },
@@ -117,7 +118,8 @@ fn boot_check_and_init_gate_c_live_execution_accepts_reference_inputs() {
             compiled.digest.bytes,
             {
                 let mut memory_map = vec![0u8; 48];
-                memory_map[0..4].copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
+                memory_map[0..4]
+                    .copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
                 memory_map[24..32].copy_from_slice(&(2_097_152u64).to_le_bytes());
                 memory_map
             },
@@ -162,5 +164,13 @@ fn boot_check_and_init_gate_c_live_execution_accepts_reference_inputs() {
         &layout,
     )
     .expect("live execution boot check");
-    assert!(result.cpu_seam.programming.init.validated.observed.interrupt_remapping);
+    assert!(
+        result
+            .cpu_seam
+            .programming
+            .init
+            .validated
+            .observed
+            .interrupt_remapping
+    );
 }

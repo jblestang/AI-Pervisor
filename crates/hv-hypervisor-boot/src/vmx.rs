@@ -103,6 +103,7 @@ fn map_vmx_error(err: VmxError) -> BootCheckError {
 #[allow(clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::snapshot::requirements_snapshot_from_platform;
     use hv_config_model::compile_config_from_str;
     use hv_loader::{
         build_hypervisor_transfer, build_loader_handoff, encode_qemu_reference_firmware,
@@ -115,7 +116,6 @@ mod tests {
     };
     use hv_platform_model::plan_static_platform_ir;
     use hv_types::{PciBdf, PciBus, PciDevice, PciFunction, PciSegment};
-    use crate::snapshot::requirements_snapshot_from_platform;
 
     #[test]
     fn boot_from_transfer_and_init_vmx_accepts_reference_transfer() {

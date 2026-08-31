@@ -2,7 +2,10 @@
 
 #![allow(clippy::needless_return)]
 
-use hv_ept::EPT_PAGE_OFFSET_MASK;
+use hv_ept::{
+    EPT_PAGE_OFFSET_MASK, EPT_POINTER_MEMORY_TYPE_SHIFT, EPT_POINTER_MEMORY_TYPE_WB,
+    EPT_POINTER_PAGE_WALK_LENGTH, EPT_POINTER_PAGE_WALK_LENGTH_SHIFT,
+};
 
 use crate::error::{CpuSeamError, CpuSeamErrorKind};
 
@@ -78,11 +81,22 @@ pub fn execute_invept_single_context(_ept_pointer: u64) -> Result<(), CpuSeamErr
     ))
 }
 
+const EPT_POINTER_LOW_CONTROL_MASK: u64 = (EPT_POINTER_MEMORY_TYPE_WB
+    << EPT_POINTER_MEMORY_TYPE_SHIFT)
+    | (EPT_POINTER_PAGE_WALK_LENGTH << EPT_POINTER_PAGE_WALK_LENGTH_SHIFT);
+
 fn validate_ept_pointer_operand(ept_pointer: u64) -> Result<(), CpuSeamError> {
-    if ept_pointer & EPT_PAGE_OFFSET_MASK != 0 {
+    if ept_pointer == 0 {
         return Err(CpuSeamError::new(
             CpuSeamErrorKind::InvalidInput,
-            "EPT pointer low 12 bits must be zero",
+            "EPT pointer must be non-zero",
+        ));
+    }
+    let low_bits = ept_pointer & EPT_PAGE_OFFSET_MASK;
+    if low_bits & !EPT_POINTER_LOW_CONTROL_MASK != 0 {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "EPT pointer low bits contain reserved or misaligned fields",
         ));
     }
     Ok(())
@@ -95,6 +109,12 @@ mod tests {
     #[test]
     fn validate_ept_pointer_operand_rejects_misaligned_low_bits() {
         assert!(validate_ept_pointer_operand(0x1001).is_err());
+    }
+
+    #[test]
+    fn validate_ept_pointer_operand_accepts_encoded_ept_pointer() {
+        let encoded = 0x2000u64 | EPT_POINTER_LOW_CONTROL_MASK;
+        assert!(validate_ept_pointer_operand(encoded).is_ok());
     }
 
     #[test]

@@ -37,7 +37,8 @@ fn reference_handoff_snapshot_and_layout() -> (
             compiled.digest.bytes,
             {
                 let mut memory_map = vec![0u8; 48];
-                memory_map[0..4].copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
+                memory_map[0..4]
+                    .copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
                 memory_map[24..32].copy_from_slice(&(2_097_152u64).to_le_bytes());
                 memory_map
             },
@@ -108,7 +109,14 @@ fn assert_datapath_guest_execution_validate_only(result: &GateDDatapathGuestExec
         "unexpected runtime disposition: {:?}",
         result.live.sources.runtime.runtime.disposition
     );
-    for record in &result.live.sources.runtime.benchmark.guests.partition_launches {
+    for record in &result
+        .live
+        .sources
+        .runtime
+        .benchmark
+        .guests
+        .partition_launches
+    {
         let boot_info_phys = record
             .boot_info_guest_phys
             .expect("boot info installed for partition");

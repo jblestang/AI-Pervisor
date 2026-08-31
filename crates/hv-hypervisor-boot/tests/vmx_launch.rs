@@ -5,8 +5,8 @@
 use hv_config_model::compile_config_from_str;
 use hv_hypervisor_boot::{
     boot_from_transfer_and_init_gate_c_vmx_launch,
-    boot_from_transfer_and_init_gate_c_vmx_launch_from_snapshots,
-    layout_snapshot_from_platform_ir, requirements_snapshot_from_platform, GateCVmxLaunchResult,
+    boot_from_transfer_and_init_gate_c_vmx_launch_from_snapshots, layout_snapshot_from_platform_ir,
+    requirements_snapshot_from_platform, GateCVmxLaunchResult,
 };
 use hv_loader::{
     build_hypervisor_transfer, build_loader_handoff, encode_qemu_reference_firmware,
@@ -34,7 +34,8 @@ fn reference_handoff_snapshot_and_layout() -> (
             compiled.digest.bytes,
             {
                 let mut memory_map = vec![0u8; 48];
-                memory_map[0..4].copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
+                memory_map[0..4]
+                    .copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
                 memory_map[24..32].copy_from_slice(&(2_097_152u64).to_le_bytes());
                 memory_map
             },
@@ -86,7 +87,10 @@ fn assert_vmx_launch_validate_only(result: &GateCVmxLaunchResult) {
     assert!(!result.real_hw.live.live_environment_ready);
     assert!(result.real_hw.vmcs_phys.is_some());
     assert!(result.guest_entry_phys.is_some());
-    assert!(result.guest_boot_info.as_ref().is_some_and(|info| !info.is_empty()));
+    assert!(result
+        .guest_boot_info
+        .as_ref()
+        .is_some_and(|info| !info.is_empty()));
     if let Some(launch) = &result.launch_seam {
         assert_ne!(launch.disposition, CpuInstructionDisposition::Executed);
     }

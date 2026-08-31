@@ -17,21 +17,6 @@ mod plan;
 mod runtime;
 mod topology;
 
-pub use guest_relay_live::{
-    apply_live_guest_throughput_benchmark, guest_throughput_result_with_live_relay,
-    live_measurement_completed_for_execution, run_sustained_guest_relay_benchmark,
-    validate_sustained_host_relay_benchmark, GUEST_RELAY_BENCHMARK_FRAMES,
-};
-pub use guest_throughput::{
-    apply_guest_throughput_disposition, guest_throughput_disposition_for_seam,
-    run_mock_guest_throughput_benchmark, GuestThroughputBenchmarkResult,
-    GuestThroughputDisposition,
-};
-pub use guest_runtime::{
-    apply_runtime_disposition, runtime_disposition_for_guest_execution_seam,
-    run_guest_datapath_runtime, DatapathRuntimeDisposition, DatapathRuntimeOutcome,
-    GuestDatapathRuntime, GUEST_DATAPATH_IPC_HOPS,
-};
 pub use benchmark::{
     compute_benchmark_run_stats, elapsed_nanos_from_tsc, mock_throughput_mbit,
     run_mock_datapath_benchmark, throughput_mbit_from_frames, DatapathBenchmarkConfig,
@@ -52,10 +37,24 @@ pub use e1000::{
     E1000_REG_TDH, E1000_REG_TDT,
 };
 pub use error::{DatapathError, DatapathErrorKind};
-pub use topology::{DatapathForwardPlan, IpcChannelRuntime};
 pub use forward::{
     forward_frame_in_mid_out, forward_synthetic_frame, is_compromised_action_blocked,
     plan_datapath_forward, run_reference_compromised_scenarios, SYNTHETIC_FRAME_PAYLOAD,
+};
+pub use guest_relay_live::{
+    apply_live_guest_throughput_benchmark, guest_throughput_result_with_live_relay,
+    live_measurement_completed_for_execution, run_sustained_guest_relay_benchmark,
+    validate_sustained_host_relay_benchmark, GUEST_RELAY_BENCHMARK_FRAMES,
+};
+pub use guest_runtime::{
+    apply_runtime_disposition, run_guest_datapath_runtime,
+    runtime_disposition_for_guest_execution_seam, DatapathRuntimeDisposition,
+    DatapathRuntimeOutcome, GuestDatapathRuntime, GUEST_DATAPATH_IPC_HOPS,
+};
+pub use guest_throughput::{
+    apply_guest_throughput_disposition, guest_throughput_disposition_for_seam,
+    run_mock_guest_throughput_benchmark, GuestThroughputBenchmarkResult,
+    GuestThroughputDisposition,
 };
 pub use ipc::{
     queue_storage_bytes, IpcQueueHeader, IpcQueueView, IpcSlotHeader, REFERENCE_IPC_QUEUE_SLOTS,
@@ -65,6 +64,5 @@ pub use plan::{
     plan_datapath_for_partition, plan_datapath_for_vm_id, plan_e1000_mmio_guest_phys,
     plan_out_ipc_consumer_guest_phys, plan_relay_measurement_page_gpa, DatapathPartitionPlan,
 };
-pub use runtime::{
-    run_datapath_live_forward, DatapathLiveDisposition, DatapathLiveOutcome,
-};
+pub use runtime::{run_datapath_live_forward, DatapathLiveDisposition, DatapathLiveOutcome};
+pub use topology::{DatapathForwardPlan, IpcChannelRuntime};

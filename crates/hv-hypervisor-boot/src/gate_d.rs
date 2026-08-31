@@ -3,11 +3,9 @@
 use hv_boot_abi::{LayoutSnapshot, RequirementsSnapshot};
 use hv_config_model::PlatformRequirements;
 use hv_datapath::{plan_datapath_for_vm_id, DatapathPartitionPlan};
-use hv_guest_boot::{
-    build_guest_boot_infos_all_partitions, GuestBootInfoView,
-};
+use hv_guest_boot::{build_guest_boot_infos_all_partitions, GuestBootInfoView};
 use hv_platform_model::{PlatformWarning, StaticPlatformIR, ValidatedPlatform};
-use hv_types::{SHA256_DIGEST_BYTES, VmId};
+use hv_types::{VmId, SHA256_DIGEST_BYTES};
 use hv_x86_cpu::PageAllocator;
 
 use crate::boot::boot_check;
@@ -40,8 +38,11 @@ pub fn boot_from_transfer_and_init_gate_d_datapath_foundation_from_snapshots<A: 
 ) -> Result<GateDDatapathFoundationResult, BootCheckError> {
     let platform_requirements = platform_requirements_from_snapshot(requirements)?;
     let static_layout = static_platform_ir_from_layout_snapshot(layout, requirements)?;
-    let (validated, warnings) =
-        boot_from_transfer(transfer, &requirements.config_digest, &platform_requirements)?;
+    let (validated, warnings) = boot_from_transfer(
+        transfer,
+        &requirements.config_digest,
+        &platform_requirements,
+    )?;
     init_gate_d_datapath_foundation_from_validated(
         &platform_requirements,
         &static_layout,
@@ -112,9 +113,8 @@ pub(crate) fn init_gate_d_datapath_foundation_from_validated<A: PageAllocator>(
         allocator,
     )?;
 
-    let partition_boot_infos = build_guest_boot_infos_all_partitions(layout).map_err(|err| {
-        BootCheckError::new(BootCheckErrorKind::Platform, err.message)
-    })?;
+    let partition_boot_infos = build_guest_boot_infos_all_partitions(layout)
+        .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
     if partition_boot_infos.len() != layout.guest_memory.len() {
         return Err(BootCheckError::new(
             BootCheckErrorKind::Platform,
@@ -124,12 +124,10 @@ pub(crate) fn init_gate_d_datapath_foundation_from_validated<A: PageAllocator>(
 
     let mut datapath_plans = alloc::vec::Vec::with_capacity(layout.guest_memory.len());
     for (vm_id, blob) in &partition_boot_infos {
-        GuestBootInfoView::parse(blob).map_err(|err| {
-            BootCheckError::new(BootCheckErrorKind::Platform, err.message)
-        })?;
-        let plan = plan_datapath_for_vm_id(layout, *vm_id).map_err(|err| {
-            BootCheckError::new(BootCheckErrorKind::Platform, err.message)
-        })?;
+        GuestBootInfoView::parse(blob)
+            .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
+        let plan = plan_datapath_for_vm_id(layout, *vm_id)
+            .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
         datapath_plans.push((*vm_id, plan));
     }
 
@@ -164,8 +162,11 @@ pub fn boot_from_transfer_and_init_gate_d_datapath_live_from_snapshots<A: PageAl
 ) -> Result<GateDDatapathLiveResult, BootCheckError> {
     let platform_requirements = platform_requirements_from_snapshot(requirements)?;
     let static_layout = static_platform_ir_from_layout_snapshot(layout, requirements)?;
-    let (validated, warnings) =
-        boot_from_transfer(transfer, &requirements.config_digest, &platform_requirements)?;
+    let (validated, warnings) = boot_from_transfer(
+        transfer,
+        &requirements.config_digest,
+        &platform_requirements,
+    )?;
     init_gate_d_datapath_live_from_validated(
         &platform_requirements,
         &static_layout,
@@ -186,13 +187,7 @@ pub fn boot_from_transfer_and_init_gate_d_datapath_live<A: PageAllocator>(
     let requirements = platform_requirements_from_snapshot(snapshot)?;
     let (validated, warnings) =
         boot_from_transfer(transfer, &snapshot.config_digest, &requirements)?;
-    init_gate_d_datapath_live_from_validated(
-        &requirements,
-        layout,
-        &validated,
-        warnings,
-        allocator,
-    )
+    init_gate_d_datapath_live_from_validated(&requirements, layout, &validated, warnings, allocator)
 }
 
 /// Runs boot checks from raw inputs and Gate D datapath live init.
@@ -211,13 +206,7 @@ pub fn boot_check_and_init_gate_d_datapath_live<A: PageAllocator>(
         requirements,
         observation,
     )?;
-    init_gate_d_datapath_live_from_validated(
-        requirements,
-        layout,
-        &validated,
-        warnings,
-        allocator,
-    )
+    init_gate_d_datapath_live_from_validated(requirements, layout, &validated, warnings, allocator)
 }
 
 #[cfg(feature = "datapath-live")]
@@ -236,9 +225,8 @@ pub(crate) fn init_gate_d_datapath_live_from_validated<A: PageAllocator>(
         allocator,
     )?;
 
-    let forward_plan = hv_datapath::plan_datapath_forward(layout).map_err(|err| {
-        BootCheckError::new(BootCheckErrorKind::Platform, err.message)
-    })?;
+    let forward_plan = hv_datapath::plan_datapath_forward(layout)
+        .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
 
     #[cfg(not(feature = "datapath-runtime"))]
     let (forward_plan, live_seam, live_outcome) = {
@@ -252,7 +240,14 @@ pub(crate) fn init_gate_d_datapath_live_from_validated<A: PageAllocator>(
 
         let launch_plan = hv_vmx::plan_vmx_launch(
             layout,
-            &foundation.vmx_launch.real_hw.live.cpu_seam.programming.init.vmx_plan,
+            &foundation
+                .vmx_launch
+                .real_hw
+                .live
+                .cpu_seam
+                .programming
+                .init
+                .vmx_plan,
             hv_vmx::DEFAULT_SMOKE_GUEST_PARTITION_ID,
         )
         .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
@@ -261,9 +256,10 @@ pub(crate) fn init_gate_d_datapath_live_from_validated<A: PageAllocator>(
             hv_x86_cpu::run_datapath_live_cpu_seam(vmcs_phys, launch_plan.host_exit_phys.raw())
                 .map_err(map_cpu_seam_error)?,
         );
-        let live_outcome = Some(hv_datapath::run_datapath_live_forward(&mut forward_plan).map_err(
-            |err| BootCheckError::new(BootCheckErrorKind::Platform, err.message),
-        )?);
+        let live_outcome = Some(
+            hv_datapath::run_datapath_live_forward(&mut forward_plan)
+                .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?,
+        );
         (forward_plan, live_seam, live_outcome)
     };
 
@@ -281,14 +277,23 @@ pub(crate) fn init_gate_d_datapath_live_from_validated<A: PageAllocator>(
     })
 }
 
-#[cfg(any(feature = "datapath-live", feature = "datapath-guests", feature = "datapath-runtime", feature = "datapath-guest-execution", feature = "datapath-guest-throughput"))]
+#[cfg(any(
+    feature = "datapath-live",
+    feature = "datapath-guests",
+    feature = "datapath-runtime",
+    feature = "datapath-guest-execution",
+    feature = "datapath-guest-throughput"
+))]
 fn map_cpu_seam_error(err: hv_x86_cpu::CpuSeamError) -> BootCheckError {
     BootCheckError::new(BootCheckErrorKind::Platform, err.message)
 }
 
 #[cfg(all(
     feature = "datapath-guest-live",
-    any(feature = "datapath-guest-execution", feature = "datapath-guest-throughput")
+    any(
+        feature = "datapath-guest-execution",
+        feature = "datapath-guest-throughput"
+    )
 ))]
 fn build_guest_live_vmcs_fields(
     launch_plan: &hv_vmx::VmxLaunchPlan,
@@ -338,8 +343,11 @@ pub fn boot_from_transfer_and_init_gate_d_datapath_malicious_from_snapshots<A: P
 ) -> Result<GateDDatapathMaliciousResult, BootCheckError> {
     let platform_requirements = platform_requirements_from_snapshot(requirements)?;
     let static_layout = static_platform_ir_from_layout_snapshot(layout, requirements)?;
-    let (validated, warnings) =
-        boot_from_transfer(transfer, &requirements.config_digest, &platform_requirements)?;
+    let (validated, warnings) = boot_from_transfer(
+        transfer,
+        &requirements.config_digest,
+        &platform_requirements,
+    )?;
     init_gate_d_datapath_malicious_from_validated(
         &platform_requirements,
         &static_layout,
@@ -468,8 +476,11 @@ pub fn boot_from_transfer_and_init_gate_d_datapath_guests_from_snapshots<A: Page
 ) -> Result<GateDDatapathGuestsResult, BootCheckError> {
     let platform_requirements = platform_requirements_from_snapshot(requirements)?;
     let static_layout = static_platform_ir_from_layout_snapshot(layout, requirements)?;
-    let (validated, warnings) =
-        boot_from_transfer(transfer, &requirements.config_digest, &platform_requirements)?;
+    let (validated, warnings) = boot_from_transfer(
+        transfer,
+        &requirements.config_digest,
+        &platform_requirements,
+    )?;
     init_gate_d_datapath_guests_from_validated(
         &platform_requirements,
         &static_layout,
@@ -538,15 +549,18 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
 ) -> Result<GateDDatapathGuestsResult, BootCheckError> {
     use hv_guest_boot::{reference_guest_elf_for_kind, REFERENCE_GUEST_PARTITION_IDS};
     use hv_vmx::plan_vmx_launch_all_partitions;
+    #[cfg(all(
+        feature = "datapath-guest-live",
+        not(feature = "datapath-guest-execution")
+    ))]
+    use hv_vmx::{guest_boot_info_rdi_programmed, patch_guest_boot_info_rdi};
     #[cfg(not(feature = "datapath-guest-execution"))]
     use hv_vmx::{patch_guest_entry_in_fields, program_vmcs_fields};
-    #[cfg(all(feature = "datapath-guest-live", not(feature = "datapath-guest-execution")))]
-    use hv_vmx::{guest_boot_info_rdi_programmed, patch_guest_boot_info_rdi};
-    use hv_x86_cpu::{install_vmcs_region, run_multi_vmx_launch_cpu_seam};
     #[cfg(not(feature = "datapath-guest-live"))]
     use hv_x86_cpu::install_guest_elf;
     #[cfg(feature = "datapath-guest-live")]
     use hv_x86_cpu::install_guest_elf_with_boot_info;
+    use hv_x86_cpu::{install_vmcs_region, run_multi_vmx_launch_cpu_seam};
 
     let mut malicious = init_gate_d_datapath_malicious_from_validated(
         requirements,
@@ -575,13 +589,14 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
     #[cfg(feature = "datapath-guest-relay-measurement")]
     let relay_measurement_install = {
         use hv_datapath::{plan_relay_measurement_page_gpa, RELAY_MEASUREMENT_PAGE_BYTES};
-        use hv_ept::{append_ept_guest_read_only_mapping, ept_guest_leaf_entry, ept_maps_guest_page};
         use hv_ept::ept_leaf_entry_guest_writable;
+        use hv_ept::{
+            append_ept_guest_read_only_mapping, ept_guest_leaf_entry, ept_maps_guest_page,
+        };
         use hv_x86_cpu::install_relay_measurement_page;
 
-        let measurement_page_gpa = plan_relay_measurement_page_gpa(layout).map_err(|err| {
-            BootCheckError::new(BootCheckErrorKind::Platform, err.message)
-        })?;
+        let measurement_page_gpa = plan_relay_measurement_page_gpa(layout)
+            .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
         let page = install_relay_measurement_page(allocator, measurement_page_gpa)
             .map_err(map_cpu_seam_error)?;
         let ept_tables = malicious
@@ -613,20 +628,21 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
                 "relay measurement page GPA not mapped in EPT hierarchy",
             ));
         }
-        let leaf_entry = ept_guest_leaf_entry(ept_tables, measurement_page_gpa).ok_or_else(|| {
-            BootCheckError::new(
-                BootCheckErrorKind::Platform,
-                "relay measurement page EPT leaf entry missing",
-            )
-        })?;
+        let leaf_entry =
+            ept_guest_leaf_entry(ept_tables, measurement_page_gpa).ok_or_else(|| {
+                BootCheckError::new(
+                    BootCheckErrorKind::Platform,
+                    "relay measurement page EPT leaf entry missing",
+                )
+            })?;
         if ept_leaf_entry_guest_writable(leaf_entry) {
             return Err(BootCheckError::new(
                 BootCheckErrorKind::Platform,
                 "relay measurement page must be mapped read-only for guests",
             ));
         }
-        *ept_tables = hv_x86_cpu::install_ept_tables(allocator, ept_tables)
-            .map_err(map_cpu_seam_error)?;
+        *ept_tables =
+            hv_x86_cpu::install_ept_tables(allocator, ept_tables).map_err(map_cpu_seam_error)?;
         let mapping_installed = ept_tables.mappings.iter().any(|mapping| {
             mapping.guest_phys == measurement_page_gpa
                 && mapping.host_phys == page.host_phys
@@ -638,8 +654,9 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
                 "relay measurement page mapping must remain read-only after EPT install",
             ));
         }
-        let installed_host = hv_ept::resolve_guest_phys_to_host(ept_tables, measurement_page_gpa)
-            .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
+        let installed_host =
+            hv_ept::resolve_guest_phys_to_host(ept_tables, measurement_page_gpa)
+                .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
         if installed_host != page.host_phys {
             return Err(BootCheckError::new(
                 BootCheckErrorKind::Platform,
@@ -656,15 +673,15 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
     let mut elf_images_installed = 0u32;
 
     for launch_plan in &launch_plans {
-        let elf_bytes = reference_guest_elf_for_kind(&launch_plan.partition_id, elf_kind).ok_or_else(|| {
-            BootCheckError::new(
-                BootCheckErrorKind::Platform,
-                "missing reference guest elf for partition",
-            )
-        })?;
-        hv_guest_boot::parse_elf64(elf_bytes).map_err(|err| {
-            BootCheckError::new(BootCheckErrorKind::Platform, err.message)
-        })?;
+        let elf_bytes = reference_guest_elf_for_kind(&launch_plan.partition_id, elf_kind)
+            .ok_or_else(|| {
+                BootCheckError::new(
+                    BootCheckErrorKind::Platform,
+                    "missing reference guest elf for partition",
+                )
+            })?;
+        hv_guest_boot::parse_elf64(elf_bytes)
+            .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
         #[cfg(not(feature = "datapath-guest-live"))]
         let guest_entry_phys =
             install_guest_elf(allocator, elf_bytes).map_err(map_cpu_seam_error)?;
@@ -680,9 +697,8 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
                         "missing guest boot info blob for partition",
                     )
                 })?;
-            GuestBootInfoView::parse(boot_info_blob).map_err(|err| {
-                BootCheckError::new(BootCheckErrorKind::Platform, err.message)
-            })?;
+            GuestBootInfoView::parse(boot_info_blob)
+                .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
             #[cfg(feature = "datapath-guest-relay-measurement")]
             let (install_blob, relay_measurement_page_host_phys) = {
                 use hv_guest_abi::parse_guest_boot_info_relay_measurement;
@@ -690,8 +706,8 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
                 use hv_x86_cpu::GUEST_RELAY_MEASUREMENT_VM_ID;
 
                 if launch_plan.vm_id == GUEST_RELAY_MEASUREMENT_VM_ID {
-                    let (page_host_phys, measurement_page_gpa) =
-                        relay_measurement_install.ok_or_else(|| {
+                    let (page_host_phys, measurement_page_gpa) = relay_measurement_install
+                        .ok_or_else(|| {
                             BootCheckError::new(
                                 BootCheckErrorKind::Platform,
                                 "relay measurement page install missing for out partition",
@@ -725,9 +741,8 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
                 alloc::vec::Vec<u8>,
                 Option<u64>,
             ) = (boot_info_blob.to_vec(), None);
-            let install =
-                install_guest_elf_with_boot_info(allocator, elf_bytes, &install_blob)
-                    .map_err(map_cpu_seam_error)?;
+            let install = install_guest_elf_with_boot_info(allocator, elf_bytes, &install_blob)
+                .map_err(map_cpu_seam_error)?;
             (
                 install.entry_phys,
                 Some(install.boot_info_phys),
@@ -736,7 +751,10 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
         };
         elf_images_installed = elf_images_installed.saturating_add(1);
         let vmcs_phys = install_vmcs_region(allocator).map_err(map_cpu_seam_error)?;
-        #[cfg(all(feature = "datapath-guest-live", not(feature = "datapath-guest-execution")))]
+        #[cfg(all(
+            feature = "datapath-guest-live",
+            not(feature = "datapath-guest-execution")
+        ))]
         {
             let mut vmcs_fields = program_vmcs_fields(launch_plan);
             patch_guest_entry_in_fields(
@@ -824,13 +842,16 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
                     "relay measurement requires installed EPT tables for pointer reload",
                 )
             })?;
-        let vmcs_phys_list: alloc::vec::Vec<u64> =
-            seam_inputs.iter().map(|(vmcs_phys, _, _)| *vmcs_phys).collect();
+        let vmcs_phys_list: alloc::vec::Vec<u64> = seam_inputs
+            .iter()
+            .map(|(vmcs_phys, _, _)| *vmcs_phys)
+            .collect();
         run_ept_pointer_reload_cpu_seam_batch(ept_tables, &vmcs_phys_list)
             .map_err(map_cpu_seam_error)?;
     }
 
-    let multi_launch_seam = run_multi_vmx_launch_cpu_seam(&seam_inputs).map_err(map_cpu_seam_error)?;
+    let multi_launch_seam =
+        run_multi_vmx_launch_cpu_seam(&seam_inputs).map_err(map_cpu_seam_error)?;
     for (record, outcome) in partition_launches
         .iter_mut()
         .zip(multi_launch_seam.launches.iter())
@@ -866,8 +887,11 @@ pub fn boot_from_transfer_and_init_gate_d_datapath_benchmark_from_snapshots<A: P
 ) -> Result<GateDDatapathBenchmarkResult, BootCheckError> {
     let platform_requirements = platform_requirements_from_snapshot(requirements)?;
     let static_layout = static_platform_ir_from_layout_snapshot(layout, requirements)?;
-    let (validated, warnings) =
-        boot_from_transfer(transfer, &requirements.config_digest, &platform_requirements)?;
+    let (validated, warnings) = boot_from_transfer(
+        transfer,
+        &requirements.config_digest,
+        &platform_requirements,
+    )?;
     init_gate_d_datapath_benchmark_from_validated(
         &platform_requirements,
         &static_layout,
@@ -983,8 +1007,11 @@ pub fn boot_from_transfer_and_init_gate_d_datapath_runtime_from_snapshots<A: Pag
 ) -> Result<GateDDatapathRuntimeResult, BootCheckError> {
     let platform_requirements = platform_requirements_from_snapshot(requirements)?;
     let static_layout = static_platform_ir_from_layout_snapshot(layout, requirements)?;
-    let (validated, warnings) =
-        boot_from_transfer(transfer, &requirements.config_digest, &platform_requirements)?;
+    let (validated, warnings) = boot_from_transfer(
+        transfer,
+        &requirements.config_digest,
+        &platform_requirements,
+    )?;
     init_gate_d_datapath_runtime_from_validated(
         &platform_requirements,
         &static_layout,
@@ -1094,9 +1121,8 @@ pub(crate) fn init_gate_d_datapath_runtime_with_elf_kind_from_validated<A: PageA
     let launch_plans = plan_vmx_launch_all_partitions(layout, vmx_plan)
         .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
 
-    let (_forward_plan, runtime) = hv_datapath::run_guest_datapath_runtime(layout).map_err(|err| {
-        BootCheckError::new(BootCheckErrorKind::Platform, err.message)
-    })?;
+    let (_forward_plan, runtime) = hv_datapath::run_guest_datapath_runtime(layout)
+        .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
 
     if !runtime.guest_frame_forwarded {
         return Err(BootCheckError::new(
@@ -1138,7 +1164,9 @@ pub struct GateDDatapathGuestSourcesResult {
 
 /// Runs transfer boot checks and Gate D guest-sources init using embedded snapshots.
 #[cfg(feature = "datapath-guest-sources")]
-pub fn boot_from_transfer_and_init_gate_d_datapath_guest_sources_from_snapshots<A: PageAllocator>(
+pub fn boot_from_transfer_and_init_gate_d_datapath_guest_sources_from_snapshots<
+    A: PageAllocator,
+>(
     transfer: &[u8],
     requirements: &RequirementsSnapshot,
     layout: &LayoutSnapshot,
@@ -1146,8 +1174,11 @@ pub fn boot_from_transfer_and_init_gate_d_datapath_guest_sources_from_snapshots<
 ) -> Result<GateDDatapathGuestSourcesResult, BootCheckError> {
     let platform_requirements = platform_requirements_from_snapshot(requirements)?;
     let static_layout = static_platform_ir_from_layout_snapshot(layout, requirements)?;
-    let (validated, warnings) =
-        boot_from_transfer(transfer, &requirements.config_digest, &platform_requirements)?;
+    let (validated, warnings) = boot_from_transfer(
+        transfer,
+        &requirements.config_digest,
+        &platform_requirements,
+    )?;
     init_gate_d_datapath_guest_sources_from_validated(
         &platform_requirements,
         &static_layout,
@@ -1221,8 +1252,11 @@ pub fn boot_from_transfer_and_init_gate_d_datapath_guest_live_from_snapshots<A: 
 ) -> Result<GateDDatapathGuestLiveResult, BootCheckError> {
     let platform_requirements = platform_requirements_from_snapshot(requirements)?;
     let static_layout = static_platform_ir_from_layout_snapshot(layout, requirements)?;
-    let (validated, warnings) =
-        boot_from_transfer(transfer, &requirements.config_digest, &platform_requirements)?;
+    let (validated, warnings) = boot_from_transfer(
+        transfer,
+        &requirements.config_digest,
+        &platform_requirements,
+    )?;
     init_gate_d_datapath_guest_live_from_validated(
         &platform_requirements,
         &static_layout,
@@ -1300,7 +1334,9 @@ pub struct GateDDatapathGuestExecutionResult {
 
 /// Runs transfer boot checks and Gate D guest execution init using embedded snapshots.
 #[cfg(feature = "datapath-guest-execution")]
-pub fn boot_from_transfer_and_init_gate_d_datapath_guest_execution_from_snapshots<A: PageAllocator>(
+pub fn boot_from_transfer_and_init_gate_d_datapath_guest_execution_from_snapshots<
+    A: PageAllocator,
+>(
     transfer: &[u8],
     requirements: &RequirementsSnapshot,
     layout: &LayoutSnapshot,
@@ -1308,8 +1344,11 @@ pub fn boot_from_transfer_and_init_gate_d_datapath_guest_execution_from_snapshot
 ) -> Result<GateDDatapathGuestExecutionResult, BootCheckError> {
     let platform_requirements = platform_requirements_from_snapshot(requirements)?;
     let static_layout = static_platform_ir_from_layout_snapshot(layout, requirements)?;
-    let (validated, warnings) =
-        boot_from_transfer(transfer, &requirements.config_digest, &platform_requirements)?;
+    let (validated, warnings) = boot_from_transfer(
+        transfer,
+        &requirements.config_digest,
+        &platform_requirements,
+    )?;
     init_gate_d_datapath_guest_execution_from_validated(
         &platform_requirements,
         &static_layout,
@@ -1396,11 +1435,8 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
                 "guest execution requires installed boot info for partition",
             )
         })?;
-        let vmcs_fields = build_guest_live_vmcs_fields(
-            launch_plan,
-            record.guest_entry_phys,
-            boot_info_phys,
-        )?;
+        let vmcs_fields =
+            build_guest_live_vmcs_fields(launch_plan, record.guest_entry_phys, boot_info_phys)?;
         execution_launches.push((
             record.vmcs_phys,
             vmcs_fields_store.len(),
@@ -1426,12 +1462,7 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
                     "guest execution VMCS field index out of range",
                 )
             })?;
-            Ok((
-                *vmcs_phys,
-                fields,
-                *host_exit_phys,
-                *vm_id,
-            ))
+            Ok((*vmcs_phys, fields, *host_exit_phys, *vm_id))
         })
         .collect::<Result<alloc::vec::Vec<_>, BootCheckError>>()?;
     let execution_seam =
@@ -1454,10 +1485,8 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
             "guest execution requires a forwarded datapath frame",
         ));
     }
-    live.sources.runtime.runtime = apply_runtime_disposition(
-        live.sources.runtime.runtime.clone(),
-        runtime_disposition,
-    );
+    live.sources.runtime.runtime =
+        apply_runtime_disposition(live.sources.runtime.runtime.clone(), runtime_disposition);
     if (runtime_disposition == DatapathRuntimeDisposition::Executed) != executed {
         return Err(BootCheckError::new(
             BootCheckErrorKind::Platform,
@@ -1492,7 +1521,9 @@ pub struct GateDDatapathGuestThroughputResult {
 
 /// Runs transfer boot checks and Gate D guest throughput init using embedded snapshots.
 #[cfg(feature = "datapath-guest-throughput")]
-pub fn boot_from_transfer_and_init_gate_d_datapath_guest_throughput_from_snapshots<A: PageAllocator>(
+pub fn boot_from_transfer_and_init_gate_d_datapath_guest_throughput_from_snapshots<
+    A: PageAllocator,
+>(
     transfer: &[u8],
     requirements: &RequirementsSnapshot,
     layout: &LayoutSnapshot,
@@ -1500,8 +1531,11 @@ pub fn boot_from_transfer_and_init_gate_d_datapath_guest_throughput_from_snapsho
 ) -> Result<GateDDatapathGuestThroughputResult, BootCheckError> {
     let platform_requirements = platform_requirements_from_snapshot(requirements)?;
     let static_layout = static_platform_ir_from_layout_snapshot(layout, requirements)?;
-    let (validated, warnings) =
-        boot_from_transfer(transfer, &requirements.config_digest, &platform_requirements)?;
+    let (validated, warnings) = boot_from_transfer(
+        transfer,
+        &requirements.config_digest,
+        &platform_requirements,
+    )?;
     init_gate_d_datapath_guest_throughput_from_validated(
         &platform_requirements,
         &static_layout,
@@ -1539,11 +1573,11 @@ pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAlloca
     warnings: alloc::vec::Vec<PlatformWarning>,
     allocator: &mut A,
 ) -> Result<GateDDatapathGuestThroughputResult, BootCheckError> {
+    #[cfg(not(feature = "datapath-guest-relay-live"))]
+    use hv_datapath::{apply_guest_throughput_disposition, guest_throughput_disposition_for_seam};
     use hv_datapath::{
         run_mock_guest_throughput_benchmark, DatapathBenchmarkConfig, GuestThroughputDisposition,
     };
-    #[cfg(not(feature = "datapath-guest-relay-live"))]
-    use hv_datapath::{apply_guest_throughput_disposition, guest_throughput_disposition_for_seam};
     use hv_x86_cpu::{run_datapath_guest_throughput_cpu_seam, CpuInstructionDisposition};
 
     let execution = init_gate_d_datapath_guest_execution_from_validated(
@@ -1555,10 +1589,8 @@ pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAlloca
     )?;
 
     let benchmark_config = DatapathBenchmarkConfig::default();
-    let mut throughput =
-        run_mock_guest_throughput_benchmark(layout, &benchmark_config).map_err(|err| {
-            BootCheckError::new(BootCheckErrorKind::Platform, err.message)
-        })?;
+    let mut throughput = run_mock_guest_throughput_benchmark(layout, &benchmark_config)
+        .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
     if !throughput.benchmark.target_met {
         return Err(BootCheckError::new(
             BootCheckErrorKind::Platform,
@@ -1576,9 +1608,9 @@ pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAlloca
 
     #[cfg(feature = "datapath-guest-relay-measurement")]
     let (in_vm_relay_frames, in_vm_elapsed_tsc) = {
-                use hv_datapath::{plan_out_ipc_consumer_guest_phys, plan_relay_measurement_page_gpa};
-        use hv_guest_boot::GuestBootInfoView;
+        use hv_datapath::{plan_out_ipc_consumer_guest_phys, plan_relay_measurement_page_gpa};
         use hv_guest_abi::parse_guest_boot_info_relay_measurement;
+        use hv_guest_boot::GuestBootInfoView;
         use hv_x86_cpu::{
             measure_in_vm_relay_frames_from_boot_infos,
             read_relay_measurement_extension_from_installed_boot_info,
@@ -1604,10 +1636,8 @@ pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAlloca
                     "relay measurement requires programmed EPT tables",
                 )
             })?;
-        let out_ipc_consumer_guest_phys =
-            plan_out_ipc_consumer_guest_phys(layout).map_err(|err| {
-                BootCheckError::new(BootCheckErrorKind::Platform, err.message)
-            })?;
+        let out_ipc_consumer_guest_phys = plan_out_ipc_consumer_guest_phys(layout)
+            .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
         let mut sites = alloc::vec::Vec::with_capacity(guests.partition_launches.len());
         for record in &guests.partition_launches {
             let boot_info_phys = record.boot_info_guest_phys.ok_or_else(|| {
@@ -1626,9 +1656,8 @@ pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAlloca
                         "relay measurement missing boot info blob for partition",
                     )
                 })?;
-            let view = GuestBootInfoView::parse(blob).map_err(|err| {
-                BootCheckError::new(BootCheckErrorKind::Platform, err.message)
-            })?;
+            let view = GuestBootInfoView::parse(blob)
+                .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
             if !hv_guest_abi::guest_boot_info_has_relay_measurement_tail(view.header()) {
                 return Err(BootCheckError::new(
                     BootCheckErrorKind::Platform,
@@ -1658,9 +1687,8 @@ pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAlloca
                 "relay measurement requires installed hypervisor-owned measurement page",
             ));
         }
-        let expected_measurement_page_gpa = plan_relay_measurement_page_gpa(layout).map_err(
-            |err| BootCheckError::new(BootCheckErrorKind::Platform, err.message),
-        )?;
+        let expected_measurement_page_gpa = plan_relay_measurement_page_gpa(layout)
+            .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
         let measurement = measure_in_vm_relay_frames_from_boot_infos(
             &execution.execution_seam,
             &ept_tables,
@@ -1682,13 +1710,12 @@ pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAlloca
                         "relay measurement missing out-partition boot info site",
                     )
                 })?;
-            let installed_extension =
-                read_relay_measurement_extension_from_installed_boot_info(
-                    &ept_tables,
-                    out_site.boot_info_guest_phys,
-                    out_site.boot_info_size,
-                )
-                .map_err(map_cpu_seam_error)?;
+            let installed_extension = read_relay_measurement_extension_from_installed_boot_info(
+                &ept_tables,
+                out_site.boot_info_guest_phys,
+                out_site.boot_info_size,
+            )
+            .map_err(map_cpu_seam_error)?;
             if installed_extension.measurement_page_gpa != expected_measurement_page_gpa {
                 return Err(BootCheckError::new(
                     BootCheckErrorKind::Platform,
@@ -1708,7 +1735,10 @@ pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAlloca
         }
         (measurement.frames, measurement.elapsed_tsc)
     };
-    #[cfg(all(feature = "datapath-guest-relay-live", not(feature = "datapath-guest-relay-measurement")))]
+    #[cfg(all(
+        feature = "datapath-guest-relay-live",
+        not(feature = "datapath-guest-relay-measurement")
+    ))]
     let (in_vm_relay_frames, in_vm_elapsed_tsc) = (0u64, 0u64);
     #[cfg(not(feature = "datapath-guest-relay-live"))]
     let (in_vm_relay_frames, in_vm_elapsed_tsc) = (0u64, 0u64);
@@ -1775,18 +1805,16 @@ pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAlloca
                 "guest relay measurement seam frame count mismatch",
             ));
         }
-        if throughput_seam.live_relay_validated
-            != {
-                #[cfg(feature = "datapath-guest-relay-measurement")]
-                {
-                    guest_execution_executed && in_vm_relay_frames >= expected_relay_frames
-                }
-                #[cfg(not(feature = "datapath-guest-relay-measurement"))]
-                {
-                    guest_execution_executed
-                }
+        if throughput_seam.live_relay_validated != {
+            #[cfg(feature = "datapath-guest-relay-measurement")]
+            {
+                guest_execution_executed && in_vm_relay_frames >= expected_relay_frames
             }
-        {
+            #[cfg(not(feature = "datapath-guest-relay-measurement"))]
+            {
+                guest_execution_executed
+            }
+        } {
             return Err(BootCheckError::new(
                 BootCheckErrorKind::Platform,
                 "guest relay live seam mismatch with execution outcome",
@@ -1815,7 +1843,8 @@ pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAlloca
                 "guest throughput Executed requires live in-VM measurement stats",
             ));
         }
-        if (throughput.disposition == GuestThroughputDisposition::Unavailable) != skipped_no_hardware
+        if (throughput.disposition == GuestThroughputDisposition::Unavailable)
+            != skipped_no_hardware
         {
             return Err(BootCheckError::new(
                 BootCheckErrorKind::Platform,
@@ -1847,7 +1876,9 @@ pub type GateDDatapathGuestRelayLiveResult = GateDDatapathGuestThroughputResult;
 
 /// Runs transfer boot checks and Gate D guest relay live init using embedded snapshots.
 #[cfg(feature = "datapath-guest-relay-live")]
-pub fn boot_from_transfer_and_init_gate_d_datapath_guest_relay_live_from_snapshots<A: PageAllocator>(
+pub fn boot_from_transfer_and_init_gate_d_datapath_guest_relay_live_from_snapshots<
+    A: PageAllocator,
+>(
     transfer: &[u8],
     requirements: &RequirementsSnapshot,
     layout: &LayoutSnapshot,
@@ -1869,5 +1900,7 @@ pub fn boot_from_transfer_and_init_gate_d_datapath_guest_relay_live<A: PageAlloc
     layout: &StaticPlatformIR,
     allocator: &mut A,
 ) -> Result<GateDDatapathGuestRelayLiveResult, BootCheckError> {
-    boot_from_transfer_and_init_gate_d_datapath_guest_throughput(transfer, snapshot, layout, allocator)
+    boot_from_transfer_and_init_gate_d_datapath_guest_throughput(
+        transfer, snapshot, layout, allocator,
+    )
 }

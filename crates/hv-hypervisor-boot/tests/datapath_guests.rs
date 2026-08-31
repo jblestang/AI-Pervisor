@@ -7,7 +7,8 @@ use hv_guest_boot::REFERENCE_GUEST_PARTITION_IDS;
 use hv_hypervisor_boot::{
     boot_from_transfer_and_init_gate_d_datapath_guests,
     boot_from_transfer_and_init_gate_d_datapath_guests_from_snapshots,
-    layout_snapshot_from_platform_ir, requirements_snapshot_from_platform, GateDDatapathGuestsResult,
+    layout_snapshot_from_platform_ir, requirements_snapshot_from_platform,
+    GateDDatapathGuestsResult,
 };
 use hv_loader::{
     build_hypervisor_transfer, build_loader_handoff, encode_qemu_reference_firmware,
@@ -35,7 +36,8 @@ fn reference_handoff_snapshot_and_layout() -> (
             compiled.digest.bytes,
             {
                 let mut memory_map = vec![0u8; 48];
-                memory_map[0..4].copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
+                memory_map[0..4]
+                    .copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
                 memory_map[24..32].copy_from_slice(&(2_097_152u64).to_le_bytes());
                 memory_map
             },
@@ -89,7 +91,10 @@ fn assert_datapath_guests_validate_only(result: &GateDDatapathGuestsResult) {
         result.elf_images_installed,
         REFERENCE_GUEST_PARTITION_IDS.len() as u32
     );
-    assert_eq!(result.partition_launches.len(), REFERENCE_GUEST_PARTITION_IDS.len());
+    assert_eq!(
+        result.partition_launches.len(),
+        REFERENCE_GUEST_PARTITION_IDS.len()
+    );
     assert_eq!(
         result.multi_launch_seam.launches.len(),
         REFERENCE_GUEST_PARTITION_IDS.len()
@@ -97,16 +102,21 @@ fn assert_datapath_guests_validate_only(result: &GateDDatapathGuestsResult) {
     for launch in &result.partition_launches {
         assert!(launch.guest_entry_phys > 0);
         assert!(launch.vmcs_phys > 0);
-        assert_ne!(launch.launch_seam.disposition, CpuInstructionDisposition::Executed);
+        assert_ne!(
+            launch.launch_seam.disposition,
+            CpuInstructionDisposition::Executed
+        );
     }
-    assert!(!result
-        .malicious
-        .live
-        .foundation
-        .vmx_launch
-        .real_hw
-        .live
-        .live_environment_ready);
+    assert!(
+        !result
+            .malicious
+            .live
+            .foundation
+            .vmx_launch
+            .real_hw
+            .live
+            .live_environment_ready
+    );
 }
 
 #[test]

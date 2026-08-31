@@ -34,7 +34,8 @@ fn reference_handoff_snapshot_and_layout() -> (
             compiled.digest.bytes,
             {
                 let mut memory_map = vec![0u8; 48];
-                memory_map[0..4].copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
+                memory_map[0..4]
+                    .copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
                 memory_map[24..32].copy_from_slice(&(2_097_152u64).to_le_bytes());
                 memory_map
             },
@@ -95,8 +96,9 @@ fn assert_real_hw_validate_only(result: &GateCRealHwResult) {
 fn boot_from_transfer_and_init_gate_c_real_hw_accepts_reference_transfer() {
     let (transfer, snapshot, layout) = reference_handoff_snapshot_and_layout();
     let mut allocator = MockPageAllocator::new(0x0000_0000_0600_0000);
-    let result = boot_from_transfer_and_init_gate_c_real_hw(&transfer, &snapshot, &layout, &mut allocator)
-        .expect("real hw");
+    let result =
+        boot_from_transfer_and_init_gate_c_real_hw(&transfer, &snapshot, &layout, &mut allocator)
+            .expect("real hw");
     assert_real_hw_validate_only(&result);
 }
 
@@ -125,7 +127,8 @@ fn boot_check_and_init_gate_c_real_hw_accepts_reference_inputs() {
             compiled.digest.bytes,
             {
                 let mut memory_map = vec![0u8; 48];
-                memory_map[0..4].copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
+                memory_map[0..4]
+                    .copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
                 memory_map[24..32].copy_from_slice(&(2_097_152u64).to_le_bytes());
                 memory_map
             },

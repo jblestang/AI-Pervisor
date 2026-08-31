@@ -5,10 +5,8 @@
 use hv_config_model::compile_config_from_str;
 use hv_datapath::TARGET_THROUGHPUT_MBIT_PER_SEC;
 use hv_guest_boot::REFERENCE_GUEST_PARTITION_IDS;
+use hv_hypervisor_boot::{layout_snapshot_from_platform_ir, requirements_snapshot_from_platform};
 use hv_hypervisor_efi::boot_hypervisor_from_transfer_datapath_benchmark;
-use hv_hypervisor_boot::{
-    layout_snapshot_from_platform_ir, requirements_snapshot_from_platform,
-};
 use hv_loader::{
     build_hypervisor_transfer, build_loader_handoff, encode_qemu_reference_firmware,
     LoaderHandoffInput,
@@ -41,7 +39,8 @@ fn boot_hypervisor_from_transfer_datapath_benchmark_accepts_reference_handoff() 
             compiled.digest.bytes,
             {
                 let mut memory_map = vec![0u8; 48];
-                memory_map[0..4].copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
+                memory_map[0..4]
+                    .copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
                 memory_map[24..32].copy_from_slice(&(2_097_152u64).to_le_bytes());
                 memory_map
             },
@@ -95,5 +94,13 @@ fn boot_hypervisor_from_transfer_datapath_benchmark_accepts_reference_handoff() 
     assert!(markers.guests.multi_partition_vmlaunch);
     assert!(markers.benchmark_target_met);
     assert!(markers.benchmark_min_mbit_per_sec >= TARGET_THROUGHPUT_MBIT_PER_SEC);
-    assert!(!markers.guests.malicious.live.foundation.vmx_launch.vmlaunch_executed);
+    assert!(
+        !markers
+            .guests
+            .malicious
+            .live
+            .foundation
+            .vmx_launch
+            .vmlaunch_executed
+    );
 }

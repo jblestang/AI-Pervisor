@@ -96,12 +96,13 @@ pub fn apply_live_guest_throughput_benchmark(
             "live guest throughput requires in-VM relay frames",
         ));
     }
-    let elapsed_nanos = elapsed_nanos_from_tsc(in_vm_elapsed_tsc, config.tsc_hz).ok_or_else(|| {
-        DatapathError::new(
-            DatapathErrorKind::InvalidInput,
-            "live guest throughput requires in-VM TSC elapsed time",
-        )
-    })?;
+    let elapsed_nanos =
+        elapsed_nanos_from_tsc(in_vm_elapsed_tsc, config.tsc_hz).ok_or_else(|| {
+            DatapathError::new(
+                DatapathErrorKind::InvalidInput,
+                "live guest throughput requires in-VM TSC elapsed time",
+            )
+        })?;
     let payload_bytes = SYNTHETIC_FRAME_PAYLOAD.len() as u32;
     let mbit = throughput_mbit_from_frames(payload_bytes, in_vm_relay_frames, elapsed_nanos)?;
     let stats = compute_benchmark_run_stats(&[mbit]);
@@ -153,9 +154,11 @@ pub fn guest_throughput_result_with_live_relay(
 #[allow(clippy::expect_used)]
 mod tests {
     use super::*;
+    use crate::guest_throughput::{
+        run_mock_guest_throughput_benchmark, GuestThroughputDisposition,
+    };
     use hv_config_model::compile_config_from_str;
     use hv_platform_model::plan_static_platform_ir;
-    use crate::guest_throughput::{run_mock_guest_throughput_benchmark, GuestThroughputDisposition};
 
     #[test]
     fn sustained_guest_relay_benchmark_matches_frame_count() {
@@ -194,8 +197,9 @@ mod tests {
         let yaml = include_str!("../../../configs/qemu.yaml");
         let compiled = compile_config_from_str(yaml).expect("compile");
         let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
-        let mock = run_mock_guest_throughput_benchmark(&layout, &DatapathBenchmarkConfig::default())
-            .expect("mock");
+        let mock =
+            run_mock_guest_throughput_benchmark(&layout, &DatapathBenchmarkConfig::default())
+                .expect("mock");
         let updated = guest_throughput_result_with_live_relay(
             mock,
             true,
@@ -206,7 +210,10 @@ mod tests {
             false,
         )
         .expect("live");
-        assert_eq!(updated.disposition, GuestThroughputDisposition::ValidatedOnly);
+        assert_eq!(
+            updated.disposition,
+            GuestThroughputDisposition::ValidatedOnly
+        );
     }
 
     #[test]
@@ -214,8 +221,9 @@ mod tests {
         let yaml = include_str!("../../../configs/qemu.yaml");
         let compiled = compile_config_from_str(yaml).expect("compile");
         let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
-        let mock = run_mock_guest_throughput_benchmark(&layout, &DatapathBenchmarkConfig::default())
-            .expect("mock");
+        let mock =
+            run_mock_guest_throughput_benchmark(&layout, &DatapathBenchmarkConfig::default())
+                .expect("mock");
         let updated = guest_throughput_result_with_live_relay(
             mock,
             true,

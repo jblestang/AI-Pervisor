@@ -89,14 +89,16 @@ fn append_ept_guest_mapping_with_permissions(
             "EPT mapping bases must be page aligned",
         ));
     }
-    let guest_end = guest_phys.checked_add(size_bytes).ok_or_else(|| {
-        EptError::new(EptErrorKind::Planning, "EPT mapping guest end overflow")
-    })?;
+    let guest_end = guest_phys
+        .checked_add(size_bytes)
+        .ok_or_else(|| EptError::new(EptErrorKind::Planning, "EPT mapping guest end overflow"))?;
     for existing in &tables.mappings {
         let existing_end = existing
             .guest_phys
             .checked_add(existing.size_bytes)
-            .ok_or_else(|| EptError::new(EptErrorKind::Planning, "EPT mapping guest end overflow"))?;
+            .ok_or_else(|| {
+                EptError::new(EptErrorKind::Planning, "EPT mapping guest end overflow")
+            })?;
         if guest_phys < existing_end && existing.guest_phys < guest_end {
             return Err(EptError::new(
                 EptErrorKind::Planning,
@@ -123,7 +125,8 @@ pub fn encode_identity_ept_entry(host_phys: u64) -> u64 {
 /// Encodes a leaf EPT entry with optional guest write permission.
 pub fn encode_ept_leaf_entry(host_phys: u64, guest_writable: bool) -> u64 {
     let page_frame = host_phys >> 12;
-    let mut entry = EPT_ENTRY_READ | EPT_ENTRY_EXECUTE | EPT_ENTRY_MEMORY_TYPE_WB | (page_frame << 12);
+    let mut entry =
+        EPT_ENTRY_READ | EPT_ENTRY_EXECUTE | EPT_ENTRY_MEMORY_TYPE_WB | (page_frame << 12);
     if guest_writable {
         entry |= EPT_ENTRY_WRITE;
     }
@@ -158,7 +161,9 @@ pub fn program_ept_tables(plan: &EptInitPlan) -> Result<EptProgrammedTables, Ept
     Ok(tables)
 }
 
-fn program_identity_mapping(mapping: &EptIdentityMapping) -> Result<EptProgrammedMapping, EptError> {
+fn program_identity_mapping(
+    mapping: &EptIdentityMapping,
+) -> Result<EptProgrammedMapping, EptError> {
     if mapping.size_bytes.bytes() == 0 {
         return Err(EptError::new(
             EptErrorKind::Planning,
@@ -202,10 +207,10 @@ impl EptBackend for ProgrammingEptBackend {
 #[allow(clippy::expect_used)]
 mod tests {
     use super::*;
+    use crate::plan::plan_ept_init;
     use hv_config_model::compile_config_from_str;
     use hv_platform_model::plan_static_platform_ir;
     use hv_vmx::plan_vmx_init;
-    use crate::plan::plan_ept_init;
 
     #[test]
     fn program_ept_tables_builds_root_and_mappings_for_reference_plan() {
@@ -217,6 +222,9 @@ mod tests {
         let tables = program_ept_tables(&plan).expect("program");
         assert_eq!(tables.root_table.len(), EPT_ROOT_TABLE_BYTES as usize);
         assert_eq!(tables.mappings.len(), plan.identity_mappings.len());
-        assert!(tables.mappings.iter().all(|entry| entry.encoded_entry & EPT_ENTRY_READ != 0));
+        assert!(tables
+            .mappings
+            .iter()
+            .all(|entry| entry.encoded_entry & EPT_ENTRY_READ != 0));
     }
 }

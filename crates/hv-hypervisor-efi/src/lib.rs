@@ -21,49 +21,49 @@ use hv_hypervisor_boot::boot_from_transfer_and_init_gate_c_from_snapshots;
 use hv_types::SHA256_DIGEST_BYTES;
 
 #[cfg(feature = "real-hw-execution")]
-use hv_x86_cpu::{CpuInstructionDisposition, PageAllocator};
-#[cfg(feature = "real-hw-execution")]
 use hv_hypervisor_boot::boot_from_transfer_and_init_gate_c_real_hw_from_snapshots;
 #[cfg(feature = "vmx-launch")]
 use hv_hypervisor_boot::boot_from_transfer_and_init_gate_c_vmx_launch_from_snapshots;
+#[cfg(feature = "datapath-benchmark")]
+use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_benchmark_from_snapshots;
 #[cfg(feature = "datapath-foundation")]
 use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_foundation_from_snapshots;
+#[cfg(feature = "datapath-guest-execution")]
+use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_guest_execution_from_snapshots;
+#[cfg(feature = "datapath-guest-live")]
+use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_guest_live_from_snapshots;
+#[cfg(feature = "datapath-guest-relay-live")]
+use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_guest_relay_live_from_snapshots;
+#[cfg(feature = "datapath-guest-sources")]
+use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_guest_sources_from_snapshots;
+#[cfg(feature = "datapath-guest-throughput")]
+use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_guest_throughput_from_snapshots;
+#[cfg(feature = "datapath-guests")]
+use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_guests_from_snapshots;
 #[cfg(feature = "datapath-live")]
 use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_live_from_snapshots;
 #[cfg(feature = "datapath-malicious")]
 use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_malicious_from_snapshots;
-#[cfg(feature = "datapath-guests")]
-use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_guests_from_snapshots;
-#[cfg(feature = "datapath-benchmark")]
-use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_benchmark_from_snapshots;
 #[cfg(feature = "datapath-runtime")]
 use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_runtime_from_snapshots;
-#[cfg(feature = "datapath-guest-sources")]
-use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_guest_sources_from_snapshots;
-#[cfg(feature = "datapath-guest-live")]
-use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_guest_live_from_snapshots;
-#[cfg(feature = "datapath-guest-execution")]
-use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_guest_execution_from_snapshots;
-#[cfg(feature = "datapath-guest-throughput")]
-use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_guest_throughput_from_snapshots;
-#[cfg(feature = "datapath-guest-relay-live")]
-use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_guest_relay_live_from_snapshots;
+#[cfg(feature = "real-hw-execution")]
+use hv_x86_cpu::{CpuInstructionDisposition, PageAllocator};
 
 pub use error::{HypervisorEfiError, HypervisorEfiErrorKind};
-pub use hv_hypervisor_boot::{
-    GATE_D_BOOT_INFO_BUILT_MARKER, GATE_D_DATAPATH_FOUNDATION_MARKER, GATE_D_DATAPATH_LIVE_MARKER,
-    GATE_D_DATAPATH_MALICIOUS_MARKER, GATE_D_DATAPATH_GUESTS_MARKER, GATE_D_DATAPATH_BENCHMARK_MARKER,
-    GATE_D_BENCHMARK_TARGET_MET_MARKER, GATE_D_DATAPATH_RUNTIME_MARKER, GATE_D_GUEST_DATAPATH_FRAME_MARKER,
-    GATE_D_E1000_MMIO_MARKER,
-    GATE_D_GUEST_ELF_INSTALLED_MARKER, GATE_D_GUEST_SOURCE_ELF_MARKER,
-    GATE_D_GUEST_BOOT_INFO_INSTALLED_MARKER, GATE_D_GUEST_EXECUTION_MARKER,
-    GATE_D_GUEST_THROUGHPUT_MARKER, GATE_D_GUEST_THROUGHPUT_TARGET_MET_MARKER,
-    GATE_D_GUEST_THROUGHPUT_EXECUTED_MARKER, GATE_D_IPC_FORWARD_MARKER,
-    GATE_D_IPC_INTEGRITY_MARKER,
-    GATE_D_MULTI_VMLAUNCH_MARKER, REAL_HW_BOOT_SUCCESS_MARKER, REAL_HW_EPT_EXECUTED_MARKER,
-    REAL_HW_VMLAUNCH_EXECUTED_MARKER, REAL_HW_VMXON_EXECUTED_MARKER,
-};
 pub use hv_guest_boot::GUEST_SMOKE_RUNNING_MARKER;
+pub use hv_hypervisor_boot::{
+    GATE_D_BENCHMARK_TARGET_MET_MARKER, GATE_D_BOOT_INFO_BUILT_MARKER,
+    GATE_D_DATAPATH_BENCHMARK_MARKER, GATE_D_DATAPATH_FOUNDATION_MARKER,
+    GATE_D_DATAPATH_GUESTS_MARKER, GATE_D_DATAPATH_LIVE_MARKER, GATE_D_DATAPATH_MALICIOUS_MARKER,
+    GATE_D_DATAPATH_RUNTIME_MARKER, GATE_D_E1000_MMIO_MARKER,
+    GATE_D_GUEST_BOOT_INFO_INSTALLED_MARKER, GATE_D_GUEST_DATAPATH_FRAME_MARKER,
+    GATE_D_GUEST_ELF_INSTALLED_MARKER, GATE_D_GUEST_EXECUTION_MARKER,
+    GATE_D_GUEST_SOURCE_ELF_MARKER, GATE_D_GUEST_THROUGHPUT_EXECUTED_MARKER,
+    GATE_D_GUEST_THROUGHPUT_MARKER, GATE_D_GUEST_THROUGHPUT_TARGET_MET_MARKER,
+    GATE_D_IPC_FORWARD_MARKER, GATE_D_IPC_INTEGRITY_MARKER, GATE_D_MULTI_VMLAUNCH_MARKER,
+    REAL_HW_BOOT_SUCCESS_MARKER, REAL_HW_EPT_EXECUTED_MARKER, REAL_HW_VMLAUNCH_EXECUTED_MARKER,
+    REAL_HW_VMXON_EXECUTED_MARKER,
+};
 
 #[cfg(feature = "real-hw-execution")]
 pub use allocator::UefiPageAllocator;
@@ -468,7 +468,9 @@ pub fn boot_hypervisor_from_transfer_datapath_malicious<A: PageAllocator>(
         allocator,
     )
     .map_err(HypervisorEfiError::from)?;
-    Ok(boot_hypervisor_from_transfer_datapath_malicious_markers(&result))
+    Ok(boot_hypervisor_from_transfer_datapath_malicious_markers(
+        &result,
+    ))
 }
 
 #[cfg(feature = "datapath-malicious")]
@@ -682,7 +684,8 @@ fn boot_hypervisor_from_transfer_datapath_guest_execution_markers(
             ),
             guest_boot_infos_installed: result.live.boot_infos_installed,
         },
-        guest_code_executed: result.execution_seam.disposition == CpuInstructionDisposition::Executed,
+        guest_code_executed: result.execution_seam.disposition
+            == CpuInstructionDisposition::Executed,
         runtime_disposition_executed: result.live.sources.runtime.runtime.disposition
             == DatapathRuntimeDisposition::Executed,
     }
@@ -719,10 +722,13 @@ fn boot_hypervisor_from_transfer_datapath_guest_throughput_markers(
 ) -> DatapathGuestThroughputBootMarkers {
     use hv_datapath::GuestThroughputDisposition;
     DatapathGuestThroughputBootMarkers {
-        execution: boot_hypervisor_from_transfer_datapath_guest_execution_markers(&result.execution),
+        execution: boot_hypervisor_from_transfer_datapath_guest_execution_markers(
+            &result.execution,
+        ),
         guest_throughput_target_met: result.throughput.benchmark.target_met,
         guest_throughput_min_mbit_per_sec: result.throughput.benchmark.stats.min_mbit_per_sec,
-        guest_throughput_executed: result.throughput.disposition == GuestThroughputDisposition::Executed,
+        guest_throughput_executed: result.throughput.disposition
+            == GuestThroughputDisposition::Executed,
         #[cfg(feature = "datapath-guest-relay-live")]
         sustained_relay_frames: result.sustained_relay_frames,
     }
@@ -771,7 +777,12 @@ fn boot_hypervisor_from_transfer_datapath_guest_sources_markers(
                         &runtime.benchmark.guests.malicious,
                     ),
                     elf_images_installed: runtime.benchmark.guests.elf_images_installed,
-                    multi_partition_vmlaunch: runtime.benchmark.guests.multi_launch_seam.launches.len()
+                    multi_partition_vmlaunch: runtime
+                        .benchmark
+                        .guests
+                        .multi_launch_seam
+                        .launches
+                        .len()
                         == REFERENCE_GUEST_PARTITION_IDS.len(),
                 },
                 benchmark_target_met: runtime.benchmark.benchmark.target_met,
@@ -965,11 +976,8 @@ mod tests {
 
     #[test]
     fn hypervisor_efi_error_from_boot_abi_error() {
-        let err: HypervisorEfiError = hv_boot_abi::BootError::new(
-            hv_boot_abi::BootErrorKind::Parse,
-            "bad transfer",
-        )
-        .into();
+        let err: HypervisorEfiError =
+            hv_boot_abi::BootError::new(hv_boot_abi::BootErrorKind::Parse, "bad transfer").into();
         assert_eq!(err.kind, HypervisorEfiErrorKind::Transfer);
     }
 }

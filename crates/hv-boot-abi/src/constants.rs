@@ -45,7 +45,8 @@ pub const REAL_HW_EPT_EXECUTED_MARKER: &str = "REAL_HW: EPT pointer Executed";
 /// Serial log marker emitted when VMLAUNCH executes under REAL_HW Gate C.
 pub const REAL_HW_VMLAUNCH_EXECUTED_MARKER: &str = "REAL_HW: VMLAUNCH Executed";
 /// Serial log marker emitted after successful Gate D datapath foundation init.
-pub const GATE_D_DATAPATH_FOUNDATION_MARKER: &str = "hypervisor Gate D datapath foundation succeeded";
+pub const GATE_D_DATAPATH_FOUNDATION_MARKER: &str =
+    "hypervisor Gate D datapath foundation succeeded";
 /// Serial log marker emitted when guest boot info is built for all partitions.
 pub const GATE_D_BOOT_INFO_BUILT_MARKER: &str = "Gate D: guest boot info built for all partitions";
 /// Serial log marker emitted after successful Gate D datapath live init.
@@ -61,7 +62,8 @@ pub const GATE_D_IPC_INTEGRITY_MARKER: &str = "Gate D: IPC integrity checks pass
 /// Serial log marker emitted after successful Gate D datapath guests init.
 pub const GATE_D_DATAPATH_GUESTS_MARKER: &str = "hypervisor Gate D datapath guests succeeded";
 /// Serial log marker emitted when guest ELF images are installed for all partitions.
-pub const GATE_D_GUEST_ELF_INSTALLED_MARKER: &str = "Gate D: guest ELF installed for all partitions";
+pub const GATE_D_GUEST_ELF_INSTALLED_MARKER: &str =
+    "Gate D: guest ELF installed for all partitions";
 /// Serial log marker emitted when multi-partition VMLAUNCH seams complete.
 pub const GATE_D_MULTI_VMLAUNCH_MARKER: &str = "Gate D: multi-partition VMLAUNCH executed";
 /// Serial log marker emitted after successful Gate D datapath benchmark init.
@@ -71,9 +73,11 @@ pub const GATE_D_BENCHMARK_TARGET_MET_MARKER: &str = "Gate D: benchmark target 2
 /// Serial log marker emitted after successful Gate D datapath runtime init.
 pub const GATE_D_DATAPATH_RUNTIME_MARKER: &str = "hypervisor Gate D datapath runtime succeeded";
 /// Serial log marker emitted when a guest-driven frame traverses in→mid→out under VMX.
-pub const GATE_D_GUEST_DATAPATH_FRAME_MARKER: &str = "Gate D: guest datapath frame forwarded in→mid→out";
+pub const GATE_D_GUEST_DATAPATH_FRAME_MARKER: &str =
+    "Gate D: guest datapath frame forwarded in→mid→out";
 /// Gate D guest source-tree ELF install succeeded for all partitions.
-pub const GATE_D_GUEST_SOURCE_ELF_MARKER: &str = "Gate D: guest source ELF installed for all partitions";
+pub const GATE_D_GUEST_SOURCE_ELF_MARKER: &str =
+    "Gate D: guest source ELF installed for all partitions";
 /// Gate D guest boot info installed and RDI patched for all partitions.
 pub const GATE_D_GUEST_BOOT_INFO_INSTALLED_MARKER: &str =
     "Gate D: guest boot info installed for all partitions";

@@ -12,8 +12,8 @@ use crate::launch_constants::{
     CPU_BASED_ACTIVATE_SECONDARY_CONTROLS, SECONDARY_ENABLE_EPT, VMCS_CPU_BASED_VM_EXEC_CONTROL,
     VMCS_GUEST_CR3, VMCS_GUEST_RDI, VMCS_GUEST_RIP, VMCS_GUEST_RSP, VMCS_HOST_CR3, VMCS_HOST_RIP,
     VMCS_HOST_RSP, VMCS_PIN_BASED_VM_EXEC_CONTROL, VMCS_SECONDARY_VM_EXEC_CONTROL,
-    VMCS_VM_ENTRY_CONTROLS, VMCS_VM_EXIT_CONTROLS, VM_ENTRY_IA32E_MODE,
-    VM_EXIT_HOST_ADDR_SPACE_SIZE, VMX_HOST_EXIT_STUB_OFFSET,
+    VMCS_VM_ENTRY_CONTROLS, VMCS_VM_EXIT_CONTROLS, VMX_HOST_EXIT_STUB_OFFSET, VM_ENTRY_IA32E_MODE,
+    VM_EXIT_HOST_ADDR_SPACE_SIZE,
 };
 use crate::plan::VmxInitPlan;
 
@@ -278,15 +278,12 @@ fn advance_within_reserve(
             "host exit stub must not overlap VMXON region",
         ));
     }
-    let address = base
-        .raw()
-        .checked_add(offset)
-        .ok_or_else(|| {
-            VmxError::new(
-                VmxErrorKind::Planning,
-                "hypervisor reserve address overflow",
-            )
-        })?;
+    let address = base.raw().checked_add(offset).ok_or_else(|| {
+        VmxError::new(
+            VmxErrorKind::Planning,
+            "hypervisor reserve address overflow",
+        )
+    })?;
     Ok(HostPhysAddr::new(address))
 }
 
@@ -324,7 +321,8 @@ mod tests {
         assert!(fields
             .fields
             .iter()
-            .any(|field| field.field == VMCS_GUEST_RIP && field.value == launch.guest_entry_phys.raw()));
+            .any(|field| field.field == VMCS_GUEST_RIP
+                && field.value == launch.guest_entry_phys.raw()));
     }
 
     #[test]
@@ -347,7 +345,10 @@ mod tests {
             .expect("launch plan");
         let mut fields = program_vmcs_fields(&launch);
         patch_guest_boot_info_rdi(&mut fields, 0x0000_0000_1234_5000);
-        assert!(guest_boot_info_rdi_programmed(&fields, 0x0000_0000_1234_5000));
+        assert!(guest_boot_info_rdi_programmed(
+            &fields,
+            0x0000_0000_1234_5000
+        ));
     }
 
     #[test]

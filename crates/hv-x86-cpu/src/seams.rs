@@ -4,7 +4,7 @@ use hv_ept::{
     EptProgrammedTables, EPT_POINTER_MEMORY_TYPE_SHIFT, EPT_POINTER_MEMORY_TYPE_WB,
     EPT_POINTER_PAGE_WALK_LENGTH, EPT_POINTER_PAGE_WALK_LENGTH_SHIFT, EPT_ROOT_TABLE_BYTES,
 };
-use hv_vmx::{VmxonProgrammedRegion, VmcsProgrammedFields, VMXON_REGION_MIN_BYTES};
+use hv_vmx::{VmcsProgrammedFields, VmxonProgrammedRegion, VMXON_REGION_MIN_BYTES};
 use hv_vtd::VtdProgrammedTables;
 
 use crate::constants::VMXON_REVISION_PREFIX_BYTES;
@@ -70,7 +70,9 @@ pub struct DatapathLiveCpuSeamOutcome {
 }
 
 /// Validates (and optionally executes) a VMXON instruction seam.
-pub fn run_vmxon_cpu_seam(region: &VmxonProgrammedRegion) -> Result<VmxCpuSeamOutcome, CpuSeamError> {
+pub fn run_vmxon_cpu_seam(
+    region: &VmxonProgrammedRegion,
+) -> Result<VmxCpuSeamOutcome, CpuSeamError> {
     validate_vmxon_region(region)?;
     if !cpuid_vmx_available() {
         return Ok(VmxCpuSeamOutcome {
@@ -121,6 +123,12 @@ pub fn run_ept_pointer_reload_cpu_seam_batch(
     tables: &EptProgrammedTables,
     vmcs_phys_list: &[u64],
 ) -> Result<EptPointerReloadCpuSeamOutcome, CpuSeamError> {
+    if vmcs_phys_list.is_empty() {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "EPT pointer reload batch requires at least one VMCS",
+        ));
+    }
     validate_ept_tables(tables)?;
     let ept_pointer = encode_ept_pointer(tables.root_table_phys);
     if !cpuid_ept_available() {
@@ -300,7 +308,8 @@ pub fn run_datapath_guest_execution_cpu_seam(
             vmlaunch_attempts: 0,
         });
     }
-    let (disposition, vmlaunch_attempts) = execute_datapath_guest_vmlaunch_fields_if_enabled(launches)?;
+    let (disposition, vmlaunch_attempts) =
+        execute_datapath_guest_vmlaunch_fields_if_enabled(launches)?;
     Ok(DatapathGuestExecutionCpuSeamOutcome {
         disposition,
         vmexit_stub_validated: true,
@@ -320,8 +329,9 @@ fn execute_datapath_guest_vmlaunch_fields_if_enabled(
             let mut all_executed = true;
             let mut stub_installed = false;
             for (vmcs_phys, fields, host_exit_phys, _vm_id) in launches {
-                match crate::instructions::vmcs_fields::execute_vmcs_field_programming(*vmcs_phys, fields)
-                {
+                match crate::instructions::vmcs_fields::execute_vmcs_field_programming(
+                    *vmcs_phys, fields,
+                ) {
                     Ok(()) => {}
                     Err(err)
                         if err.kind == CpuSeamErrorKind::Unavailable
@@ -333,7 +343,8 @@ fn execute_datapath_guest_vmlaunch_fields_if_enabled(
                     Err(err) => return Err(err),
                 }
                 if !stub_installed {
-                    if let Err(err) = crate::instructions::vmexit_stub::install_vmexit_stub(*host_exit_phys)
+                    if let Err(err) =
+                        crate::instructions::vmexit_stub::install_vmexit_stub(*host_exit_phys)
                     {
                         if err.kind == CpuSeamErrorKind::InvalidInput {
                             return Err(err);
@@ -345,7 +356,8 @@ fn execute_datapath_guest_vmlaunch_fields_if_enabled(
                 }
                 vmlaunch_attempts = vmlaunch_attempts.saturating_add(1);
                 match crate::instructions::vmx_guest_run::run_vmx_guest_until_halt(
-                    *vmcs_phys, *host_exit_phys,
+                    *vmcs_phys,
+                    *host_exit_phys,
                 ) {
                     Ok(()) => {}
                     Err(err)
@@ -638,9 +650,7 @@ fn execute_ept_pointer_if_enabled(
     Ok(CpuInstructionDisposition::SeamValidated)
 }
 
-fn execute_invept_if_enabled(
-    ept_pointer: u64,
-) -> Result<CpuInstructionDisposition, CpuSeamError> {
+fn execute_invept_if_enabled(ept_pointer: u64) -> Result<CpuInstructionDisposition, CpuSeamError> {
     #[cfg(feature = "execute-instructions")]
     {
         match crate::instructions::ept::execute_invept_single_context(ept_pointer) {
@@ -687,8 +697,8 @@ fn execute_vtd_enable_if_enabled(
 #[allow(clippy::expect_used)]
 mod tests {
     use super::*;
-    use hv_config_model::compile_config_from_str;
     use crate::cpuid::{cpuid_ept_available, cpuid_vtd_available};
+    use hv_config_model::compile_config_from_str;
     use hv_ept::{
         plan_ept_init, program_ept_tables, EptProgrammedMapping, EptProgrammedTables,
         EPT_PAGE_OFFSET_MASK, EPT_PAGE_SIZE_BYTES,
@@ -727,7 +737,10 @@ mod tests {
         let region = reference_vmxon_region();
         let outcome = run_vmxon_cpu_seam(&region).expect("seam");
         if cpuid_vmx_available() {
-            assert_eq!(outcome.disposition, CpuInstructionDisposition::SeamValidated);
+            assert_eq!(
+                outcome.disposition,
+                CpuInstructionDisposition::SeamValidated
+            );
         } else {
             assert_eq!(
                 outcome.disposition,
@@ -742,7 +755,10 @@ mod tests {
         let tables = reference_ept_tables();
         let outcome = run_ept_pointer_cpu_seam(&tables, Some(0x4000)).expect("seam");
         if cpuid_ept_available() {
-            assert_eq!(outcome.disposition, CpuInstructionDisposition::SeamValidated);
+            assert_eq!(
+                outcome.disposition,
+                CpuInstructionDisposition::SeamValidated
+            );
         } else {
             assert_eq!(
                 outcome.disposition,
@@ -795,7 +811,10 @@ mod tests {
         let tables = reference_ept_tables();
         let outcome = run_ept_pointer_cpu_seam(&tables, None).expect("seam");
         if cpuid_ept_available() {
-            assert_eq!(outcome.disposition, CpuInstructionDisposition::SeamValidated);
+            assert_eq!(
+                outcome.disposition,
+                CpuInstructionDisposition::SeamValidated
+            );
             assert_ne!(outcome.ept_pointer & EPT_PAGE_OFFSET_MASK, 0);
         } else {
             assert_eq!(
@@ -812,7 +831,10 @@ mod tests {
         let outcome =
             run_ept_pointer_reload_cpu_seam_batch(&tables, &vmcs_list).expect("reload seam");
         if cpuid_ept_available() {
-            assert_eq!(outcome.disposition, CpuInstructionDisposition::SeamValidated);
+            assert_eq!(
+                outcome.disposition,
+                CpuInstructionDisposition::SeamValidated
+            );
         } else {
             assert_eq!(
                 outcome.disposition,
@@ -839,6 +861,12 @@ mod tests {
     }
 
     #[test]
+    fn run_ept_pointer_reload_cpu_seam_batch_rejects_empty_vmcs_list() {
+        let tables = reference_ept_tables();
+        assert!(run_ept_pointer_reload_cpu_seam_batch(&tables, &[]).is_err());
+    }
+
+    #[test]
     fn run_ept_pointer_reload_cpu_seam_batch_rejects_empty_mappings() {
         let mut tables = reference_ept_tables();
         tables.mappings.clear();
@@ -850,7 +878,10 @@ mod tests {
         let tables = reference_vtd_tables();
         let outcome = run_vtd_enable_cpu_seam(&tables).expect("seam");
         if cpuid_vtd_available() {
-            assert_eq!(outcome.disposition, CpuInstructionDisposition::SeamValidated);
+            assert_eq!(
+                outcome.disposition,
+                CpuInstructionDisposition::SeamValidated
+            );
         } else {
             assert_eq!(
                 outcome.disposition,
@@ -915,19 +946,28 @@ mod tests {
         let region = reference_vmxon_region();
         test_force_vmx_unavailable(true);
         let vmx = run_vmxon_cpu_seam(&region).expect("vmx seam");
-        assert_eq!(vmx.disposition, CpuInstructionDisposition::SkippedNoHardware);
+        assert_eq!(
+            vmx.disposition,
+            CpuInstructionDisposition::SkippedNoHardware
+        );
         test_force_vmx_unavailable(false);
 
         let tables = reference_ept_tables();
         test_force_ept_unavailable(true);
         let ept = run_ept_pointer_cpu_seam(&tables, None).expect("ept seam");
-        assert_eq!(ept.disposition, CpuInstructionDisposition::SkippedNoHardware);
+        assert_eq!(
+            ept.disposition,
+            CpuInstructionDisposition::SkippedNoHardware
+        );
         test_force_ept_unavailable(false);
 
         let vtd_tables = reference_vtd_tables();
         test_force_vtd_unavailable(true);
         let vtd = run_vtd_enable_cpu_seam(&vtd_tables).expect("vtd seam");
-        assert_eq!(vtd.disposition, CpuInstructionDisposition::SkippedNoHardware);
+        assert_eq!(
+            vtd.disposition,
+            CpuInstructionDisposition::SkippedNoHardware
+        );
         test_force_vtd_unavailable(false);
     }
 
@@ -946,13 +986,19 @@ mod tests {
         if cpuid_ept_available() {
             assert_eq!(ept.disposition, CpuInstructionDisposition::SeamValidated);
         } else {
-            assert_eq!(ept.disposition, CpuInstructionDisposition::SkippedNoHardware);
+            assert_eq!(
+                ept.disposition,
+                CpuInstructionDisposition::SkippedNoHardware
+            );
         }
         let vtd = run_vtd_enable_cpu_seam(&vtd_tables).expect("vtd seam");
         if cpuid_vtd_available() {
             assert_eq!(vtd.disposition, CpuInstructionDisposition::SeamValidated);
         } else {
-            assert_eq!(vtd.disposition, CpuInstructionDisposition::SkippedNoHardware);
+            assert_eq!(
+                vtd.disposition,
+                CpuInstructionDisposition::SkippedNoHardware
+            );
         }
     }
 
@@ -962,7 +1008,10 @@ mod tests {
         let region = reference_vmxon_region();
         let outcome = run_vmxon_cpu_seam(&region).expect("seam");
         if cpuid_vmx_available() {
-            assert_eq!(outcome.disposition, CpuInstructionDisposition::SeamValidated);
+            assert_eq!(
+                outcome.disposition,
+                CpuInstructionDisposition::SeamValidated
+            );
         }
     }
 
@@ -976,8 +1025,8 @@ mod tests {
     #[test]
     fn run_datapath_guest_execution_cpu_seam_covers_live_path_in_test_harness() {
         use crate::instructions::environment::test_force_live_environment_ready;
-        use hv_vmx::program_vmcs_fields;
         use hv_vmx::plan_vmx_launch;
+        use hv_vmx::program_vmcs_fields;
         use hv_vmx::DEFAULT_SMOKE_GUEST_PARTITION_ID;
 
         let yaml = include_str!("../../../configs/qemu.yaml");
@@ -1036,7 +1085,10 @@ mod tests {
         assert_ne!(outcome.disposition, CpuInstructionDisposition::Executed);
     }
 
-    #[cfg(all(feature = "datapath-guest-throughput", feature = "datapath-guest-relay-measurement"))]
+    #[cfg(all(
+        feature = "datapath-guest-throughput",
+        feature = "datapath-guest-relay-measurement"
+    ))]
     #[test]
     fn run_datapath_guest_throughput_cpu_seam_executed_with_in_vm_relay_frames() {
         use crate::cpuid::{cpuid_ept_available, cpuid_vmx_available};

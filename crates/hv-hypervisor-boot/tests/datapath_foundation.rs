@@ -8,7 +8,8 @@ use hv_guest_boot::GuestBootInfoView;
 use hv_hypervisor_boot::{
     boot_from_transfer_and_init_gate_d_datapath_foundation,
     boot_from_transfer_and_init_gate_d_datapath_foundation_from_snapshots,
-    layout_snapshot_from_platform_ir, requirements_snapshot_from_platform, GateDDatapathFoundationResult,
+    layout_snapshot_from_platform_ir, requirements_snapshot_from_platform,
+    GateDDatapathFoundationResult,
 };
 use hv_loader::{
     build_hypervisor_transfer, build_loader_handoff, encode_qemu_reference_firmware,
@@ -36,7 +37,8 @@ fn reference_handoff_snapshot_and_layout() -> (
             compiled.digest.bytes,
             {
                 let mut memory_map = vec![0u8; 48];
-                memory_map[0..4].copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
+                memory_map[0..4]
+                    .copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
                 memory_map[24..32].copy_from_slice(&(2_097_152u64).to_le_bytes());
                 memory_map
             },
@@ -108,7 +110,10 @@ fn assert_datapath_foundation_validate_only(result: &GateDDatapathFoundationResu
     let in_view = GuestBootInfoView::parse(in_blob).expect("parse in");
     assert_eq!(in_view.header().ipc_region_count, 1);
     assert_eq!(in_view.header().device_region_count, 1);
-    assert_eq!(in_view.ipc_region(0).expect("ipc").role, GuestIpcRole::Producer);
+    assert_eq!(
+        in_view.ipc_region(0).expect("ipc").role,
+        GuestIpcRole::Producer
+    );
 
     let mid_blob = result
         .partition_boot_infos
@@ -129,7 +134,10 @@ fn assert_datapath_foundation_validate_only(result: &GateDDatapathFoundationResu
     let out_view = GuestBootInfoView::parse(out_blob).expect("parse out");
     assert_eq!(out_view.header().ipc_region_count, 1);
     assert_eq!(out_view.header().device_region_count, 1);
-    assert_eq!(out_view.ipc_region(0).expect("ipc").role, GuestIpcRole::Consumer);
+    assert_eq!(
+        out_view.ipc_region(0).expect("ipc").role,
+        GuestIpcRole::Consumer
+    );
 }
 
 #[test]
@@ -147,7 +155,8 @@ fn boot_from_transfer_and_init_gate_d_datapath_foundation_accepts_reference_tran
 }
 
 #[test]
-fn boot_from_transfer_and_init_gate_d_datapath_foundation_from_snapshots_accepts_reference_transfer() {
+fn boot_from_transfer_and_init_gate_d_datapath_foundation_from_snapshots_accepts_reference_transfer(
+) {
     let (transfer, snapshot, layout) = reference_handoff_snapshot_and_layout();
     let layout_snapshot = layout_snapshot_from_platform_ir(&layout).expect("layout snapshot");
     let mut allocator = MockPageAllocator::new(0x0000_0000_0C00_0000);

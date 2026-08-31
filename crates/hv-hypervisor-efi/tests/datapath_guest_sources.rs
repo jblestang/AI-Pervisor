@@ -4,10 +4,8 @@
 
 use hv_config_model::compile_config_from_str;
 use hv_guest_boot::{GUEST_SOURCE_ELFS_AVAILABLE, REFERENCE_GUEST_PARTITION_IDS};
+use hv_hypervisor_boot::{layout_snapshot_from_platform_ir, requirements_snapshot_from_platform};
 use hv_hypervisor_efi::boot_hypervisor_from_transfer_datapath_guest_sources;
-use hv_hypervisor_boot::{
-    layout_snapshot_from_platform_ir, requirements_snapshot_from_platform,
-};
 use hv_loader::{
     build_hypervisor_transfer, build_loader_handoff, encode_qemu_reference_firmware,
     LoaderHandoffInput,
@@ -45,7 +43,8 @@ fn boot_hypervisor_from_transfer_datapath_guest_sources_accepts_reference_handof
             compiled.digest.bytes,
             {
                 let mut memory_map = vec![0u8; 48];
-                memory_map[0..4].copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
+                memory_map[0..4]
+                    .copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
                 memory_map[24..32].copy_from_slice(&(2_097_152u64).to_le_bytes());
                 memory_map
             },
@@ -91,7 +90,14 @@ fn boot_hypervisor_from_transfer_datapath_guest_sources_accepts_reference_handof
         &mut allocator,
     )
     .expect("datapath guest-sources boot");
-    assert!(markers.runtime.benchmark.guests.malicious.integrity_checks_passed);
+    assert!(
+        markers
+            .runtime
+            .benchmark
+            .guests
+            .malicious
+            .integrity_checks_passed
+    );
     assert!(markers.runtime.benchmark.benchmark_target_met);
     assert_eq!(
         markers.guest_source_elfs_installed,

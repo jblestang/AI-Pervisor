@@ -63,4 +63,3 @@ mod tests {
         assert!(format!("{}", CpuSeamErrorKind::ExecutionFailed).contains("execution failed"));
     }
 }
-

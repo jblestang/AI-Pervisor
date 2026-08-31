@@ -35,7 +35,10 @@ pub struct GuestBootInfoBuildError {
 
 impl GuestBootInfoBuildError {
     /// Creates a new guest boot info build error.
-    pub fn new(kind: GuestBootInfoBuildErrorKind, message: impl Into<alloc::string::String>) -> Self {
+    pub fn new(
+        kind: GuestBootInfoBuildErrorKind,
+        message: impl Into<alloc::string::String>,
+    ) -> Self {
         Self {
             kind,
             message: message.into(),
@@ -77,7 +80,9 @@ fn map_datapath_error(err: hv_datapath::DatapathError) -> GuestBootInfoBuildErro
     GuestBootInfoBuildError::new(GuestBootInfoBuildErrorKind::InvalidInput, err.message)
 }
 
-fn serialize_guest_boot_info(plan: &DatapathPartitionPlan) -> Result<Vec<u8>, GuestBootInfoBuildError> {
+fn serialize_guest_boot_info(
+    plan: &DatapathPartitionPlan,
+) -> Result<Vec<u8>, GuestBootInfoBuildError> {
     let header_size = size_of::<GuestBootInfoHeader>();
     let memory_table_bytes = size_of::<GuestMemoryRegion>() * plan.memory_regions.len();
     let ipc_table_bytes = size_of::<GuestIpcRegion>() * plan.ipc_regions.len();
@@ -139,13 +144,27 @@ fn write_relay_measurement_extension(
     tail_offset: usize,
     extension: &GuestBootInfoRelayMeasurement,
 ) {
-    if let Some(slice) = bytes.get_mut(tail_offset..tail_offset + GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES) {
-        slice[0..4].copy_from_slice(&extension.magic.to_le_bytes());
-        slice[4..8].copy_from_slice(&extension.version.to_le_bytes());
-        slice[8..16].copy_from_slice(&extension.frames_completed.to_le_bytes());
-        slice[16..24].copy_from_slice(&extension.tsc_start.to_le_bytes());
-        slice[24..32].copy_from_slice(&extension.tsc_end.to_le_bytes());
-        slice[32..40].copy_from_slice(&extension.measurement_page_gpa.to_le_bytes());
+    if let Some(slice) =
+        bytes.get_mut(tail_offset..tail_offset + GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES)
+    {
+        if let Some(dest) = slice.get_mut(0..4) {
+            dest.copy_from_slice(&extension.magic.to_le_bytes());
+        }
+        if let Some(dest) = slice.get_mut(4..8) {
+            dest.copy_from_slice(&extension.version.to_le_bytes());
+        }
+        if let Some(dest) = slice.get_mut(8..16) {
+            dest.copy_from_slice(&extension.frames_completed.to_le_bytes());
+        }
+        if let Some(dest) = slice.get_mut(16..24) {
+            dest.copy_from_slice(&extension.tsc_start.to_le_bytes());
+        }
+        if let Some(dest) = slice.get_mut(24..32) {
+            dest.copy_from_slice(&extension.tsc_end.to_le_bytes());
+        }
+        if let Some(dest) = slice.get_mut(32..40) {
+            dest.copy_from_slice(&extension.measurement_page_gpa.to_le_bytes());
+        }
     }
 }
 

@@ -21,12 +21,6 @@ pub const VMXON_REVISION_PREFIX_BYTES: usize = 4;
 /// VMCS encoded field number for the EPT pointer.
 pub const VMCS_EPT_POINTER_FIELD: u32 = 0x0000_201A;
 
-/// INVEPT type for single-context invalidation (all mappings for one EPT pointer).
-pub const INVEPT_TYPE_SINGLE_CONTEXT: u64 = 1;
-
-/// INVEPT descriptor size in bytes (128-bit in-memory operand).
-pub const INVEPT_DESCRIPTOR_BYTES: usize = 16;
-
 /// CR4.VMXE bit index.
 pub const CR4_VMXE_BIT: u64 = 13;
 

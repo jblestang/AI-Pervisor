@@ -34,16 +34,22 @@ pub fn materialize_ept_paging(tables: &mut EptProgrammedTables) -> Result<(), Ep
         let page_count = mapping
             .size_bytes
             .checked_div(EPT_PAGE_SIZE_BYTES)
-            .ok_or_else(|| EptError::new(EptErrorKind::Planning, "EPT mapping page count overflow"))?;
+            .ok_or_else(|| {
+                EptError::new(EptErrorKind::Planning, "EPT mapping page count overflow")
+            })?;
         for page_index in 0..page_count {
             let guest_page = mapping
                 .guest_phys
                 .checked_add(page_index * EPT_PAGE_SIZE_BYTES)
-                .ok_or_else(|| EptError::new(EptErrorKind::Planning, "guest page address overflow"))?;
+                .ok_or_else(|| {
+                    EptError::new(EptErrorKind::Planning, "guest page address overflow")
+                })?;
             let host_page = mapping
                 .host_phys
                 .checked_add(page_index * EPT_PAGE_SIZE_BYTES)
-                .ok_or_else(|| EptError::new(EptErrorKind::Planning, "host page address overflow"))?;
+                .ok_or_else(|| {
+                    EptError::new(EptErrorKind::Planning, "host page address overflow")
+                })?;
             map_guest_page(tables, guest_page, host_page)?;
         }
     }
@@ -117,17 +123,14 @@ fn map_guest_page(
 ) -> Result<(), EptError> {
     let indices = ept_indices(guest_phys);
     ensure_child_table(tables, TableRef::Root, indices.pml4)?;
-    let pdpt = child_table_index(tables, TableRef::Root, indices.pml4).ok_or_else(|| {
-        EptError::new(EptErrorKind::Planning, "EPT PDPT child table unavailable")
-    })?;
+    let pdpt = child_table_index(tables, TableRef::Root, indices.pml4)
+        .ok_or_else(|| EptError::new(EptErrorKind::Planning, "EPT PDPT child table unavailable"))?;
     ensure_child_table(tables, TableRef::Nested(pdpt), indices.pdpt)?;
-    let pd = child_table_index(tables, TableRef::Nested(pdpt), indices.pdpt).ok_or_else(|| {
-        EptError::new(EptErrorKind::Planning, "EPT PD child table unavailable")
-    })?;
+    let pd = child_table_index(tables, TableRef::Nested(pdpt), indices.pdpt)
+        .ok_or_else(|| EptError::new(EptErrorKind::Planning, "EPT PD child table unavailable"))?;
     ensure_child_table(tables, TableRef::Nested(pd), indices.pd)?;
-    let pt = child_table_index(tables, TableRef::Nested(pd), indices.pd).ok_or_else(|| {
-        EptError::new(EptErrorKind::Planning, "EPT PT child table unavailable")
-    })?;
+    let pt = child_table_index(tables, TableRef::Nested(pd), indices.pd)
+        .ok_or_else(|| EptError::new(EptErrorKind::Planning, "EPT PT child table unavailable"))?;
     if let Some(existing_host) = ept_resolve_guest_page(tables, guest_phys) {
         if existing_host != host_phys {
             return Err(EptError::new(
@@ -204,7 +207,7 @@ fn alloc_child_table(tables: &mut EptProgrammedTables) -> usize {
     index
 }
 
-fn table_bytes<'a>(tables: &'a EptProgrammedTables, table_ref: TableRef) -> &'a [u8] {
+fn table_bytes(tables: &EptProgrammedTables, table_ref: TableRef) -> &[u8] {
     match table_ref {
         TableRef::Root => tables.root_table.as_slice(),
         TableRef::Nested(index) => tables
@@ -215,7 +218,7 @@ fn table_bytes<'a>(tables: &'a EptProgrammedTables, table_ref: TableRef) -> &'a 
     }
 }
 
-fn table_bytes_mut<'a>(tables: &'a mut EptProgrammedTables, table_ref: TableRef) -> Option<&'a mut [u8]> {
+fn table_bytes_mut(tables: &mut EptProgrammedTables, table_ref: TableRef) -> Option<&mut [u8]> {
     match table_ref {
         TableRef::Root => Some(tables.root_table.as_mut_slice()),
         TableRef::Nested(index) => tables
@@ -225,7 +228,11 @@ fn table_bytes_mut<'a>(tables: &'a mut EptProgrammedTables, table_ref: TableRef)
     }
 }
 
-fn child_table_index(tables: &EptProgrammedTables, parent: TableRef, index: usize) -> Option<usize> {
+fn child_table_index(
+    tables: &EptProgrammedTables,
+    parent: TableRef,
+    index: usize,
+) -> Option<usize> {
     let entry = read_entry(table_bytes(tables, parent), index);
     synthetic_table_index(entry)
 }
@@ -267,7 +274,10 @@ fn patch_table_entries(table: &mut [u8], nested_phys: &[u64]) -> Result<(), EptE
             continue;
         }
         let index = synthetic_table_index(entry).ok_or_else(|| {
-            EptError::new(EptErrorKind::Planning, "EPT synthetic child pointer invalid")
+            EptError::new(
+                EptErrorKind::Planning,
+                "EPT synthetic child pointer invalid",
+            )
         })?;
         let host_phys = nested_phys.get(index).copied().ok_or_else(|| {
             EptError::new(
@@ -288,13 +298,13 @@ fn count_table_synthetic_entries(table: &[u8]) -> usize {
 
 fn read_entry(table: &[u8], index: usize) -> u64 {
     let offset = index.checked_mul(8).unwrap_or(0);
-    let bytes = table.get(offset..offset + 8).unwrap_or(&[]);
-    if bytes.len() < 8 {
+    let Some(bytes) = table.get(offset..offset + 8) else {
         return 0;
-    }
-    u64::from_le_bytes([
-        bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
-    ])
+    };
+    let Ok(array) = bytes.try_into() else {
+        return 0;
+    };
+    u64::from_le_bytes(array)
 }
 
 fn write_entry(table: &mut [u8], index: usize, value: u64) {
@@ -353,7 +363,10 @@ mod tests {
             EPT_PAGE_SIZE_BYTES,
         )
         .expect("append");
-        assert!(ept_maps_guest_page(&tables, RELAY_MEASUREMENT_PAGE_GUEST_PHYS));
+        assert!(ept_maps_guest_page(
+            &tables,
+            RELAY_MEASUREMENT_PAGE_GUEST_PHYS
+        ));
         assert_eq!(
             ept_resolve_guest_page(&tables, RELAY_MEASUREMENT_PAGE_GUEST_PHYS),
             Some(0x3000)
@@ -372,7 +385,10 @@ mod tests {
         )
         .expect("high");
         assert!(ept_maps_guest_page(&tables, 0x1000));
-        assert!(ept_maps_guest_page(&tables, RELAY_MEASUREMENT_PAGE_GUEST_PHYS));
+        assert!(ept_maps_guest_page(
+            &tables,
+            RELAY_MEASUREMENT_PAGE_GUEST_PHYS
+        ));
     }
 
     #[test]
@@ -415,6 +431,8 @@ mod tests {
     fn append_ept_guest_mapping_rejects_overlapping_guest_ranges() {
         let mut tables = empty_tables();
         append_ept_guest_mapping(&mut tables, 0x1000, 0x2000, EPT_PAGE_SIZE_BYTES).expect("first");
-        assert!(append_ept_guest_mapping(&mut tables, 0x1000, 0x3000, EPT_PAGE_SIZE_BYTES).is_err());
+        assert!(
+            append_ept_guest_mapping(&mut tables, 0x1000, 0x3000, EPT_PAGE_SIZE_BYTES).is_err()
+        );
     }
 }

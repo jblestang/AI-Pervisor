@@ -64,18 +64,18 @@ fn validate_vmcs_fields(fields: &VmcsProgrammedFields) -> Result<(), CpuSeamErro
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hv_vmx::{program_vmcs_fields, plan_vmx_launch, DEFAULT_SMOKE_GUEST_PARTITION_ID};
     use hv_config_model::compile_config_from_str;
     use hv_platform_model::plan_static_platform_ir;
     use hv_vmx::plan_vmx_init;
+    use hv_vmx::{plan_vmx_launch, program_vmcs_fields, DEFAULT_SMOKE_GUEST_PARTITION_ID};
 
     fn reference_fields() -> VmcsProgrammedFields {
         let yaml = include_str!("../../../../configs/qemu.yaml");
         let compiled = compile_config_from_str(yaml).expect("compile");
         let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
         let vmx_plan = plan_vmx_init(&layout.hypervisor_reserve).expect("vmx");
-        let launch = plan_vmx_launch(&layout, &vmx_plan, DEFAULT_SMOKE_GUEST_PARTITION_ID)
-            .expect("launch");
+        let launch =
+            plan_vmx_launch(&layout, &vmx_plan, DEFAULT_SMOKE_GUEST_PARTITION_ID).expect("launch");
         program_vmcs_fields(&launch)
     }
 

@@ -133,12 +133,16 @@ mod tests {
         let yaml = include_str!("../../../configs/qemu.yaml");
         let compiled = compile_config_from_str(yaml).expect("compile");
         let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
-        let result = run_mock_guest_throughput_benchmark(&layout, &DatapathBenchmarkConfig::default())
-            .expect("benchmark");
+        let result =
+            run_mock_guest_throughput_benchmark(&layout, &DatapathBenchmarkConfig::default())
+                .expect("benchmark");
         assert!(result.benchmark.target_met);
         assert!(result.benchmark.stats.min_mbit_per_sec >= TARGET_THROUGHPUT_MBIT_PER_SEC);
         assert!(result.guest_relay_frames > 0);
-        assert_eq!(result.disposition, GuestThroughputDisposition::ValidatedOnly);
+        assert_eq!(
+            result.disposition,
+            GuestThroughputDisposition::ValidatedOnly
+        );
     }
 
     #[test]

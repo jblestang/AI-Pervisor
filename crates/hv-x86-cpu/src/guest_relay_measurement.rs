@@ -88,11 +88,8 @@ pub fn read_relay_measurement_extension_from_installed_boot_info(
             "relay measurement requires installed boot info guest address",
         ));
     }
-    let bytes = read_guest_bytes_via_ept(
-        ept_tables,
-        boot_info_guest_phys,
-        boot_info_size as usize,
-    )?;
+    let bytes =
+        read_guest_bytes_via_ept(ept_tables, boot_info_guest_phys, boot_info_size as usize)?;
     parse_guest_boot_info_relay_measurement(&bytes).ok_or_else(|| {
         CpuSeamError::new(
             CpuSeamErrorKind::InvalidInput,
@@ -137,17 +134,23 @@ pub fn read_ipc_delivered_frames_from_guest(
             "relay measurement requires out IPC consumer guest address",
         ));
     }
-    let header = read_guest_bytes_via_ept(
-        &context.ept_tables,
-        context.out_ipc_consumer_guest_phys,
-        8,
-    )?;
-    let tail = u32::from_le_bytes([
-        header[IPC_QUEUE_TAIL_OFFSET],
-        header[IPC_QUEUE_TAIL_OFFSET + 1],
-        header[IPC_QUEUE_TAIL_OFFSET + 2],
-        header[IPC_QUEUE_TAIL_OFFSET + 3],
-    ]);
+    let header =
+        read_guest_bytes_via_ept(&context.ept_tables, context.out_ipc_consumer_guest_phys, 8)?;
+    let tail_bytes = header
+        .get(IPC_QUEUE_TAIL_OFFSET..IPC_QUEUE_TAIL_OFFSET + 4)
+        .ok_or_else(|| {
+            CpuSeamError::new(
+                CpuSeamErrorKind::InvalidInput,
+                "out IPC consumer header shorter than queue tail field",
+            )
+        })?;
+    let tail_array: [u8; 4] = tail_bytes.try_into().map_err(|_| {
+        CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "out IPC consumer queue tail field unreadable",
+        )
+    })?;
+    let tail = u32::from_le_bytes(tail_array);
     Ok(u64::from(tail))
 }
 
@@ -239,7 +242,11 @@ pub fn measure_in_vm_relay_from_context(
             "relay measurement requires non-zero IPC delivered frame count",
         ));
     }
-    let frames = end_to_end_relay_frames(guest_boot_info_frames, ipc_delivered_frames, expected_frames);
+    let frames = end_to_end_relay_frames(
+        guest_boot_info_frames,
+        ipc_delivered_frames,
+        expected_frames,
+    );
     if guest_boot_info_frames > ipc_delivered_frames {
         return Err(CpuSeamError::new(
             CpuSeamErrorKind::InvalidInput,
@@ -315,7 +322,8 @@ fn read_guest_bytes_via_ept(
     guest_phys: u64,
     len: usize,
 ) -> Result<alloc::vec::Vec<u8>, CpuSeamError> {
-    let host_phys = resolve_guest_phys_range_to_host(tables, guest_phys, len).map_err(map_ept_error)?;
+    let host_phys =
+        resolve_guest_phys_range_to_host(tables, guest_phys, len).map_err(map_ept_error)?;
     read_host_bytes(host_phys, len)
 }
 
@@ -390,7 +398,7 @@ fn map_ept_error(err: hv_ept::EptError) -> CpuSeamError {
 
 #[cfg(test)]
 #[cfg(feature = "datapath-guest-execution")]
-#[allow(clippy::expect_used)]
+#[allow(clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
     use hv_ept::{encode_identity_ept_entry, EptProgrammedMapping, EptProgrammedTables};

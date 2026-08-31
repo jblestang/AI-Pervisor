@@ -5,8 +5,8 @@
 use hv_x86_cpu::{
     execute_vmxon, execute_vtd_enable, last_vtd_enable_intent, live_execution_environment_ready,
     live_execution_runtime_enabled, read_vmx_basic_msr, run_vmxon_cpu_seam,
-    vmx_revision_from_basic_msr, CpuInstructionDisposition, CpuSeamErrorKind,
-    HV_X86_LIVE_INSTRUCTIONS_ENABLED, HV_X86_LIVE_INSTRUCTIONS_ENV, VtdEnableIntent,
+    vmx_revision_from_basic_msr, CpuInstructionDisposition, CpuSeamErrorKind, VtdEnableIntent,
+    HV_X86_LIVE_INSTRUCTIONS_ENABLED, HV_X86_LIVE_INSTRUCTIONS_ENV,
 };
 
 #[test]
@@ -50,7 +50,8 @@ fn run_vmxon_cpu_seam_keeps_seam_validated_without_live_environment() {
     let compiled = hv_config_model::compile_config_from_str(yaml).expect("compile");
     let layout = hv_platform_model::plan_static_platform_ir(&compiled.intent).expect("plan");
     let plan = hv_vmx::plan_vmx_init(&layout.hypervisor_reserve).expect("vmx");
-    let region = hv_vmx::program_vmxon_region(&plan, hv_vmx::REFERENCE_VMXON_REVISION).expect("program");
+    let region =
+        hv_vmx::program_vmxon_region(&plan, hv_vmx::REFERENCE_VMXON_REVISION).expect("program");
     let outcome = run_vmxon_cpu_seam(&region).expect("seam");
     assert_ne!(outcome.disposition, CpuInstructionDisposition::Executed);
 }

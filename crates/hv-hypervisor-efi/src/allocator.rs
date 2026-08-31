@@ -80,7 +80,10 @@ fn pages_for_bytes(len: usize) -> Result<usize, CpuSeamError> {
         })?
         .checked_div(page_size)
         .ok_or_else(|| {
-            CpuSeamError::new(CpuSeamErrorKind::InvalidInput, "allocation page count overflow")
+            CpuSeamError::new(
+                CpuSeamErrorKind::InvalidInput,
+                "allocation page count overflow",
+            )
         })
 }
 
@@ -171,9 +174,7 @@ mod tests {
         let mut allocator = UefiPageAllocator::new();
         let host_phys = allocator.allocate_pages(4096, 4096).expect("allocate");
         assert_eq!(host_phys & 0xFFF, 0);
-        assert!(allocator
-            .copy_to_pages(host_phys, &[0xAB; 16])
-            .is_ok());
+        assert!(allocator.copy_to_pages(host_phys, &[0xAB; 16]).is_ok());
     }
 
     #[test]

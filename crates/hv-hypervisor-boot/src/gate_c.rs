@@ -3,8 +3,8 @@
 use hv_boot_abi::{LayoutSnapshot, RequirementsSnapshot};
 use hv_config_model::{FeatureRequirement, PlatformRequirements};
 use hv_ept::{
-    ept_init_required, init_ept, plan_ept_init, EptBackend, EptInitPlan, EptError, EptProgrammedTables,
-    MockEptBackend, ProgrammingEptBackend,
+    ept_init_required, init_ept, plan_ept_init, EptBackend, EptError, EptInitPlan,
+    EptProgrammedTables, MockEptBackend, ProgrammingEptBackend,
 };
 use hv_platform_model::{PlatformWarning, StaticPlatformIR, ValidatedPlatform};
 use hv_types::SHA256_DIGEST_BYTES;
@@ -17,10 +17,12 @@ use hv_vtd::{
     VtdError, VtdInitPlan, VtdProgrammedTables,
 };
 
-#[cfg(feature = "cpu-seams")]
-use hv_x86_cpu::{
-    CpuSeamEptBackend, CpuSeamVmxBackend, CpuSeamVtdBackend, EptCpuSeamOutcome, VmxCpuSeamOutcome,
-    VtdCpuSeamOutcome,
+#[cfg(feature = "vmx-launch")]
+use hv_guest_boot::{build_guest_boot_info_for_partition, GUEST_SMOKE_IMAGE};
+#[cfg(feature = "vmx-launch")]
+use hv_vmx::{
+    patch_guest_entry_in_fields, plan_vmx_launch, program_vmcs_fields,
+    DEFAULT_SMOKE_GUEST_PARTITION_ID,
 };
 #[cfg(feature = "live-execution")]
 use hv_x86_cpu::live_execution_environment_ready;
@@ -30,14 +32,12 @@ use hv_x86_cpu::{
     ResidentCpuSeamVtdBackend,
 };
 #[cfg(feature = "vmx-launch")]
-use hv_guest_boot::{build_guest_boot_info_for_partition, GUEST_SMOKE_IMAGE};
-#[cfg(feature = "vmx-launch")]
-use hv_vmx::{
-    patch_guest_entry_in_fields, plan_vmx_launch, program_vmcs_fields,
-    DEFAULT_SMOKE_GUEST_PARTITION_ID,
-};
-#[cfg(feature = "vmx-launch")]
 use hv_x86_cpu::{run_vmx_launch_cpu_seam, CpuSeamError, VmxLaunchCpuSeamOutcome};
+#[cfg(feature = "cpu-seams")]
+use hv_x86_cpu::{
+    CpuSeamEptBackend, CpuSeamVmxBackend, CpuSeamVtdBackend, EptCpuSeamOutcome, VmxCpuSeamOutcome,
+    VtdCpuSeamOutcome,
+};
 
 use crate::boot::boot_check;
 use crate::error::{BootCheckError, BootCheckErrorKind};
@@ -110,9 +110,17 @@ pub fn boot_from_transfer_and_init_gate_c_cpu_seam_from_snapshots(
 ) -> Result<GateCCpuSeamResult, BootCheckError> {
     let platform_requirements = platform_requirements_from_snapshot(requirements)?;
     let static_layout = static_platform_ir_from_layout_snapshot(layout, requirements)?;
-    let (validated, warnings) =
-        boot_from_transfer(transfer, &requirements.config_digest, &platform_requirements)?;
-    init_gate_c_cpu_seam_from_validated(&platform_requirements, &static_layout, &validated, warnings)
+    let (validated, warnings) = boot_from_transfer(
+        transfer,
+        &requirements.config_digest,
+        &platform_requirements,
+    )?;
+    init_gate_c_cpu_seam_from_validated(
+        &platform_requirements,
+        &static_layout,
+        &validated,
+        warnings,
+    )
 }
 
 /// Runs boot checks from raw inputs and Gate C CPU seam init.
@@ -213,8 +221,11 @@ pub fn boot_from_transfer_and_init_gate_c_real_hw_from_snapshots<A: PageAllocato
 ) -> Result<GateCRealHwResult, BootCheckError> {
     let platform_requirements = platform_requirements_from_snapshot(requirements)?;
     let static_layout = static_platform_ir_from_layout_snapshot(layout, requirements)?;
-    let (validated, warnings) =
-        boot_from_transfer(transfer, &requirements.config_digest, &platform_requirements)?;
+    let (validated, warnings) = boot_from_transfer(
+        transfer,
+        &requirements.config_digest,
+        &platform_requirements,
+    )?;
     init_gate_c_real_hw_from_validated(
         &platform_requirements,
         &static_layout,
@@ -275,23 +286,13 @@ fn init_gate_c_real_hw_from_validated<A: PageAllocator>(
 
     let (vmxon_region, vmx_seam) = {
         let mut vmx_backend = ResidentCpuSeamVmxBackend::new(allocator);
-        init_vmx_if_required(
-            &mut vmx_backend,
-            &vmx_plan,
-            validated,
-            requirements.vmx,
-        )?;
+        init_vmx_if_required(&mut vmx_backend, &vmx_plan, validated, requirements.vmx)?;
         (vmx_backend.last_region, vmx_backend.last_seam)
     };
 
     let (ept_tables, ept_seam, vmcs_phys) = {
         let mut ept_backend = ResidentCpuSeamEptBackend::new(allocator);
-        init_ept_if_required(
-            &mut ept_backend,
-            &ept_plan,
-            validated,
-            requirements.ept,
-        )?;
+        init_ept_if_required(&mut ept_backend, &ept_plan, validated, requirements.ept)?;
         (
             ept_backend.last_tables,
             ept_backend.last_seam,
@@ -301,12 +302,7 @@ fn init_gate_c_real_hw_from_validated<A: PageAllocator>(
 
     let (vtd_tables, vtd_seam) = {
         let mut vtd_backend = ResidentCpuSeamVtdBackend::default();
-        init_vtd_if_required(
-            &mut vtd_backend,
-            &vtd_plan,
-            validated,
-            requirements.vtd,
-        )?;
+        init_vtd_if_required(&mut vtd_backend, &vtd_plan, validated, requirements.vtd)?;
         (vtd_backend.last_tables, vtd_backend.last_seam)
     };
 
@@ -358,8 +354,11 @@ pub fn boot_from_transfer_and_init_gate_c_vmx_launch_from_snapshots<A: PageAlloc
 ) -> Result<GateCVmxLaunchResult, BootCheckError> {
     let platform_requirements = platform_requirements_from_snapshot(requirements)?;
     let static_layout = static_platform_ir_from_layout_snapshot(layout, requirements)?;
-    let (validated, warnings) =
-        boot_from_transfer(transfer, &requirements.config_digest, &platform_requirements)?;
+    let (validated, warnings) = boot_from_transfer(
+        transfer,
+        &requirements.config_digest,
+        &platform_requirements,
+    )?;
     init_gate_c_vmx_launch_from_validated(
         &platform_requirements,
         &static_layout,
@@ -410,13 +409,8 @@ pub(crate) fn init_gate_c_vmx_launch_from_validated<A: PageAllocator>(
     warnings: alloc::vec::Vec<PlatformWarning>,
     allocator: &mut A,
 ) -> Result<GateCVmxLaunchResult, BootCheckError> {
-    let real_hw = init_gate_c_real_hw_from_validated(
-        requirements,
-        layout,
-        validated,
-        warnings,
-        allocator,
-    )?;
+    let real_hw =
+        init_gate_c_real_hw_from_validated(requirements, layout, validated, warnings, allocator)?;
     let vmcs_phys = real_hw.vmcs_phys.ok_or_else(|| {
         BootCheckError::new(
             BootCheckErrorKind::Platform,
@@ -424,12 +418,16 @@ pub(crate) fn init_gate_c_vmx_launch_from_validated<A: PageAllocator>(
         )
     })?;
     let guest_boot_info =
-        build_guest_boot_info_for_partition(layout, DEFAULT_SMOKE_GUEST_PARTITION_ID).map_err(
-            |err| BootCheckError::new(BootCheckErrorKind::Platform, err.message),
-        )?;
-    let guest_entry_phys = install_guest_image(allocator, GUEST_SMOKE_IMAGE).map_err(map_cpu_seam_error)?;
-    let launch_plan = plan_vmx_launch(layout, &real_hw.live.cpu_seam.programming.init.vmx_plan, DEFAULT_SMOKE_GUEST_PARTITION_ID)
-        .map_err(map_vmx_error)?;
+        build_guest_boot_info_for_partition(layout, DEFAULT_SMOKE_GUEST_PARTITION_ID)
+            .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
+    let guest_entry_phys =
+        install_guest_image(allocator, GUEST_SMOKE_IMAGE).map_err(map_cpu_seam_error)?;
+    let launch_plan = plan_vmx_launch(
+        layout,
+        &real_hw.live.cpu_seam.programming.init.vmx_plan,
+        DEFAULT_SMOKE_GUEST_PARTITION_ID,
+    )
+    .map_err(map_vmx_error)?;
     let mut vmcs_fields = program_vmcs_fields(&launch_plan);
     patch_guest_entry_in_fields(
         &mut vmcs_fields,
@@ -461,8 +459,11 @@ pub fn boot_from_transfer_and_init_gate_c_from_snapshots(
 ) -> Result<GateCInitResult, BootCheckError> {
     let platform_requirements = platform_requirements_from_snapshot(requirements)?;
     let static_layout = static_platform_ir_from_layout_snapshot(layout, requirements)?;
-    let (validated, warnings) =
-        boot_from_transfer(transfer, &requirements.config_digest, &platform_requirements)?;
+    let (validated, warnings) = boot_from_transfer(
+        transfer,
+        &requirements.config_digest,
+        &platform_requirements,
+    )?;
     init_gate_c_from_validated(&platform_requirements, &static_layout, &validated, warnings)
 }
 
@@ -486,9 +487,17 @@ pub fn boot_from_transfer_and_init_gate_c_programming_from_snapshots(
 ) -> Result<GateCProgrammingResult, BootCheckError> {
     let platform_requirements = platform_requirements_from_snapshot(requirements)?;
     let static_layout = static_platform_ir_from_layout_snapshot(layout, requirements)?;
-    let (validated, warnings) =
-        boot_from_transfer(transfer, &requirements.config_digest, &platform_requirements)?;
-    init_gate_c_programming_from_validated(&platform_requirements, &static_layout, &validated, warnings)
+    let (validated, warnings) = boot_from_transfer(
+        transfer,
+        &requirements.config_digest,
+        &platform_requirements,
+    )?;
+    init_gate_c_programming_from_validated(
+        &platform_requirements,
+        &static_layout,
+        &validated,
+        warnings,
+    )
 }
 
 /// Runs boot checks from raw inputs and Gate C hardware programming init.
@@ -552,26 +561,11 @@ fn init_gate_c_from_validated(
     let vtd_plan = plan_vtd_init(layout, interrupt_remapping).map_err(map_vtd_error)?;
 
     let mut vmx_backend = MockVmxBackend::default();
-    init_vmx_if_required(
-        &mut vmx_backend,
-        &vmx_plan,
-        validated,
-        requirements.vmx,
-    )?;
+    init_vmx_if_required(&mut vmx_backend, &vmx_plan, validated, requirements.vmx)?;
     let mut ept_backend = MockEptBackend::default();
-    init_ept_if_required(
-        &mut ept_backend,
-        &ept_plan,
-        validated,
-        requirements.ept,
-    )?;
+    init_ept_if_required(&mut ept_backend, &ept_plan, validated, requirements.ept)?;
     let mut vtd_backend = MockVtdBackend::default();
-    init_vtd_if_required(
-        &mut vtd_backend,
-        &vtd_plan,
-        validated,
-        requirements.vtd,
-    )?;
+    init_vtd_if_required(&mut vtd_backend, &vtd_plan, validated, requirements.vtd)?;
 
     Ok(GateCInitResult {
         validated: validated.clone(),
@@ -597,26 +591,11 @@ fn init_gate_c_programming_from_validated(
     let vtd_plan = plan_vtd_init(layout, interrupt_remapping).map_err(map_vtd_error)?;
 
     let mut vmx_backend = ProgrammingVmxBackend::default();
-    init_vmx_if_required(
-        &mut vmx_backend,
-        &vmx_plan,
-        validated,
-        requirements.vmx,
-    )?;
+    init_vmx_if_required(&mut vmx_backend, &vmx_plan, validated, requirements.vmx)?;
     let mut ept_backend = ProgrammingEptBackend::default();
-    init_ept_if_required(
-        &mut ept_backend,
-        &ept_plan,
-        validated,
-        requirements.ept,
-    )?;
+    init_ept_if_required(&mut ept_backend, &ept_plan, validated, requirements.ept)?;
     let mut vtd_backend = ProgrammingVtdBackend::default();
-    init_vtd_if_required(
-        &mut vtd_backend,
-        &vtd_plan,
-        validated,
-        requirements.vtd,
-    )?;
+    init_vtd_if_required(&mut vtd_backend, &vtd_plan, validated, requirements.vtd)?;
 
     Ok(GateCProgrammingResult {
         init: GateCInitResult {
@@ -648,26 +627,11 @@ fn init_gate_c_cpu_seam_from_validated(
     let vtd_plan = plan_vtd_init(layout, interrupt_remapping).map_err(map_vtd_error)?;
 
     let mut vmx_backend = CpuSeamVmxBackend::default();
-    init_vmx_if_required(
-        &mut vmx_backend,
-        &vmx_plan,
-        validated,
-        requirements.vmx,
-    )?;
+    init_vmx_if_required(&mut vmx_backend, &vmx_plan, validated, requirements.vmx)?;
     let mut ept_backend = CpuSeamEptBackend::default();
-    init_ept_if_required(
-        &mut ept_backend,
-        &ept_plan,
-        validated,
-        requirements.ept,
-    )?;
+    init_ept_if_required(&mut ept_backend, &ept_plan, validated, requirements.ept)?;
     let mut vtd_backend = CpuSeamVtdBackend::default();
-    init_vtd_if_required(
-        &mut vtd_backend,
-        &vtd_plan,
-        validated,
-        requirements.vtd,
-    )?;
+    init_vtd_if_required(&mut vtd_backend, &vtd_plan, validated, requirements.vtd)?;
 
     Ok(GateCCpuSeamResult {
         programming: GateCProgrammingResult {

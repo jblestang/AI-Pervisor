@@ -114,9 +114,7 @@ pub fn parse_elf64(bytes: &[u8]) -> Result<GuestElfImage, GuestElfError> {
         let p_offset = read_u64(bytes, base + 0x08)?;
         let p_vaddr = read_u64(bytes, base + 0x10)?;
         let p_filesz = read_u64(bytes, base + 0x20)?;
-        let end = p_offset
-            .checked_add(p_filesz)
-            .ok_or_else(overflow)? as usize;
+        let end = p_offset.checked_add(p_filesz).ok_or_else(overflow)? as usize;
         if end > bytes.len() {
             return Err(GuestElfError::new(
                 GuestElfErrorKind::FormatViolation,
@@ -124,10 +122,7 @@ pub fn parse_elf64(bytes: &[u8]) -> Result<GuestElfImage, GuestElfError> {
             ));
         }
         let start = p_offset as usize;
-        let segment_bytes = bytes
-            .get(start..end)
-            .ok_or_else(invalid_input)?
-            .to_vec();
+        let segment_bytes = bytes.get(start..end).ok_or_else(invalid_input)?.to_vec();
         load_segments.push(GuestElfLoadSegment {
             file_offset: p_offset,
             vaddr: p_vaddr,
@@ -147,10 +142,13 @@ pub fn parse_elf64(bytes: &[u8]) -> Result<GuestElfImage, GuestElfError> {
 }
 
 /// Returns the guest physical entry address after loading at `region_base`.
-pub fn guest_entry_phys_for_region(image: &GuestElfImage, region_base: u64) -> Result<u64, GuestElfError> {
-    region_base
-        .checked_add(image.entry_vaddr)
-        .ok_or_else(|| GuestElfError::new(GuestElfErrorKind::FormatViolation, "guest entry overflow"))
+pub fn guest_entry_phys_for_region(
+    image: &GuestElfImage,
+    region_base: u64,
+) -> Result<u64, GuestElfError> {
+    region_base.checked_add(image.entry_vaddr).ok_or_else(|| {
+        GuestElfError::new(GuestElfErrorKind::FormatViolation, "guest entry overflow")
+    })
 }
 
 fn invalid_input() -> GuestElfError {
@@ -204,12 +202,18 @@ mod tests {
         let image = parse_elf64(GUEST_IN_ELF).expect("parse");
         assert_eq!(image.entry_vaddr, 0);
         assert_eq!(image.load_segments.len(), 1);
-        assert_eq!(image.load_segments.first().expect("segment").bytes.len(), 24);
+        assert_eq!(
+            image.load_segments.first().expect("segment").bytes.len(),
+            24
+        );
     }
 
     #[test]
     fn guest_entry_phys_matches_region_base_for_zero_linked_entry() {
         let image = parse_elf64(GUEST_MID_ELF).expect("parse");
-        assert_eq!(guest_entry_phys_for_region(&image, 0x1000).expect("entry"), 0x1000);
+        assert_eq!(
+            guest_entry_phys_for_region(&image, 0x1000).expect("entry"),
+            0x1000
+        );
     }
 }

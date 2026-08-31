@@ -1,16 +1,18 @@
 //! REAL_HW CPU seam backends that install structures into host physical pages.
 
-use hv_ept::{program_ept_tables, EptBackend, EptInitPlan, EptProgrammedTables, EptError, EptErrorKind};
+use hv_ept::{
+    program_ept_tables, EptBackend, EptError, EptErrorKind, EptInitPlan, EptProgrammedTables,
+};
 use hv_vmx::{
-    program_vmxon_region, VmxBackend, VmxInitPlan, VmxonProgrammedRegion, VmxError, VmxErrorKind,
+    program_vmxon_region, VmxBackend, VmxError, VmxErrorKind, VmxInitPlan, VmxonProgrammedRegion,
 };
 use hv_vtd::{
-    program_vtd_tables, VtdBackend, VtdInitPlan, VtdProgrammedTables, VtdError, VtdErrorKind,
+    program_vtd_tables, VtdBackend, VtdError, VtdErrorKind, VtdInitPlan, VtdProgrammedTables,
 };
 
 use crate::error::{CpuSeamError, CpuSeamErrorKind};
 use crate::resident::{
-    install_ept_tables, install_vmxon_region, install_vmcs_region, resolve_vmxon_revision,
+    install_ept_tables, install_vmcs_region, install_vmxon_region, resolve_vmxon_revision,
     PageAllocator,
 };
 use crate::seams::{
@@ -45,7 +47,8 @@ impl<A: PageAllocator> VmxBackend for ResidentCpuSeamVmxBackend<'_, A> {
     fn enable_vmx(&mut self, plan: &VmxInitPlan) -> Result<(), VmxError> {
         let revision = resolve_vmxon_revision();
         let programmed = program_vmxon_region(plan, revision)?;
-        let installed = install_vmxon_region(self.allocator, &programmed).map_err(map_resident_to_vmx)?;
+        let installed =
+            install_vmxon_region(self.allocator, &programmed).map_err(map_resident_to_vmx)?;
         let seam = run_vmxon_cpu_seam(&installed).map_err(map_cpu_seam_to_vmx)?;
         self.enable_calls = self.enable_calls.saturating_add(1);
         self.last_region = Some(installed);
@@ -83,10 +86,11 @@ impl<'a, A: PageAllocator> ResidentCpuSeamEptBackend<'a, A> {
 impl<A: PageAllocator> EptBackend for ResidentCpuSeamEptBackend<'_, A> {
     fn install_ept(&mut self, plan: &EptInitPlan) -> Result<(), EptError> {
         let programmed = program_ept_tables(plan)?;
-        let installed = install_ept_tables(self.allocator, &programmed).map_err(map_resident_to_ept)?;
-        let vmcs_phys =
-            install_vmcs_region(self.allocator).map_err(map_resident_to_ept)?;
-        let seam = run_ept_pointer_cpu_seam(&installed, Some(vmcs_phys)).map_err(map_cpu_seam_to_ept)?;
+        let installed =
+            install_ept_tables(self.allocator, &programmed).map_err(map_resident_to_ept)?;
+        let vmcs_phys = install_vmcs_region(self.allocator).map_err(map_resident_to_ept)?;
+        let seam =
+            run_ept_pointer_cpu_seam(&installed, Some(vmcs_phys)).map_err(map_cpu_seam_to_ept)?;
         self.install_calls = self.install_calls.saturating_add(1);
         self.last_tables = Some(installed);
         self.last_vmcs_phys = Some(vmcs_phys);
@@ -153,13 +157,13 @@ fn map_cpu_seam_to_vtd(err: CpuSeamError) -> VtdError {
 #[allow(clippy::expect_used)]
 mod tests {
     use super::*;
+    use crate::error::CpuSeamError;
+    use crate::resident::{install_ept_tables, MockPageAllocator};
     use hv_config_model::compile_config_from_str;
     use hv_ept::plan_ept_init;
     use hv_platform_model::{plan_static_platform_ir, validate_platform, ValidatedPlatform};
     use hv_vmx::plan_vmx_init;
     use hv_vtd::plan_vtd_init;
-    use crate::resident::{install_ept_tables, MockPageAllocator};
-    use crate::error::CpuSeamError;
 
     fn reference_validated() -> ValidatedPlatform {
         let observed =
@@ -218,7 +222,9 @@ mod tests {
     #[test]
     fn resident_error_mapping_preserves_messages() {
         let err = CpuSeamError::new(CpuSeamErrorKind::InvalidInput, "bad resident");
-        assert!(map_resident_to_vmx(err.clone()).message.contains("bad resident"));
+        assert!(map_resident_to_vmx(err.clone())
+            .message
+            .contains("bad resident"));
         assert!(map_resident_to_ept(err).message.contains("bad resident"));
     }
 
@@ -227,12 +233,24 @@ mod tests {
         let unavailable = CpuSeamError::new(CpuSeamErrorKind::Unavailable, "unavailable");
         let execution = CpuSeamError::new(CpuSeamErrorKind::ExecutionFailed, "execution failed");
         let invalid = CpuSeamError::new(CpuSeamErrorKind::InvalidInput, "bad input");
-        assert!(map_resident_to_vmx(unavailable.clone()).message.contains("unavailable"));
-        assert!(map_resident_to_ept(execution.clone()).message.contains("execution failed"));
-        assert!(map_cpu_seam_to_vmx(invalid.clone()).message.contains("bad input"));
-        assert!(map_cpu_seam_to_ept(unavailable.clone()).message.contains("unavailable"));
-        assert!(map_cpu_seam_to_vtd(unavailable).message.contains("unavailable"));
-        assert!(map_cpu_seam_to_vtd(execution).message.contains("execution failed"));
+        assert!(map_resident_to_vmx(unavailable.clone())
+            .message
+            .contains("unavailable"));
+        assert!(map_resident_to_ept(execution.clone())
+            .message
+            .contains("execution failed"));
+        assert!(map_cpu_seam_to_vmx(invalid.clone())
+            .message
+            .contains("bad input"));
+        assert!(map_cpu_seam_to_ept(unavailable.clone())
+            .message
+            .contains("unavailable"));
+        assert!(map_cpu_seam_to_vtd(unavailable)
+            .message
+            .contains("unavailable"));
+        assert!(map_cpu_seam_to_vtd(execution)
+            .message
+            .contains("execution failed"));
     }
 
     #[test]

@@ -18,15 +18,15 @@ use crate::topology::{DatapathForwardPlan, IpcChannelRuntime};
 pub const SYNTHETIC_FRAME_PAYLOAD: &[u8] = b"HVDP18FR";
 
 /// Builds a mock forward plan from static platform layout.
-pub fn plan_datapath_forward(layout: &StaticPlatformIR) -> Result<DatapathForwardPlan, DatapathError> {
-    let chan_a_region = layout
-        .ipc_memory
-        .first()
-        .ok_or_else(|| DatapathError::new(DatapathErrorKind::InvalidInput, "missing chan_a ipc region"))?;
-    let chan_b_region = layout
-        .ipc_memory
-        .get(1)
-        .ok_or_else(|| DatapathError::new(DatapathErrorKind::InvalidInput, "missing chan_b ipc region"))?;
+pub fn plan_datapath_forward(
+    layout: &StaticPlatformIR,
+) -> Result<DatapathForwardPlan, DatapathError> {
+    let chan_a_region = layout.ipc_memory.first().ok_or_else(|| {
+        DatapathError::new(DatapathErrorKind::InvalidInput, "missing chan_a ipc region")
+    })?;
+    let chan_b_region = layout.ipc_memory.get(1).ok_or_else(|| {
+        DatapathError::new(DatapathErrorKind::InvalidInput, "missing chan_b ipc region")
+    })?;
     let storage = queue_storage_bytes(REFERENCE_IPC_QUEUE_SLOTS, REFERENCE_IPC_SLOT_SIZE_BYTES)?;
     Ok(DatapathForwardPlan {
         chan_a: IpcChannelRuntime {

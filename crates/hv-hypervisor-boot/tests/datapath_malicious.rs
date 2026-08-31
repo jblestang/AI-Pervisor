@@ -7,7 +7,8 @@ use hv_datapath::REFERENCE_COMPROMISED_SCENARIOS;
 use hv_hypervisor_boot::{
     boot_from_transfer_and_init_gate_d_datapath_malicious,
     boot_from_transfer_and_init_gate_d_datapath_malicious_from_snapshots,
-    layout_snapshot_from_platform_ir, requirements_snapshot_from_platform, GateDDatapathMaliciousResult,
+    layout_snapshot_from_platform_ir, requirements_snapshot_from_platform,
+    GateDDatapathMaliciousResult,
 };
 use hv_loader::{
     build_hypervisor_transfer, build_loader_handoff, encode_qemu_reference_firmware,
@@ -35,7 +36,8 @@ fn reference_handoff_snapshot_and_layout() -> (
             compiled.digest.bytes,
             {
                 let mut memory_map = vec![0u8; 48];
-                memory_map[0..4].copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
+                memory_map[0..4]
+                    .copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
                 memory_map[24..32].copy_from_slice(&(2_097_152u64).to_le_bytes());
                 memory_map
             },
@@ -84,9 +86,21 @@ fn reference_handoff_snapshot_and_layout() -> (
 }
 
 fn assert_datapath_malicious_validate_only(result: &GateDDatapathMaliciousResult) {
-    assert!(!result.live.foundation.vmx_launch.real_hw.live.live_environment_ready);
+    assert!(
+        !result
+            .live
+            .foundation
+            .vmx_launch
+            .real_hw
+            .live
+            .live_environment_ready
+    );
     #[cfg(not(feature = "datapath-runtime"))]
-    assert!(result.live.live_outcome.as_ref().is_some_and(|outcome| outcome.synthetic_frame_forwarded));
+    assert!(result
+        .live
+        .live_outcome
+        .as_ref()
+        .is_some_and(|outcome| outcome.synthetic_frame_forwarded));
     assert!(result.integrity_checks_passed);
     assert_eq!(
         result.compromised_scenarios_blocked,
@@ -118,7 +132,8 @@ fn boot_from_transfer_and_init_gate_d_datapath_malicious_accepts_reference_trans
 }
 
 #[test]
-fn boot_from_transfer_and_init_gate_d_datapath_malicious_from_snapshots_accepts_reference_transfer() {
+fn boot_from_transfer_and_init_gate_d_datapath_malicious_from_snapshots_accepts_reference_transfer()
+{
     let (transfer, snapshot, layout) = reference_handoff_snapshot_and_layout();
     let layout_snapshot = layout_snapshot_from_platform_ir(&layout).expect("layout snapshot");
     let mut allocator = MockPageAllocator::new(0x0000_0000_1200_0000);

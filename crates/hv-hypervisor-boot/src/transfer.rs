@@ -83,12 +83,12 @@ mod tests {
         build_hypervisor_transfer, build_loader_handoff, encode_qemu_reference_firmware,
         LoaderHandoffInput,
     };
-    use hv_platform_model::plan_static_platform_ir;
     use hv_observation_types::{
         CpuidSnapshot, CPUID_1_ECX_VMX_BIT, CPUID_1_ECX_X2APIC_BIT, CPUID_1_EDX_NX_BIT,
         CPUID_480_EBX_PREEMPTION_TIMER_BIT, CPUID_480_ECX_EPT_BIT, CPUID_480_ECX_VPID_BIT,
         CPUID_80000007_EDX_INVARIANT_TSC_BIT,
     };
+    use hv_platform_model::plan_static_platform_ir;
     use hv_types::{PciBdf, PciBus, PciDevice, PciFunction, PciSegment};
 
     #[test]

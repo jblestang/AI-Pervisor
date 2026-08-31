@@ -39,7 +39,8 @@ fn reference_handoff_snapshot_and_layout() -> (
             compiled.digest.bytes,
             {
                 let mut memory_map = vec![0u8; 48];
-                memory_map[0..4].copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
+                memory_map[0..4]
+                    .copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
                 memory_map[24..32].copy_from_slice(&(2_097_152u64).to_le_bytes());
                 memory_map
             },
@@ -92,7 +93,15 @@ fn assert_datapath_guest_relay_live_validate_only(result: &GateDDatapathGuestRel
         result.execution.live.boot_infos_installed,
         REFERENCE_GUEST_PARTITION_IDS.len() as u32
     );
-    assert!(result.execution.live.sources.runtime.runtime.guest_frame_forwarded);
+    assert!(
+        result
+            .execution
+            .live
+            .sources
+            .runtime
+            .runtime
+            .guest_frame_forwarded
+    );
     assert!(result.throughput.benchmark.target_met);
     assert_eq!(
         result.sustained_relay_frames,
@@ -132,7 +141,15 @@ fn assert_datapath_guest_relay_live_validate_only(result: &GateDDatapathGuestRel
         result.throughput_seam.measurement_runs_validated,
         result.throughput.benchmark.runs_completed
     );
-    for record in &result.execution.live.sources.runtime.benchmark.guests.partition_launches {
+    for record in &result
+        .execution
+        .live
+        .sources
+        .runtime
+        .benchmark
+        .guests
+        .partition_launches
+    {
         let boot_info_phys = record
             .boot_info_guest_phys
             .expect("boot info installed for partition");

@@ -2,8 +2,8 @@
 
 use hv_config_model::compile_config_from_str;
 use hv_platform_model::plan_static_platform_ir;
-use hv_vtd::{encode_vtd_context_entry, plan_vtd_init, program_vtd_tables};
 use hv_types::{PciBdf, PciBus, PciDevice, PciFunction, PciSegment};
+use hv_vtd::{encode_vtd_context_entry, plan_vtd_init, program_vtd_tables};
 
 #[test]
 fn encode_vtd_context_entry_without_interrupt_remapping_flag() {

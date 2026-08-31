@@ -59,13 +59,13 @@ mod tests {
 
     #[test]
     fn execute_vtd_enable_records_intent_when_test_environment_forced() {
-    use crate::instructions::environment::test_force_live_environment_ready;
+        use crate::instructions::environment::test_force_live_environment_ready;
 
-    test_force_live_environment_ready(true);
-    execute_vtd_enable(true).expect("record intent");
-    let intent = last_vtd_enable_intent();
-    assert!(intent.recorded);
-    assert!(intent.interrupt_remapping);
-    test_force_live_environment_ready(false);
-}
+        test_force_live_environment_ready(true);
+        execute_vtd_enable(true).expect("record intent");
+        let intent = last_vtd_enable_intent();
+        assert!(intent.recorded);
+        assert!(intent.interrupt_remapping);
+        test_force_live_environment_ready(false);
+    }
 }

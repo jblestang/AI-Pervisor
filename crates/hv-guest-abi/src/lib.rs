@@ -147,7 +147,8 @@ pub const GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES: usize =
 /// Returns the byte offset of the relay measurement extension in a boot info blob.
 pub fn guest_boot_info_relay_measurement_offset(total_size: u32) -> Option<usize> {
     let total = total_size as usize;
-    if total < core::mem::size_of::<GuestBootInfoHeader>() + GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES
+    if total
+        < core::mem::size_of::<GuestBootInfoHeader>() + GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES
     {
         return None;
     }
@@ -156,8 +157,9 @@ pub fn guest_boot_info_relay_measurement_offset(total_size: u32) -> Option<usize
 
 /// Legacy alias retained for callers referencing relay-frame counter tail sizing.
 pub fn guest_boot_info_relay_frames_offset(total_size: u32) -> Option<usize> {
-    guest_boot_info_relay_measurement_offset(total_size)
-        .map(|offset| offset + core::mem::offset_of!(GuestBootInfoRelayMeasurement, frames_completed))
+    guest_boot_info_relay_measurement_offset(total_size).map(|offset| {
+        offset + core::mem::offset_of!(GuestBootInfoRelayMeasurement, frames_completed)
+    })
 }
 
 /// Parses and validates the relay measurement extension from a boot info blob.
@@ -191,9 +193,7 @@ pub fn parse_guest_boot_info_relay_measurement(
 }
 
 /// Parses a relay measurement page header sample (first 40 bytes of the counter page).
-pub fn parse_relay_measurement_page_header(
-    bytes: &[u8],
-) -> Option<GuestBootInfoRelayMeasurement> {
+pub fn parse_relay_measurement_page_header(bytes: &[u8]) -> Option<GuestBootInfoRelayMeasurement> {
     if bytes.len() < GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES {
         return None;
     }
@@ -220,14 +220,14 @@ pub fn parse_relay_measurement_page_header(
 
 fn read_u32(bytes: &[u8], offset: usize) -> Option<u32> {
     let slice = bytes.get(offset..offset + 4)?;
-    Some(u32::from_le_bytes([slice[0], slice[1], slice[2], slice[3]]))
+    let array: [u8; 4] = slice.try_into().ok()?;
+    Some(u32::from_le_bytes(array))
 }
 
 fn read_u64(bytes: &[u8], offset: usize) -> Option<u64> {
     let slice = bytes.get(offset..offset + 8)?;
-    Some(u64::from_le_bytes([
-        slice[0], slice[1], slice[2], slice[3], slice[4], slice[5], slice[6], slice[7],
-    ]))
+    let array: [u8; 8] = slice.try_into().ok()?;
+    Some(u64::from_le_bytes(array))
 }
 
 /// Returns whether a guest boot info header matches the supported ABI.
@@ -248,6 +248,7 @@ pub fn guest_relay_measurement_elapsed_tsc(extension: &GuestBootInfoRelayMeasure
 }
 
 #[cfg(test)]
+#[allow(clippy::indexing_slicing)]
 mod tests {
     use super::*;
     use core::mem::{align_of, size_of};
@@ -288,10 +289,7 @@ mod tests {
         };
         assert!(!guest_abi_is_compatible(&bad_version));
 
-        let v1 = GuestBootInfoHeader {
-            version: 1,
-            ..ok
-        };
+        let v1 = GuestBootInfoHeader { version: 1, ..ok };
         assert!(guest_abi_is_compatible(&v1));
     }
 

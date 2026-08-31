@@ -24,15 +24,14 @@ use constants::{
     DEFAULT_EFI_OUTPUT_PATH, DEFAULT_FUZZ_RUNS, DEFAULT_HYPERVISOR_EFI_OUTPUT_PATH,
     DEFAULT_LIVE_BOOT_CHAIN_OUTPUT_DIR, DEFAULT_LIVE_QEMU_SMOKE_TIMEOUT_SECS,
     DEFAULT_OVMF_SMOKE_CONFIG_PATH, DEFAULT_OVMF_SMOKE_TIMEOUT_SECS,
-    HYPERVISOR_EFI_REAL_HW_FEATURE, HYPERVISOR_EFI_VMX_LAUNCH_FEATURE,
-    HYPERVISOR_EFI_DATAPATH_FOUNDATION_FEATURE, HYPERVISOR_EFI_DATAPATH_LIVE_FEATURE,
-    HYPERVISOR_EFI_DATAPATH_MALICIOUS_FEATURE, HYPERVISOR_EFI_DATAPATH_GUESTS_FEATURE,
-    HYPERVISOR_EFI_DATAPATH_BENCHMARK_FEATURE, HYPERVISOR_EFI_DATAPATH_RUNTIME_FEATURE,
-    HYPERVISOR_EFI_DATAPATH_GUEST_SOURCES_FEATURE, HYPERVISOR_EFI_DATAPATH_GUEST_LIVE_FEATURE,
-    HYPERVISOR_EFI_DATAPATH_GUEST_EXECUTION_FEATURE,
-    HYPERVISOR_EFI_DATAPATH_GUEST_THROUGHPUT_FEATURE,
-    HYPERVISOR_EFI_DATAPATH_GUEST_RELAY_LIVE_FEATURE,
+    HYPERVISOR_EFI_DATAPATH_BENCHMARK_FEATURE, HYPERVISOR_EFI_DATAPATH_FOUNDATION_FEATURE,
+    HYPERVISOR_EFI_DATAPATH_GUESTS_FEATURE, HYPERVISOR_EFI_DATAPATH_GUEST_EXECUTION_FEATURE,
+    HYPERVISOR_EFI_DATAPATH_GUEST_LIVE_FEATURE, HYPERVISOR_EFI_DATAPATH_GUEST_RELAY_LIVE_FEATURE,
     HYPERVISOR_EFI_DATAPATH_GUEST_RELAY_MEASUREMENT_FEATURE,
+    HYPERVISOR_EFI_DATAPATH_GUEST_SOURCES_FEATURE,
+    HYPERVISOR_EFI_DATAPATH_GUEST_THROUGHPUT_FEATURE, HYPERVISOR_EFI_DATAPATH_LIVE_FEATURE,
+    HYPERVISOR_EFI_DATAPATH_MALICIOUS_FEATURE, HYPERVISOR_EFI_DATAPATH_RUNTIME_FEATURE,
+    HYPERVISOR_EFI_REAL_HW_FEATURE, HYPERVISOR_EFI_VMX_LAUNCH_FEATURE,
 };
 use hv_config::constants::DEFAULT_CONFIG_OUTPUT_DIR;
 
@@ -343,7 +342,22 @@ fn build_hypervisor_efi_image_live(
         workspace,
         digest_path,
         config_path,
-        &[HYPERVISOR_EFI_REAL_HW_FEATURE, HYPERVISOR_EFI_VMX_LAUNCH_FEATURE, HYPERVISOR_EFI_DATAPATH_FOUNDATION_FEATURE, HYPERVISOR_EFI_DATAPATH_LIVE_FEATURE, HYPERVISOR_EFI_DATAPATH_MALICIOUS_FEATURE, HYPERVISOR_EFI_DATAPATH_GUESTS_FEATURE, HYPERVISOR_EFI_DATAPATH_BENCHMARK_FEATURE, HYPERVISOR_EFI_DATAPATH_RUNTIME_FEATURE, HYPERVISOR_EFI_DATAPATH_GUEST_SOURCES_FEATURE, HYPERVISOR_EFI_DATAPATH_GUEST_LIVE_FEATURE, HYPERVISOR_EFI_DATAPATH_GUEST_EXECUTION_FEATURE, HYPERVISOR_EFI_DATAPATH_GUEST_THROUGHPUT_FEATURE, HYPERVISOR_EFI_DATAPATH_GUEST_RELAY_LIVE_FEATURE, HYPERVISOR_EFI_DATAPATH_GUEST_RELAY_MEASUREMENT_FEATURE],
+        &[
+            HYPERVISOR_EFI_REAL_HW_FEATURE,
+            HYPERVISOR_EFI_VMX_LAUNCH_FEATURE,
+            HYPERVISOR_EFI_DATAPATH_FOUNDATION_FEATURE,
+            HYPERVISOR_EFI_DATAPATH_LIVE_FEATURE,
+            HYPERVISOR_EFI_DATAPATH_MALICIOUS_FEATURE,
+            HYPERVISOR_EFI_DATAPATH_GUESTS_FEATURE,
+            HYPERVISOR_EFI_DATAPATH_BENCHMARK_FEATURE,
+            HYPERVISOR_EFI_DATAPATH_RUNTIME_FEATURE,
+            HYPERVISOR_EFI_DATAPATH_GUEST_SOURCES_FEATURE,
+            HYPERVISOR_EFI_DATAPATH_GUEST_LIVE_FEATURE,
+            HYPERVISOR_EFI_DATAPATH_GUEST_EXECUTION_FEATURE,
+            HYPERVISOR_EFI_DATAPATH_GUEST_THROUGHPUT_FEATURE,
+            HYPERVISOR_EFI_DATAPATH_GUEST_RELAY_LIVE_FEATURE,
+            HYPERVISOR_EFI_DATAPATH_GUEST_RELAY_MEASUREMENT_FEATURE,
+        ],
         run_command,
     )
 }
@@ -380,7 +394,10 @@ fn hypervisor_efi_build_command(
             "--target",
             "x86_64-unknown-uefi",
         ])
-        .env("HV_HYPERVISOR_EMBEDDED_CONFIG_PATH", "build/hypervisor_embedded_config.rs")
+        .env(
+            "HV_HYPERVISOR_EMBEDDED_CONFIG_PATH",
+            "build/hypervisor_embedded_config.rs",
+        )
         .env("CXX", "g++");
     if !features.is_empty() {
         command.args(["--features", &features.join(",")]);
@@ -591,12 +608,7 @@ fn spawn_llvm_cov_summary_with(
     ]) {
         return Ok((String::new(), String::new(), false));
     }
-    if !pass_runner(&[
-        "-p",
-        "hv-hypervisor-boot",
-        "--features",
-        "vmx-launch",
-    ]) {
+    if !pass_runner(&["-p", "hv-hypervisor-boot", "--features", "vmx-launch"]) {
         return Ok((String::new(), String::new(), false));
     }
     if !pass_runner(&[
@@ -615,12 +627,7 @@ fn spawn_llvm_cov_summary_with(
     ]) {
         return Ok((String::new(), String::new(), false));
     }
-    if !pass_runner(&[
-        "-p",
-        "hv-hypervisor-boot",
-        "--features",
-        "datapath-live",
-    ]) {
+    if !pass_runner(&["-p", "hv-hypervisor-boot", "--features", "datapath-live"]) {
         return Ok((String::new(), String::new(), false));
     }
     if !pass_runner(&[
@@ -631,12 +638,7 @@ fn spawn_llvm_cov_summary_with(
     ]) {
         return Ok((String::new(), String::new(), false));
     }
-    if !pass_runner(&[
-        "-p",
-        "hv-hypervisor-efi",
-        "--features",
-        "datapath-live",
-    ]) {
+    if !pass_runner(&["-p", "hv-hypervisor-efi", "--features", "datapath-live"]) {
         return Ok((String::new(), String::new(), false));
     }
     if !pass_runner(&[
@@ -647,20 +649,10 @@ fn spawn_llvm_cov_summary_with(
     ]) {
         return Ok((String::new(), String::new(), false));
     }
-    if !pass_runner(&[
-        "-p",
-        "hv-hypervisor-boot",
-        "--features",
-        "datapath-guests",
-    ]) {
+    if !pass_runner(&["-p", "hv-hypervisor-boot", "--features", "datapath-guests"]) {
         return Ok((String::new(), String::new(), false));
     }
-    if !pass_runner(&[
-        "-p",
-        "hv-hypervisor-efi",
-        "--features",
-        "datapath-guests",
-    ]) {
+    if !pass_runner(&["-p", "hv-hypervisor-efi", "--features", "datapath-guests"]) {
         return Ok((String::new(), String::new(), false));
     }
     if !pass_runner(&[
@@ -679,20 +671,10 @@ fn spawn_llvm_cov_summary_with(
     ]) {
         return Ok((String::new(), String::new(), false));
     }
-    if !pass_runner(&[
-        "-p",
-        "hv-hypervisor-boot",
-        "--features",
-        "datapath-runtime",
-    ]) {
+    if !pass_runner(&["-p", "hv-hypervisor-boot", "--features", "datapath-runtime"]) {
         return Ok((String::new(), String::new(), false));
     }
-    if !pass_runner(&[
-        "-p",
-        "hv-hypervisor-efi",
-        "--features",
-        "datapath-runtime",
-    ]) {
+    if !pass_runner(&["-p", "hv-hypervisor-efi", "--features", "datapath-runtime"]) {
         return Ok((String::new(), String::new(), false));
     }
     if build_guests::run_build_guests() != 0 {
@@ -802,12 +784,7 @@ fn spawn_llvm_cov_summary_with(
     ]) {
         return Ok((String::new(), String::new(), false));
     }
-    if !pass_runner(&[
-        "-p",
-        "hv-hypervisor-efi",
-        "--features",
-        "vmx-launch",
-    ]) {
+    if !pass_runner(&["-p", "hv-hypervisor-efi", "--features", "vmx-launch"]) {
         return Ok((String::new(), String::new(), false));
     }
 
@@ -881,7 +858,9 @@ fn dispatch_task_with(task: TaskCommand, runner: fn(&str, &[&str]) -> i32) -> i3
             timeout_secs,
             build,
         } => run_live_qemu_smoke(&config, &boot_chain_dir, timeout_secs, build),
-        TaskCommand::DatapathBenchmark { config } => datapath_benchmark::run_datapath_benchmark(&config),
+        TaskCommand::DatapathBenchmark { config } => {
+            datapath_benchmark::run_datapath_benchmark(&config)
+        }
         TaskCommand::BuildGuests => build_guests::run_build_guests(),
         TaskCommand::DatapathLiveBenchmark { config } => {
             if build_guests::run_build_guests() != 0 {
@@ -1400,7 +1379,8 @@ mod tests {
         let args: Vec<_> = command.get_args().collect();
         assert!(args.iter().any(|arg| *arg == "--features"));
         assert!(args.iter().any(|arg| {
-            arg.to_string_lossy().contains(HYPERVISOR_EFI_REAL_HW_FEATURE)
+            arg.to_string_lossy()
+                .contains(HYPERVISOR_EFI_REAL_HW_FEATURE)
         }));
     }
 
@@ -1424,10 +1404,7 @@ mod tests {
 
     #[test]
     fn run_build_boot_chain_delegates_to_pipeline() {
-        assert_ne!(
-            run_build_boot_chain("/no/such/config.yaml", "build/out"),
-            0
-        );
+        assert_ne!(run_build_boot_chain("/no/such/config.yaml", "build/out"), 0);
     }
 
     #[test]
@@ -1466,18 +1443,8 @@ mod tests {
 
     #[test]
     fn run_live_qemu_smoke_and_ovmf_wrappers_are_callable() {
-        let _ = run_ovmf_smoke_boot(
-            "configs/qemu.yaml",
-            "build/missing-ovmf-chain",
-            1,
-            false,
-        );
-        let _ = run_live_qemu_smoke(
-            "configs/qemu.yaml",
-            "build/missing-live-chain",
-            1,
-            false,
-        );
+        let _ = run_ovmf_smoke_boot("configs/qemu.yaml", "build/missing-ovmf-chain", 1, false);
+        let _ = run_live_qemu_smoke("configs/qemu.yaml", "build/missing-live-chain", 1, false);
     }
 
     #[test]
@@ -1697,12 +1664,7 @@ mod tests {
     fn hypervisor_efi_build_command_sets_release_uefi_manifest_and_env() {
         let workspace = workspace_root();
         let command =
-            hypervisor_efi_build_command(
-                &workspace,
-                "/tmp/config.sha256",
-                "/tmp/config.yaml",
-                &[],
-            );
+            hypervisor_efi_build_command(&workspace, "/tmp/config.sha256", "/tmp/config.yaml", &[]);
         assert_eq!(command.get_program(), "cargo");
         let args: Vec<_> = command.get_args().collect();
         assert!(args.iter().any(|arg| *arg == "--release"));

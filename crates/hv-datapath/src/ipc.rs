@@ -76,7 +76,9 @@ impl<'a> IpcQueueView<'a> {
             .header
             .head
             .checked_sub(self.header.tail)
-            .ok_or_else(|| DatapathError::new(DatapathErrorKind::IpcViolation, "ipc head underflow"))?;
+            .ok_or_else(|| {
+                DatapathError::new(DatapathErrorKind::IpcViolation, "ipc head underflow")
+            })?;
         if occupancy >= self.header.queue_slots {
             return Err(DatapathError::new(
                 DatapathErrorKind::IpcViolation,
@@ -85,11 +87,9 @@ impl<'a> IpcQueueView<'a> {
         }
         let slot_index = self.header.head % self.header.queue_slots;
         write_slot(self.bytes, &self.header, slot_index, payload)?;
-        self.header.head = self
-            .header
-            .head
-            .checked_add(1)
-            .ok_or_else(|| DatapathError::new(DatapathErrorKind::IpcViolation, "ipc head overflow"))?;
+        self.header.head = self.header.head.checked_add(1).ok_or_else(|| {
+            DatapathError::new(DatapathErrorKind::IpcViolation, "ipc head overflow")
+        })?;
         write_queue_header(self.bytes, &self.header)?;
         Ok(())
     }
@@ -105,11 +105,9 @@ impl<'a> IpcQueueView<'a> {
         let slot_index = self.header.tail % self.header.queue_slots;
         let payload_len = read_slot(self.bytes, &self.header, slot_index, out)?;
         invalidate_slot(self.bytes, &self.header, slot_index)?;
-        self.header.tail = self
-            .header
-            .tail
-            .checked_add(1)
-            .ok_or_else(|| DatapathError::new(DatapathErrorKind::IpcViolation, "ipc tail overflow"))?;
+        self.header.tail = self.header.tail.checked_add(1).ok_or_else(|| {
+            DatapathError::new(DatapathErrorKind::IpcViolation, "ipc tail overflow")
+        })?;
         write_queue_header(self.bytes, &self.header)?;
         Ok(payload_len)
     }
@@ -120,13 +118,17 @@ pub fn queue_storage_bytes(queue_slots: u32, slot_size_bytes: u32) -> Result<usi
     let header = core::mem::size_of::<IpcQueueHeader>() as u64;
     let per_slot = u64::from(slot_size_bytes)
         .checked_add(IPC_SLOT_METADATA_BYTES)
-        .ok_or_else(|| DatapathError::new(DatapathErrorKind::InvalidInput, "ipc slot size overflow"))?;
+        .ok_or_else(|| {
+            DatapathError::new(DatapathErrorKind::InvalidInput, "ipc slot size overflow")
+        })?;
     let slots = u64::from(queue_slots)
         .checked_mul(per_slot)
-        .ok_or_else(|| DatapathError::new(DatapathErrorKind::InvalidInput, "ipc queue size overflow"))?;
-    let total = header
-        .checked_add(slots)
-        .ok_or_else(|| DatapathError::new(DatapathErrorKind::InvalidInput, "ipc storage overflow"))?;
+        .ok_or_else(|| {
+            DatapathError::new(DatapathErrorKind::InvalidInput, "ipc queue size overflow")
+        })?;
+    let total = header.checked_add(slots).ok_or_else(|| {
+        DatapathError::new(DatapathErrorKind::InvalidInput, "ipc storage overflow")
+    })?;
     usize::try_from(total).map_err(|_| {
         DatapathError::new(DatapathErrorKind::InvalidInput, "ipc storage exceeds usize")
     })
@@ -163,11 +165,14 @@ fn write_slot(
     write_u32(bytes, offset, 1)?;
     write_u32(bytes, offset + 4, payload.len() as u32)?;
     let payload_offset = offset + IPC_SLOT_METADATA_BYTES as usize;
-    let end = payload_offset
-        .checked_add(payload.len())
-        .ok_or_else(|| DatapathError::new(DatapathErrorKind::IpcViolation, "slot write overflow"))?;
+    let end = payload_offset.checked_add(payload.len()).ok_or_else(|| {
+        DatapathError::new(DatapathErrorKind::IpcViolation, "slot write overflow")
+    })?;
     let slice = bytes.get_mut(payload_offset..end).ok_or_else(|| {
-        DatapathError::new(DatapathErrorKind::IpcViolation, "slot payload out of bounds")
+        DatapathError::new(
+            DatapathErrorKind::IpcViolation,
+            "slot payload out of bounds",
+        )
     })?;
     slice.copy_from_slice(payload);
     Ok(())
@@ -205,7 +210,10 @@ fn read_slot(
         .checked_add(payload_len)
         .ok_or_else(|| DatapathError::new(DatapathErrorKind::IpcViolation, "slot read overflow"))?;
     let slice = bytes.get(payload_offset..end).ok_or_else(|| {
-        DatapathError::new(DatapathErrorKind::IpcViolation, "slot payload out of bounds")
+        DatapathError::new(
+            DatapathErrorKind::IpcViolation,
+            "slot payload out of bounds",
+        )
     })?;
     if let Some(target) = out.get_mut(0..payload_len) {
         target.copy_from_slice(slice);
@@ -234,13 +242,15 @@ fn slot_offset(header: &IpcQueueHeader, slot_index: u32) -> Result<usize, Datapa
     let header_bytes = core::mem::size_of::<IpcQueueHeader>() as u64;
     let per_slot = u64::from(header.slot_size_bytes)
         .checked_add(IPC_SLOT_METADATA_BYTES)
-        .ok_or_else(|| DatapathError::new(DatapathErrorKind::IpcViolation, "slot stride overflow"))?;
-    let slot_base = u64::from(slot_index)
-        .checked_mul(per_slot)
-        .ok_or_else(|| DatapathError::new(DatapathErrorKind::IpcViolation, "slot offset overflow"))?;
-    let offset = header_bytes
-        .checked_add(slot_base)
-        .ok_or_else(|| DatapathError::new(DatapathErrorKind::IpcViolation, "slot address overflow"))?;
+        .ok_or_else(|| {
+            DatapathError::new(DatapathErrorKind::IpcViolation, "slot stride overflow")
+        })?;
+    let slot_base = u64::from(slot_index).checked_mul(per_slot).ok_or_else(|| {
+        DatapathError::new(DatapathErrorKind::IpcViolation, "slot offset overflow")
+    })?;
+    let offset = header_bytes.checked_add(slot_base).ok_or_else(|| {
+        DatapathError::new(DatapathErrorKind::IpcViolation, "slot address overflow")
+    })?;
     usize::try_from(offset).map_err(|_| {
         DatapathError::new(DatapathErrorKind::IpcViolation, "slot offset exceeds usize")
     })
@@ -248,7 +258,10 @@ fn slot_offset(header: &IpcQueueHeader, slot_index: u32) -> Result<usize, Datapa
 
 fn read_u32(bytes: &[u8], offset: usize) -> Result<u32, DatapathError> {
     let slice = bytes.get(offset..offset + 4).ok_or_else(|| {
-        DatapathError::new(DatapathErrorKind::IpcViolation, "ipc u32 read out of bounds")
+        DatapathError::new(
+            DatapathErrorKind::IpcViolation,
+            "ipc u32 read out of bounds",
+        )
     })?;
     Ok(u32::from_le_bytes([
         slice.first().copied().unwrap_or(0),
@@ -260,7 +273,10 @@ fn read_u32(bytes: &[u8], offset: usize) -> Result<u32, DatapathError> {
 
 fn write_u32(bytes: &mut [u8], offset: usize, value: u32) -> Result<(), DatapathError> {
     let slice = bytes.get_mut(offset..offset + 4).ok_or_else(|| {
-        DatapathError::new(DatapathErrorKind::IpcViolation, "ipc u32 write out of bounds")
+        DatapathError::new(
+            DatapathErrorKind::IpcViolation,
+            "ipc u32 write out of bounds",
+        )
     })?;
     slice.copy_from_slice(&value.to_le_bytes());
     Ok(())
@@ -292,7 +308,9 @@ mod tests {
         assert!(queue.enqueue(b"blocked").is_err());
         let mut out = [0u8; 64];
         queue.dequeue(&mut out).expect("mid drains one slot");
-        queue.enqueue(b"after-drain").expect("producer resumes after drain");
+        queue
+            .enqueue(b"after-drain")
+            .expect("producer resumes after drain");
     }
 
     #[test]
