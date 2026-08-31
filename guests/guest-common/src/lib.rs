@@ -50,14 +50,14 @@ pub fn run(role: Role, boot_info: *const u8) -> ! {
 fn run_in_sustained(boot_info: *const u8, layout: &layout::ResolvedLayout, frames: u32) {
     for _ in 0..frames {
         run_in(layout);
-        relay::record_relay_frame_completed(boot_info);
+        let _ = boot_info;
     }
 }
 
 fn run_mid_sustained(boot_info: *const u8, layout: &layout::ResolvedLayout, frames: u32) {
     for _ in 0..frames {
         run_mid(layout);
-        relay::record_relay_frame_completed(boot_info);
+        let _ = boot_info;
     }
 }
 

@@ -143,6 +143,48 @@ pub fn vmlaunch() -> Result<(), CpuSeamError> {
     Ok(())
 }
 
+/// VMLAUNCH followed by a return from the VM-exit stub when the guest executes `HLT`.
+pub fn vmlaunch_wait_for_hlt_exit() -> Result<(), CpuSeamError> {
+    let mut cf: u8 = 0;
+    let mut zf: u8 = 0;
+    let mut guest_done: u64 = 0;
+    // SAFETY: HOST_RIP points at the installed exit stub; stub `ret` resumes at `guest_hlt_done`.
+    unsafe {
+        core::arch::asm!(
+            "call 2f",
+            "2:",
+            "pop {guest_done}",
+            "add {guest_done}, {guest_done_offset}",
+            "push rax",
+            "push {guest_done}",
+            "vmlaunch",
+            "add rsp, 8",
+            "pop rax",
+            "setc {cf}",
+            "setz {zf}",
+            "jmp 4f",
+            "3:",
+            "pop rax",
+            "4:",
+            guest_done = out(reg) guest_done,
+            guest_done_offset = const GUEST_HLT_DONE_OFFSET,
+            cf = out(reg_byte) cf,
+            zf = out(reg_byte) zf,
+            options(nostack),
+        );
+    }
+    if cf != 0 || zf != 0 {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::ExecutionFailed,
+            "VMLAUNCH failed (CF/ZF set)",
+        ));
+    }
+    Ok(())
+}
+
+/// Byte offset from the `pop` in the call/pop sequence to label `3` (`guest_hlt_done`).
+const GUEST_HLT_DONE_OFFSET: u64 = 19;
+
 pub fn rdmsr(msr: u32) -> Result<(u32, u32), CpuSeamError> {
     let mut low: u32;
     let mut high: u32;

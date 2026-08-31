@@ -279,24 +279,40 @@ fn execute_datapath_guest_vmlaunch_fields_if_enabled(
         if crate::instructions::live_execution_environment_ready() {
             let mut vmlaunch_attempts = 0u32;
             let mut all_executed = true;
-            for (vmcs_phys, fields, _host_exit_phys, _vm_id) in launches {
+            let mut stub_installed = false;
+            for (vmcs_phys, fields, host_exit_phys, _vm_id) in launches {
                 match crate::instructions::vmcs_fields::execute_vmcs_field_programming(*vmcs_phys, fields)
                 {
                     Ok(()) => {}
                     Err(err)
                         if err.kind == CpuSeamErrorKind::Unavailable
-                            || err.kind == CpuSeamErrorKind::ExecutionFailed => {
+                            || err.kind == CpuSeamErrorKind::ExecutionFailed =>
+                    {
                         all_executed = false;
                         continue;
                     }
                     Err(err) => return Err(err),
                 }
+                if !stub_installed {
+                    if let Err(err) = crate::instructions::vmexit_stub::install_vmexit_stub(*host_exit_phys)
+                    {
+                        if err.kind == CpuSeamErrorKind::InvalidInput {
+                            return Err(err);
+                        }
+                        all_executed = false;
+                        continue;
+                    }
+                    stub_installed = true;
+                }
                 vmlaunch_attempts = vmlaunch_attempts.saturating_add(1);
-                match crate::instructions::vmlaunch::execute_vmlaunch(*vmcs_phys) {
+                match crate::instructions::vmx_guest_run::run_vmx_guest_until_halt(
+                    *vmcs_phys, *host_exit_phys,
+                ) {
                     Ok(()) => {}
                     Err(err)
                         if err.kind == CpuSeamErrorKind::Unavailable
-                            || err.kind == CpuSeamErrorKind::ExecutionFailed => {
+                            || err.kind == CpuSeamErrorKind::ExecutionFailed =>
+                    {
                         all_executed = false;
                     }
                     Err(err) => return Err(err),
@@ -387,7 +403,20 @@ pub fn run_datapath_guest_throughput_cpu_seam(
         partitions_validated: execution_seam.partitions_validated,
         measurement_runs_validated: measurement_runs,
         #[cfg(feature = "datapath-guest-relay-live")]
-        live_relay_validated: execution_seam.disposition == CpuInstructionDisposition::Executed,
+        live_relay_validated: {
+            let execution_executed =
+                execution_seam.disposition == CpuInstructionDisposition::Executed;
+            #[cfg(feature = "datapath-guest-relay-measurement")]
+            {
+                execution_executed
+                    && expected_relay_frames > 0
+                    && in_vm_relay_frames >= expected_relay_frames
+            }
+            #[cfg(not(feature = "datapath-guest-relay-measurement"))]
+            {
+                execution_executed
+            }
+        },
         #[cfg(feature = "datapath-guest-relay-measurement")]
         in_vm_relay_frames,
     })
@@ -913,5 +942,6 @@ mod tests {
             .expect("guest throughput measurement");
         assert_eq!(outcome.disposition, CpuInstructionDisposition::Executed);
         assert_eq!(outcome.in_vm_relay_frames, 64);
+        assert!(outcome.live_relay_validated);
     }
 }

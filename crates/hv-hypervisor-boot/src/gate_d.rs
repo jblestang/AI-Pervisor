@@ -1448,6 +1448,12 @@ pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAlloca
             let view = GuestBootInfoView::parse(blob).map_err(|err| {
                 BootCheckError::new(BootCheckErrorKind::Platform, err.message)
             })?;
+            if !hv_guest_abi::guest_boot_info_has_relay_measurement_tail(view.header()) {
+                return Err(BootCheckError::new(
+                    BootCheckErrorKind::Platform,
+                    "relay measurement requires ABI v2 boot info tail",
+                ));
+            }
             sites.push(GuestBootInfoMeasurementSite {
                 vm_id: record.vm_id,
                 host_boot_info_phys: boot_info_phys,
@@ -1527,7 +1533,18 @@ pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAlloca
                 "guest relay measurement seam frame count mismatch",
             ));
         }
-        if throughput_seam.live_relay_validated != guest_execution_executed {
+        if throughput_seam.live_relay_validated
+            != {
+                #[cfg(feature = "datapath-guest-relay-measurement")]
+                {
+                    guest_execution_executed && in_vm_relay_frames >= expected_relay_frames
+                }
+                #[cfg(not(feature = "datapath-guest-relay-measurement"))]
+                {
+                    guest_execution_executed
+                }
+            }
+        {
             return Err(BootCheckError::new(
                 BootCheckErrorKind::Platform,
                 "guest relay live seam mismatch with execution outcome",

@@ -71,6 +71,8 @@ pub use seams::{run_datapath_guest_execution_cpu_seam, DatapathGuestExecutionCpu
 pub use seams::{run_datapath_guest_throughput_cpu_seam, DatapathGuestThroughputCpuSeamOutcome};
 #[cfg(feature = "datapath-guest-relay-measurement")]
 pub use guest_relay_measurement::{
-    measure_in_vm_relay_frames_from_boot_infos, read_relay_frames_completed_from_boot_info_host,
-    GuestBootInfoMeasurementSite,
+    measure_in_vm_relay_frames_from_boot_infos,
+    read_relay_frames_completed_from_boot_info_blob,
+    read_relay_frames_completed_from_boot_info_host, GuestBootInfoMeasurementSite,
+    GUEST_RELAY_MEASUREMENT_VM_ID,
 };
