@@ -197,6 +197,61 @@ pub fn install_guest_elf_with_boot_info<A: PageAllocator>(
     })
 }
 
+/// Installed hypervisor-owned relay measurement page addresses.
+#[cfg(feature = "datapath-guest-relay-measurement")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RelayMeasurementPageInstall {
+    /// Host physical base of the measurement page.
+    pub host_phys: u64,
+    /// Guest physical base mapped via EPT.
+    pub guest_phys: u64,
+}
+
+/// Allocates and initializes the hypervisor-owned relay measurement counter page.
+#[cfg(feature = "datapath-guest-relay-measurement")]
+pub fn install_relay_measurement_page<A: PageAllocator>(
+    allocator: &mut A,
+    guest_phys: u64,
+) -> Result<RelayMeasurementPageInstall, CpuSeamError> {
+    use core::mem::size_of;
+
+    use hv_datapath::RELAY_MEASUREMENT_PAGE_BYTES;
+    use hv_guest_abi::{
+        GuestBootInfoRelayMeasurement, GUEST_RELAY_MEASUREMENT_EXTENSION_VERSION,
+        GUEST_RELAY_MEASUREMENT_MAGIC,
+    };
+
+    if guest_phys == 0 {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "relay measurement page guest address must be non-zero",
+        ));
+    }
+    let size = RELAY_MEASUREMENT_PAGE_BYTES as usize;
+    let host_phys = allocator.allocate_pages(size, VMXON_REGION_ALIGNMENT_BYTES)?;
+    let extension = GuestBootInfoRelayMeasurement {
+        magic: GUEST_RELAY_MEASUREMENT_MAGIC,
+        version: GUEST_RELAY_MEASUREMENT_EXTENSION_VERSION,
+        frames_completed: 0,
+        tsc_start: 0,
+        tsc_end: 0,
+        measurement_page_gpa: guest_phys,
+    };
+    let mut page = alloc::vec![0u8; size];
+    let header_len = size_of::<GuestBootInfoRelayMeasurement>();
+    page[0..4].copy_from_slice(&extension.magic.to_le_bytes());
+    page[4..8].copy_from_slice(&extension.version.to_le_bytes());
+    page[8..16].copy_from_slice(&extension.frames_completed.to_le_bytes());
+    page[16..24].copy_from_slice(&extension.tsc_start.to_le_bytes());
+    page[24..32].copy_from_slice(&extension.tsc_end.to_le_bytes());
+    page[32..header_len].copy_from_slice(&extension.measurement_page_gpa.to_le_bytes());
+    allocator.copy_to_pages(host_phys, &page)?;
+    Ok(RelayMeasurementPageInstall {
+        host_phys,
+        guest_phys,
+    })
+}
+
 fn align_up_usize(value: usize, alignment: usize) -> Result<usize, CpuSeamError> {
     if alignment == 0 || alignment & (alignment - 1) != 0 {
         return Err(CpuSeamError::new(

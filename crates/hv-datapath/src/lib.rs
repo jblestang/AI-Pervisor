@@ -45,6 +45,7 @@ pub use compromised::{
 pub use constants::{
     E1000_MMIO_GUEST_PHYS_BASE, E1000_MMIO_GUEST_PHYS_STRIDE, E1000_MMIO_SIZE_BYTES,
     REFERENCE_IPC_CHAN_A_GUEST_PHYS, REFERENCE_IPC_CHAN_B_GUEST_PHYS, REFERENCE_IPC_SHARED_BYTES,
+    RELAY_MEASUREMENT_PAGE_BYTES, RELAY_MEASUREMENT_PAGE_GUEST_PHYS,
 };
 pub use e1000::{
     handle_e1000_mmio_read, handle_e1000_mmio_write, E1000MmioState, E1000_REG_RDH, E1000_REG_RDT,
@@ -62,7 +63,7 @@ pub use ipc::{
 };
 pub use plan::{
     plan_datapath_for_partition, plan_datapath_for_vm_id, plan_e1000_mmio_guest_phys,
-    plan_out_ipc_consumer_guest_phys, DatapathPartitionPlan,
+    plan_out_ipc_consumer_guest_phys, plan_relay_measurement_page_gpa, DatapathPartitionPlan,
 };
 pub use runtime::{
     run_datapath_live_forward, DatapathLiveDisposition, DatapathLiveOutcome,

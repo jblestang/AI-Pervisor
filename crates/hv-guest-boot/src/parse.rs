@@ -205,7 +205,7 @@ impl<'a> GuestBootInfoView<'a> {
             ));
         }
         if self.header.version >= 2
-            && hv_guest_abi::guest_boot_info_relay_measurement_offset(self.header.size).is_none()
+            && guest_boot_info_relay_measurement_offset(self.header.size).is_none()
         {
             return Err(GuestBootInfoParseError::new(
                 GuestBootInfoParseErrorKind::Bounds,

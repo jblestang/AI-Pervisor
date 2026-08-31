@@ -25,6 +25,8 @@ pub struct GuestRelayMeasurementContext {
     pub out_boot_info_guest_phys: u64,
     /// Out-partition IPC consumer queue guest physical base.
     pub out_ipc_consumer_guest_phys: u64,
+    /// Hypervisor physical base of the relay measurement page when installed.
+    pub measurement_page_host_phys: Option<u64>,
     /// Total boot info blob size in bytes (includes relay measurement extension).
     pub boot_info_size: u32,
 }
@@ -64,15 +66,20 @@ impl GuestBootInfoMeasurementSite {
             ept_tables,
             out_boot_info_guest_phys: self.boot_info_guest_phys,
             out_ipc_consumer_guest_phys,
+            measurement_page_host_phys: None,
             boot_info_size: self.boot_info_size,
         }
     }
 }
 
-/// Reads the relay measurement extension from guest boot info via EPT resolution.
+/// Reads the relay measurement extension from the hypervisor-owned page or boot info via EPT.
 pub fn read_relay_measurement_extension_from_guest(
     context: &GuestRelayMeasurementContext,
 ) -> Result<GuestBootInfoRelayMeasurement, CpuSeamError> {
+    if let Some(host_phys) = context.measurement_page_host_phys {
+        let bytes = read_host_bytes(host_phys, GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES)?;
+        return parse_extension_bytes(&bytes);
+    }
     let bytes = read_guest_bytes_via_ept(
         &context.ept_tables,
         context.out_boot_info_guest_phys,
@@ -161,6 +168,7 @@ pub fn measure_in_vm_relay_frames_from_boot_infos(
     ept_tables: &EptProgrammedTables,
     sites: &[GuestBootInfoMeasurementSite],
     out_ipc_consumer_guest_phys: u64,
+    measurement_page_host_phys: Option<u64>,
     expected_frames: u64,
 ) -> Result<InVmRelayMeasurement, CpuSeamError> {
     let out_site = sites
@@ -176,6 +184,7 @@ pub fn measure_in_vm_relay_frames_from_boot_infos(
         ept_tables: ept_tables.clone(),
         out_boot_info_guest_phys: out_site.boot_info_guest_phys,
         out_ipc_consumer_guest_phys,
+        measurement_page_host_phys,
         boot_info_size: out_site.boot_info_size,
     };
     measure_in_vm_relay_from_context(execution_seam, &context, expected_frames)
@@ -208,13 +217,49 @@ fn read_guest_bytes_via_ept(
     len: usize,
 ) -> Result<alloc::vec::Vec<u8>, CpuSeamError> {
     let host_phys = resolve_guest_phys_range_to_host(tables, guest_phys, len).map_err(map_ept_error)?;
+    read_host_bytes(host_phys, len)
+}
+
+fn read_host_bytes(host_phys: u64, len: usize) -> Result<alloc::vec::Vec<u8>, CpuSeamError> {
     let mut bytes = alloc::vec![0u8; len];
-    // SAFETY: resolved host physical range is readable under Gate D EPT mappings.
+    // SAFETY: host physical range is readable under Gate D resident installs.
     unsafe {
         let src = core::slice::from_raw_parts(host_phys as *const u8, len);
         bytes.copy_from_slice(src);
     }
     Ok(bytes)
+}
+
+fn parse_extension_bytes(bytes: &[u8]) -> Result<GuestBootInfoRelayMeasurement, CpuSeamError> {
+    if bytes.len() < GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "relay measurement page sample too short",
+        ));
+    }
+    let extension = GuestBootInfoRelayMeasurement {
+        magic: u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]),
+        version: u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]),
+        frames_completed: u64::from_le_bytes([
+            bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15],
+        ]),
+        tsc_start: u64::from_le_bytes([
+            bytes[16], bytes[17], bytes[18], bytes[19], bytes[20], bytes[21], bytes[22], bytes[23],
+        ]),
+        tsc_end: u64::from_le_bytes([
+            bytes[24], bytes[25], bytes[26], bytes[27], bytes[28], bytes[29], bytes[30], bytes[31],
+        ]),
+        measurement_page_gpa: u64::from_le_bytes([
+            bytes[32], bytes[33], bytes[34], bytes[35], bytes[36], bytes[37], bytes[38], bytes[39],
+        ]),
+    };
+    if extension.magic != hv_guest_abi::GUEST_RELAY_MEASUREMENT_MAGIC {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "relay measurement page magic invalid",
+        ));
+    }
+    Ok(extension)
 }
 
 fn map_ept_error(err: hv_ept::EptError) -> CpuSeamError {
@@ -245,8 +290,8 @@ mod tests {
         }
     }
 
-    fn sample_extension_blob(frames: u64) -> [u8; 80] {
-        let mut blob = [0u8; 80];
+    fn sample_extension_blob(frames: u64) -> [u8; 88] {
+        let mut blob = [0u8; 88];
         let total = blob.len() as u32;
         blob[0..8].copy_from_slice(&GUEST_BOOT_INFO_MAGIC);
         blob[8..12].copy_from_slice(&2u32.to_le_bytes());
@@ -278,7 +323,8 @@ mod tests {
             ept_tables: sample_ept(),
             out_boot_info_guest_phys: 0x5000,
             out_ipc_consumer_guest_phys: 0x6000,
-            boot_info_size: 80,
+            measurement_page_host_phys: None,
+            boot_info_size: 88,
         };
         let sample = measure_in_vm_relay_from_context(&execution, &context, 64).expect("measure");
         assert_eq!(sample.frames, 0);
@@ -301,13 +347,14 @@ mod tests {
         let site = GuestBootInfoMeasurementSite {
             vm_id: VmId::new(0),
             boot_info_guest_phys: 0x1000,
-            boot_info_size: 80,
+            boot_info_size: 88,
         };
         assert!(measure_in_vm_relay_frames_from_boot_infos(
             &execution,
             &sample_ept(),
             &[site],
             0x2000,
+            None,
             64
         )
         .is_err());

@@ -1,4 +1,4 @@
-//! Relay measurement extension in guest boot info (ABI v2).
+//! Relay measurement extension in guest boot info and hypervisor-owned page (ABI v2).
 
 use core::mem::{offset_of, size_of};
 
@@ -8,26 +8,27 @@ use hv_guest_abi::{
     GUEST_RELAY_MEASUREMENT_MAGIC,
 };
 
-/// Initializes the relay measurement extension in guest boot info.
+/// Initializes relay measurement state in boot info and the hypervisor-owned page when mapped.
 pub fn init_relay_measurement(boot_info: *const u8) {
     if boot_info.is_null() {
         return;
     }
-    let Some(offset) = extension_offset(boot_info) else {
+    let Some(page) = measurement_page_ptr(boot_info) else {
+        init_extension_tail(boot_info);
         return;
     };
-    let extension = GuestBootInfoRelayMeasurement {
-        magic: GUEST_RELAY_MEASUREMENT_MAGIC,
-        version: GUEST_RELAY_MEASUREMENT_EXTENSION_VERSION,
-        frames_completed: 0,
-        tsc_start: 0,
-        tsc_end: 0,
-    };
-    // SAFETY: offset validated against boot info size and extension length.
+    // SAFETY: measurement page pointer validated via boot-info extension GPA.
     unsafe {
-        core::ptr::write_unaligned(
-            boot_info.add(offset) as *mut GuestBootInfoRelayMeasurement,
-            extension,
+        write_extension(
+            page,
+            GuestBootInfoRelayMeasurement {
+                magic: GUEST_RELAY_MEASUREMENT_MAGIC,
+                version: GUEST_RELAY_MEASUREMENT_EXTENSION_VERSION,
+                frames_completed: 0,
+                tsc_start: 0,
+                tsc_end: 0,
+                measurement_page_gpa: page as u64,
+            },
         );
     }
 }
@@ -47,6 +48,58 @@ pub fn record_relay_frame_completed(boot_info: *const u8) {
     if boot_info.is_null() {
         return;
     }
+    let Some(page) = measurement_page_ptr(boot_info) else {
+        record_relay_frame_in_boot_info_tail(boot_info);
+        return;
+    };
+    // SAFETY: measurement page pointer validated via boot-info extension GPA.
+    unsafe {
+        let frames_ptr = page.add(offset_of!(GuestBootInfoRelayMeasurement, frames_completed)) as *mut u64;
+        let current = core::ptr::read_unaligned(frames_ptr);
+        core::ptr::write_unaligned(frames_ptr, current.saturating_add(1));
+    }
+}
+
+fn write_tsc_field(boot_info: *const u8, field_offset: usize) {
+    if boot_info.is_null() {
+        return;
+    }
+    let tsc = read_tsc();
+    if let Some(page) = measurement_page_ptr(boot_info) {
+        // SAFETY: field offset lies inside the validated measurement page header.
+        unsafe {
+            core::ptr::write_unaligned(page.add(field_offset) as *mut u64, tsc);
+        }
+        return;
+    }
+    let Some(offset) = extension_offset(boot_info) else {
+        return;
+    };
+    // SAFETY: field offset lies inside the validated extension tail.
+    unsafe {
+        core::ptr::write_unaligned(boot_info.add(offset + field_offset) as *mut u64, tsc);
+    }
+}
+
+fn init_extension_tail(boot_info: *const u8) {
+    let Some(offset) = extension_offset(boot_info) else {
+        return;
+    };
+    let extension = GuestBootInfoRelayMeasurement {
+        magic: GUEST_RELAY_MEASUREMENT_MAGIC,
+        version: GUEST_RELAY_MEASUREMENT_EXTENSION_VERSION,
+        frames_completed: 0,
+        tsc_start: 0,
+        tsc_end: 0,
+        measurement_page_gpa: 0,
+    };
+    // SAFETY: offset validated against boot info size and extension length.
+    unsafe {
+        write_extension(boot_info.add(offset) as *mut u8, extension);
+    }
+}
+
+fn record_relay_frame_in_boot_info_tail(boot_info: *const u8) {
     let Some(offset) = extension_offset(boot_info) else {
         return;
     };
@@ -59,21 +112,25 @@ pub fn record_relay_frame_completed(boot_info: *const u8) {
     }
 }
 
-fn write_tsc_field(boot_info: *const u8, field_offset: usize) {
-    if boot_info.is_null() {
-        return;
+fn measurement_page_ptr(boot_info: *const u8) -> Option<*mut u8> {
+    let gpa = read_measurement_page_gpa(boot_info)?;
+    if gpa == 0 {
+        return None;
     }
-    let Some(offset) = extension_offset(boot_info) else {
-        return;
-    };
-    let tsc = read_tsc();
-    // SAFETY: field offset lies inside the validated extension tail.
-    unsafe {
-        core::ptr::write_unaligned(
-            boot_info.add(offset + field_offset) as *mut u64,
-            tsc,
-        );
-    }
+    Some(gpa as *mut u8)
+}
+
+fn read_measurement_page_gpa(boot_info: *const u8) -> Option<u64> {
+    let header_size = unsafe { read_boot_info_size(boot_info) };
+    // SAFETY: boot info pointer is valid for the guest lifetime when non-null.
+    let bytes = unsafe { core::slice::from_raw_parts(boot_info, header_size as usize) };
+    parse_guest_boot_info_relay_measurement(bytes)
+        .map(|extension| extension.measurement_page_gpa)
+        .filter(|gpa| *gpa != 0)
+}
+
+unsafe fn write_extension(base: *mut u8, extension: GuestBootInfoRelayMeasurement) {
+    core::ptr::write_unaligned(base as *mut GuestBootInfoRelayMeasurement, extension);
 }
 
 fn extension_offset(boot_info: *const u8) -> Option<usize> {
@@ -102,9 +159,4 @@ fn read_tsc() -> u64 {
     u64::from(hi) << 32 | u64::from(lo)
 }
 
-#[allow(dead_code)]
-fn validate_extension(bytes: &[u8]) -> bool {
-    parse_guest_boot_info_relay_measurement(bytes).is_some()
-}
-
-const _: () = assert!(size_of::<GuestBootInfoRelayMeasurement>() == 32);
+const _: () = assert!(size_of::<GuestBootInfoRelayMeasurement>() == 40);
