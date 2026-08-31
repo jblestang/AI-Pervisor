@@ -163,6 +163,7 @@ name = "hv-x86-cpu"
 version = "0.1.0"
 dependencies = [
  "hv-ept",
+ "hv-guest-abi",
  "hv-guest-boot",
  "hv-types",
  "hv-vmx",

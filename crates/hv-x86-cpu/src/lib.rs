@@ -23,6 +23,8 @@ mod constants;
 mod cpuid;
 mod error;
 mod instructions;
+#[cfg(feature = "datapath-guest-relay-measurement")]
+mod guest_relay_measurement;
 mod resident;
 mod resident_backends;
 mod seams;
@@ -67,3 +69,8 @@ pub use seams::{run_datapath_runtime_cpu_seam, DatapathRuntimeCpuSeamOutcome};
 pub use seams::{run_datapath_guest_execution_cpu_seam, DatapathGuestExecutionCpuSeamOutcome};
 #[cfg(feature = "datapath-guest-throughput")]
 pub use seams::{run_datapath_guest_throughput_cpu_seam, DatapathGuestThroughputCpuSeamOutcome};
+#[cfg(feature = "datapath-guest-relay-measurement")]
+pub use guest_relay_measurement::{
+    measure_in_vm_relay_frames_from_boot_infos, read_relay_frames_completed_from_boot_info_host,
+    GuestBootInfoMeasurementSite,
+};

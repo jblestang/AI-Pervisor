@@ -22,9 +22,11 @@ datapath-guest-live = ["datapath-guests"]
 datapath-guest-execution = ["datapath-guest-live", "datapath-live", "execute-instructions"]
 datapath-guest-throughput = ["datapath-guest-execution", "execute-instructions"]
 datapath-guest-relay-live = ["datapath-guest-throughput"]
+datapath-guest-relay-measurement = ["datapath-guest-relay-live", "dep:hv-guest-abi"]
 
 [dependencies]
 hv-ept = { path = "../hv-ept" }
+hv-guest-abi = { path = "../hv-guest-abi", optional = true }
 hv-guest-boot = { path = "../hv-guest-boot", optional = true }
 hv-types = { workspace = true }
 hv-vmx = { path = "../hv-vmx" }

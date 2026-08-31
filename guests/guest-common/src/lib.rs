@@ -7,6 +7,7 @@ mod boot;
 mod e1000;
 mod ipc;
 mod layout;
+mod relay;
 mod serial;
 
 pub use layout::Role;
@@ -36,9 +37,9 @@ pub fn run(role: Role, boot_info: *const u8) -> ! {
     serial::write_line(GUEST_DATAPATH_CAPABLE_MARKER);
 
     match role {
-        Role::In => run_in_sustained(&layout, GUEST_RELAY_BENCHMARK_FRAMES),
-        Role::Mid => run_mid_sustained(&layout, GUEST_RELAY_BENCHMARK_FRAMES),
-        Role::Out => run_out_sustained(&layout, GUEST_RELAY_BENCHMARK_FRAMES),
+        Role::In => run_in_sustained(boot_info, &layout, GUEST_RELAY_BENCHMARK_FRAMES),
+        Role::Mid => run_mid_sustained(boot_info, &layout, GUEST_RELAY_BENCHMARK_FRAMES),
+        Role::Out => run_out_sustained(boot_info, &layout, GUEST_RELAY_BENCHMARK_FRAMES),
     }
 
     serial::write_line(GUEST_DATAPATH_RELAY_BENCHMARK_COMPLETE_MARKER);
@@ -46,21 +47,24 @@ pub fn run(role: Role, boot_info: *const u8) -> ! {
     halt();
 }
 
-fn run_in_sustained(layout: &layout::ResolvedLayout, frames: u32) {
+fn run_in_sustained(boot_info: *const u8, layout: &layout::ResolvedLayout, frames: u32) {
     for _ in 0..frames {
         run_in(layout);
+        relay::record_relay_frame_completed(boot_info);
     }
 }
 
-fn run_mid_sustained(layout: &layout::ResolvedLayout, frames: u32) {
+fn run_mid_sustained(boot_info: *const u8, layout: &layout::ResolvedLayout, frames: u32) {
     for _ in 0..frames {
         run_mid(layout);
+        relay::record_relay_frame_completed(boot_info);
     }
 }
 
-fn run_out_sustained(layout: &layout::ResolvedLayout, frames: u32) {
+fn run_out_sustained(boot_info: *const u8, layout: &layout::ResolvedLayout, frames: u32) {
     for _ in 0..frames {
         run_out(layout);
+        relay::record_relay_frame_completed(boot_info);
     }
 }
 

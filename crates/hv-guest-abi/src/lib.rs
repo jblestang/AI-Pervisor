@@ -113,6 +113,19 @@ pub struct GuestDeviceRegion {
     pub mmio_size: u64,
 }
 
+/// Size of the relay-frame counter tail appended to guest boot info blobs (Phase 29).
+pub const GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES: usize = 8;
+
+/// Returns the byte offset of the relay-frame counter in a boot info blob.
+pub fn guest_boot_info_relay_frames_offset(total_size: u32) -> Option<usize> {
+    let total = total_size as usize;
+    if total < core::mem::size_of::<GuestBootInfoHeader>() + GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES
+    {
+        return None;
+    }
+    Some(total - GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES)
+}
+
 /// Returns whether a guest boot info header matches the supported ABI.
 pub fn guest_abi_is_compatible(header: &GuestBootInfoHeader) -> bool {
     header.magic == GUEST_BOOT_INFO_MAGIC && header.version == GUEST_ABI_VERSION

@@ -8,6 +8,7 @@ use hv_datapath::{plan_datapath_for_partition, plan_datapath_for_vm_id, Datapath
 use hv_guest_abi::{
     guest_abi_is_compatible, GuestBootInfoHeader, GuestDeviceRegion, GuestIpcRegion,
     GuestMemoryRegion, GUEST_ABI_VERSION, GUEST_BOOT_INFO_MAGIC,
+    GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES,
 };
 use hv_platform_model::StaticPlatformIR;
 use hv_types::VmId;
@@ -80,7 +81,8 @@ fn serialize_guest_boot_info(plan: &DatapathPartitionPlan) -> Result<Vec<u8>, Gu
     let memory_table_offset = header_size as u32;
     let ipc_table_offset = memory_table_offset + memory_table_bytes as u32;
     let device_table_offset = ipc_table_offset + ipc_table_bytes as u32;
-    let total_size = device_table_offset + device_table_bytes as u32;
+    let tables_size = device_table_offset + device_table_bytes as u32;
+    let total_size = tables_size + GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES as u32;
     let header = GuestBootInfoHeader {
         magic: GUEST_BOOT_INFO_MAGIC,
         version: GUEST_ABI_VERSION,
@@ -114,6 +116,10 @@ fn serialize_guest_boot_info(plan: &DatapathPartitionPlan) -> Result<Vec<u8>, Gu
         let offset = device_table_offset as usize + index * size_of::<GuestDeviceRegion>();
         write_guest_device_region(&mut bytes, offset, region);
     }
+    // Relay-frame counter tail (guest increments under live VMX; hypervisor reads after execution).
+    let tail_offset = tables_size as usize;
+    bytes[tail_offset..tail_offset + GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES]
+        .copy_from_slice(&0u64.to_le_bytes());
     Ok(bytes)
 }
 
