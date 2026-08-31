@@ -286,7 +286,10 @@ fn map_cpu_seam_error(err: hv_x86_cpu::CpuSeamError) -> BootCheckError {
     BootCheckError::new(BootCheckErrorKind::Platform, err.message)
 }
 
-#[cfg(all(feature = "datapath-guest-live", feature = "datapath-guest-execution"))]
+#[cfg(all(
+    feature = "datapath-guest-live",
+    any(feature = "datapath-guest-execution", feature = "datapath-guest-throughput")
+))]
 fn build_guest_live_vmcs_fields(
     launch_plan: &hv_vmx::VmxLaunchPlan,
     guest_entry_phys: u64,
@@ -1381,8 +1384,6 @@ pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAlloca
         apply_guest_throughput_disposition, guest_throughput_disposition_for_seam,
         run_mock_guest_throughput_benchmark, DatapathBenchmarkConfig, GuestThroughputDisposition,
     };
-    use hv_guest_boot::REFERENCE_GUEST_PARTITION_IDS;
-    use hv_vmx::plan_vmx_launch_all_partitions;
     use hv_x86_cpu::{run_datapath_guest_throughput_cpu_seam, CpuInstructionDisposition};
 
     let execution = init_gate_d_datapath_guest_execution_from_validated(
@@ -1405,90 +1406,44 @@ pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAlloca
         ));
     }
 
-    let guests = &execution.live.sources.runtime.benchmark.guests;
-    let vmx_plan = &guests
-        .malicious
-        .live
-        .foundation
-        .vmx_launch
-        .real_hw
-        .live
-        .cpu_seam
-        .programming
-        .init
-        .vmx_plan;
-    let launch_plans = plan_vmx_launch_all_partitions(layout, vmx_plan)
-        .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
-
-    let mut vmcs_fields_store = alloc::vec::Vec::with_capacity(guests.partition_launches.len());
-    let mut throughput_launches = alloc::vec::Vec::with_capacity(guests.partition_launches.len());
-    for record in &guests.partition_launches {
-        let launch_plan = launch_plans
-            .iter()
-            .find(|plan| plan.vm_id == record.vm_id)
-            .ok_or_else(|| {
-                BootCheckError::new(
-                    BootCheckErrorKind::Platform,
-                    "missing launch plan for guest throughput seam",
-                )
-            })?;
-        let boot_info_phys = record.boot_info_guest_phys.ok_or_else(|| {
-            BootCheckError::new(
-                BootCheckErrorKind::Platform,
-                "guest throughput requires installed boot info for partition",
-            )
-        })?;
-        let vmcs_fields = build_guest_live_vmcs_fields(
-            launch_plan,
-            record.guest_entry_phys,
-            boot_info_phys,
-        )?;
-        throughput_launches.push((
-            record.vmcs_phys,
-            vmcs_fields_store.len(),
-            launch_plan.host_exit_phys.raw(),
-            launch_plan.vm_id,
-        ));
-        vmcs_fields_store.push(vmcs_fields);
-    }
-
-    if throughput_launches.len() != REFERENCE_GUEST_PARTITION_IDS.len() {
-        return Err(BootCheckError::new(
-            BootCheckErrorKind::Platform,
-            "guest throughput launch count mismatch with reference partitions",
-        ));
-    }
-
-    let seam_inputs = throughput_launches
-        .iter()
-        .map(|(vmcs_phys, field_index, host_exit_phys, vm_id)| {
-            let fields = vmcs_fields_store.get(*field_index).ok_or_else(|| {
-                BootCheckError::new(
-                    BootCheckErrorKind::Platform,
-                    "guest throughput VMCS field index out of range",
-                )
-            })?;
-            Ok((
-                *vmcs_phys,
-                fields,
-                *host_exit_phys,
-                *vm_id,
-            ))
-        })
-        .collect::<Result<alloc::vec::Vec<_>, BootCheckError>>()?;
     let throughput_seam = run_datapath_guest_throughput_cpu_seam(
-        &seam_inputs,
+        &execution.execution_seam,
         throughput.benchmark.runs_completed,
     )
     .map_err(map_cpu_seam_error)?;
 
-    let executed = throughput_seam.disposition == CpuInstructionDisposition::Executed;
+    if throughput_seam.partitions_validated != execution.execution_seam.partitions_validated {
+        return Err(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "guest throughput partition count mismatch with execution seam",
+        ));
+    }
+    if !throughput_seam.vmexit_stub_validated {
+        return Err(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "guest throughput requires validated VM-exit stubs",
+        ));
+    }
+    if throughput_seam.measurement_runs_validated != throughput.benchmark.runs_completed {
+        return Err(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "guest throughput measurement run count mismatch",
+        ));
+    }
+
     let skipped_no_hardware =
         throughput_seam.disposition == CpuInstructionDisposition::SkippedNoHardware;
+    let live_measurement_completed = false;
     let throughput_disposition =
-        guest_throughput_disposition_for_seam(executed, skipped_no_hardware);
+        guest_throughput_disposition_for_seam(live_measurement_completed, skipped_no_hardware);
     throughput = apply_guest_throughput_disposition(throughput, throughput_disposition);
-    if (throughput.disposition == GuestThroughputDisposition::Executed) != executed {
+    if throughput.disposition == GuestThroughputDisposition::Executed {
+        return Err(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "guest throughput Executed requires live in-VM measurement stats",
+        ));
+    }
+    if (throughput.disposition == GuestThroughputDisposition::Unavailable) != skipped_no_hardware {
         return Err(BootCheckError::new(
             BootCheckErrorKind::Platform,
             "guest throughput disposition mismatch",

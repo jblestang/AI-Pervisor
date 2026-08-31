@@ -100,10 +100,10 @@ pub fn run_mock_guest_throughput_benchmark(
 
 /// Maps guest throughput seam flags to a benchmark disposition.
 pub fn guest_throughput_disposition_for_seam(
-    executed: bool,
+    live_measurement_completed: bool,
     skipped_no_hardware: bool,
 ) -> GuestThroughputDisposition {
-    if executed {
+    if live_measurement_completed {
         GuestThroughputDisposition::Executed
     } else if skipped_no_hardware {
         GuestThroughputDisposition::Unavailable

@@ -111,14 +111,26 @@ fn assert_datapath_guest_throughput_validate_only(result: &GateDDatapathGuestThr
         result.throughput_seam.disposition,
         CpuInstructionDisposition::Executed
     );
+    assert!(result.throughput_seam.vmexit_stub_validated);
     assert_eq!(
         result.throughput_seam.partitions_validated,
+        result.execution.execution_seam.partitions_validated
+    );
+    assert_eq!(
+        result.execution.execution_seam.partitions_validated,
         REFERENCE_GUEST_PARTITION_IDS.len() as u32
     );
+    assert!(result.execution.execution_seam.vmexit_stub_validated);
     assert_eq!(
         result.throughput_seam.measurement_runs_validated,
         result.throughput.benchmark.runs_completed
     );
+    for record in &result.execution.live.sources.runtime.benchmark.guests.partition_launches {
+        let boot_info_phys = record
+            .boot_info_guest_phys
+            .expect("boot info installed for partition");
+        assert!(boot_info_phys > record.guest_entry_phys);
+    }
     assert!(
         matches!(
             result.execution.live.sources.runtime.runtime.disposition,

@@ -55,16 +55,6 @@ pub fn run_datapath_benchmark(config_path: &str) -> i32 {
         let warmup_deadline = Instant::now() + warmup_duration;
         while Instant::now() < warmup_deadline {
             if let Err(err) = forward_synthetic_frame(&mut plan) {
-                if err.message == "ipc queue full" {
-                    plan = match plan_datapath_forward(&layout) {
-                        Ok(plan) => plan,
-                        Err(err) => {
-                            eprintln!("failed to replan datapath forward: {}", err.message);
-                            return 1;
-                        }
-                    };
-                    continue;
-                }
                 eprintln!("warmup forward failed: {}", err.message);
                 return 1;
             }
@@ -74,16 +64,6 @@ pub fn run_datapath_benchmark(config_path: &str) -> i32 {
         let start = Instant::now();
         while start.elapsed() < measurement_duration {
             if let Err(err) = forward_synthetic_frame(&mut plan) {
-                if err.message == "ipc queue full" {
-                    plan = match plan_datapath_forward(&layout) {
-                        Ok(plan) => plan,
-                        Err(err) => {
-                            eprintln!("failed to replan datapath forward: {}", err.message);
-                            return 1;
-                        }
-                    };
-                    continue;
-                }
                 eprintln!("measurement forward failed: {}", err.message);
                 return 1;
             }

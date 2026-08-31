@@ -86,3 +86,6 @@ pub const GATE_D_GUEST_THROUGHPUT_MARKER: &str =
 /// Gate D in-VM guest throughput met the 200 Mbit/s target.
 pub const GATE_D_GUEST_THROUGHPUT_TARGET_MET_MARKER: &str =
     "Gate D: guest throughput target 200 Mbit/s met";
+/// Gate D in-VM guest throughput measured under live VMX.
+pub const GATE_D_GUEST_THROUGHPUT_EXECUTED_MARKER: &str =
+    "Gate D: guest throughput measured under live VMX";
