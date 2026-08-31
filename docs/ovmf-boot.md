@@ -62,7 +62,7 @@ This builds the boot chain (unless `--no-build` is passed), launches OVMF/QEMU w
 
 ## REAL_HW live smoke boot (KVM)
 
-Build the REAL_HW boot chain (hypervisor with `real-hw-execution,vmx-launch`):
+Build the REAL_HW boot chain (hypervisor with `real-hw-execution` through `datapath-guest-relay-live`; runs `cargo xtask build-guests` first to embed source-tree ELFs):
 
 ```bash
 cargo xtask build-boot-chain-live
@@ -74,7 +74,7 @@ Run a KVM-backed smoke boot (requires `/dev/kvm`, host VMX, OVMF, and QEMU). Exi
 cargo xtask live-qemu-smoke
 ```
 
-On success the serial log includes `hypervisor Gate C REAL_HW boot succeeded` and optional `REAL_HW: VMXON Executed`, `REAL_HW: EPT pointer Executed`, and `REAL_HW: VMLAUNCH Executed` markers when live execution succeeds under firmware. A smoke guest may emit `GUEST: smoke partition running` on COM1 when launch reaches guest code.
+On success the serial log includes Gate D guest relay live markers (`Gate D: guest source ELF installed…`, `Gate D: guest boot info installed…`, `Gate D: guest throughput target 200 Mbit/s met`, `hypervisor Gate D datapath guest throughput succeeded`) and at least one REAL_HW VMX marker (`REAL_HW: VMXON Executed`, `REAL_HW: EPT pointer Executed`, or `REAL_HW: VMLAUNCH Executed`). Legacy `vmx-launch`-only firmware may still emit `hypervisor Gate C REAL_HW boot succeeded`. Live in-VM guest execution and `Gate D: guest throughput measured under live VMX` remain opt-in when nested VMX completes multi-partition VMLAUNCH.
 
 ## PCI enumeration limits (Phase 8)
 

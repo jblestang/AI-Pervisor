@@ -10,25 +10,41 @@ use crate::constants::{
 };
 use crate::{run, run_build_boot_chain_live};
 pub use hv_boot_abi::{
+    GATE_D_GUEST_BOOT_INFO_INSTALLED_MARKER, GATE_D_GUEST_SOURCE_ELF_MARKER,
+    GATE_D_GUEST_THROUGHPUT_MARKER, GATE_D_GUEST_THROUGHPUT_TARGET_MET_MARKER,
     REAL_HW_BOOT_SUCCESS_MARKER, REAL_HW_EPT_EXECUTED_MARKER, REAL_HW_VMLAUNCH_EXECUTED_MARKER,
     REAL_HW_VMXON_EXECUTED_MARKER,
 };
-pub use hv_guest_boot::GUEST_SMOKE_RUNNING_MARKER;
 
 /// Evaluates OVMF serial output for a successful REAL_HW Gate C boot.
 pub fn evaluate_live_qemu_smoke_serial(log: &str) -> Result<(), String> {
     evaluate_ovmf_chain_load(log)?;
-    if !log.contains(REAL_HW_BOOT_SUCCESS_MARKER) {
+    if log.contains(REAL_HW_BOOT_SUCCESS_MARKER) {
+        return Ok(());
+    }
+    evaluate_gate_d_guest_relay_live_smoke(log)
+}
+
+/// Evaluates serial output for Gate D guest relay live under REAL_HW (validate-only default).
+pub fn evaluate_gate_d_guest_relay_live_smoke(log: &str) -> Result<(), String> {
+    for marker in [
+        GATE_D_GUEST_THROUGHPUT_MARKER,
+        GATE_D_GUEST_THROUGHPUT_TARGET_MET_MARKER,
+        GATE_D_GUEST_SOURCE_ELF_MARKER,
+        GATE_D_GUEST_BOOT_INFO_INSTALLED_MARKER,
+    ] {
+        if !log.contains(marker) {
+            return Err(format!("serial log missing Gate D marker: {marker}"));
+        }
+    }
+    if !log.contains(REAL_HW_VMXON_EXECUTED_MARKER)
+        && !log.contains(REAL_HW_EPT_EXECUTED_MARKER)
+        && !log.contains(REAL_HW_VMLAUNCH_EXECUTED_MARKER)
+    {
         return Err(String::from(
-            "serial log missing REAL_HW Gate C success marker",
+            "serial log missing REAL_HW VMX execution marker (VMXON, EPT, or VMLAUNCH)",
         ));
     }
-    let _ = (
-        log.contains(REAL_HW_VMXON_EXECUTED_MARKER),
-        log.contains(REAL_HW_EPT_EXECUTED_MARKER),
-        log.contains(REAL_HW_VMLAUNCH_EXECUTED_MARKER),
-        log.contains(GUEST_SMOKE_RUNNING_MARKER),
-    );
     Ok(())
 }
 
@@ -190,7 +206,7 @@ fn run_live_qemu_smoke_with(
         return 1;
     }
 
-    eprintln!("live QEMU smoke boot succeeded (REAL_HW Gate C verified under KVM/OVMF)");
+    eprintln!("live QEMU smoke boot succeeded (Gate D guest relay live verified under KVM/OVMF)");
     0
 }
 
@@ -280,10 +296,45 @@ mod tests {
         LIVE_QEMU_WORKDIR_LOCK.lock().expect("live qemu workdir lock")
     }
 
+    fn gate_d_relay_live_success_log() -> String {
+        format!(
+            "BdsDxe: starting Boot0001 \"app\"\n\
+             {REAL_HW_VMXON_EXECUTED_MARKER}\n\
+             {GATE_D_GUEST_SOURCE_ELF_MARKER}\n\
+             {GATE_D_GUEST_BOOT_INFO_INSTALLED_MARKER}\n\
+             {GATE_D_GUEST_THROUGHPUT_TARGET_MET_MARKER}\n\
+             {GATE_D_GUEST_THROUGHPUT_MARKER}\n",
+        )
+    }
+
     #[test]
     fn evaluate_live_serial_rejects_missing_ovmf_boot_attempt() {
         let log = format!("{REAL_HW_BOOT_SUCCESS_MARKER}\n");
         assert!(evaluate_live_qemu_smoke_serial(&log).is_err());
+    }
+
+    #[test]
+    fn evaluate_gate_d_guest_relay_live_smoke_accepts_reference_markers() {
+        assert!(evaluate_gate_d_guest_relay_live_smoke(&gate_d_relay_live_success_log()).is_ok());
+    }
+
+    #[test]
+    fn evaluate_gate_d_guest_relay_live_smoke_rejects_missing_throughput_marker() {
+        let mut log = gate_d_relay_live_success_log();
+        log = log.replace(GATE_D_GUEST_THROUGHPUT_MARKER, "");
+        assert!(evaluate_gate_d_guest_relay_live_smoke(&log).is_err());
+    }
+
+    #[test]
+    fn evaluate_gate_d_guest_relay_live_smoke_rejects_missing_vmx_marker() {
+        let log = format!(
+            "BdsDxe: starting Boot0001 \"app\"\n\
+             {GATE_D_GUEST_SOURCE_ELF_MARKER}\n\
+             {GATE_D_GUEST_BOOT_INFO_INSTALLED_MARKER}\n\
+             {GATE_D_GUEST_THROUGHPUT_TARGET_MET_MARKER}\n\
+             {GATE_D_GUEST_THROUGHPUT_MARKER}\n",
+        );
+        assert!(evaluate_gate_d_guest_relay_live_smoke(&log).is_err());
     }
 
     #[test]
@@ -335,7 +386,7 @@ mod tests {
     }
 
     #[test]
-    fn evaluate_live_serial_requires_real_hw_success_marker() {
+    fn evaluate_live_serial_accepts_legacy_real_hw_success_marker() {
         let log = format!(
             "BdsDxe: starting Boot0001 \"app\"\n{REAL_HW_BOOT_SUCCESS_MARKER}\n",
         );
@@ -343,7 +394,12 @@ mod tests {
     }
 
     #[test]
-    fn evaluate_live_serial_rejects_missing_real_hw_marker() {
+    fn evaluate_live_serial_accepts_gate_d_guest_relay_live_markers() {
+        assert!(evaluate_live_qemu_smoke_serial(&gate_d_relay_live_success_log()).is_ok());
+    }
+
+    #[test]
+    fn evaluate_live_serial_rejects_missing_success_markers() {
         let log = "BdsDxe: starting Boot0001 \"app\"\nhypervisor Gate C boot succeeded\n";
         assert!(evaluate_live_qemu_smoke_serial(log).is_err());
     }
@@ -377,7 +433,7 @@ mod tests {
     }
 
     #[test]
-    fn run_live_qemu_smoke_with_mock_runner_accepts_success_log() {
+    fn run_live_qemu_smoke_with_mock_runner_accepts_gate_d_success_log() {
         let _guard = lock_live_qemu_workdir();
         let workspace = crate::workspace_root();
         let boot_chain = workspace.join("target/live-mock-boot-chain");
@@ -387,6 +443,32 @@ mod tests {
         let status = run_live_qemu_smoke_with(
             "configs/qemu.yaml",
             "target/live-mock-boot-chain",
+            1,
+            false,
+            |_, _| 0,
+            |_, _| {
+                let serial_log = crate::workspace_root()
+                    .join(crate::constants::LIVE_QEMU_SMOKE_WORK_DIR)
+                    .join("serial.log");
+                std::fs::write(&serial_log, gate_d_relay_live_success_log()).expect("serial log");
+                0
+            },
+            locate_ovmf_firmware,
+        );
+        assert_eq!(status, 0);
+    }
+
+    #[test]
+    fn run_live_qemu_smoke_with_mock_runner_accepts_legacy_real_hw_log() {
+        let _guard = lock_live_qemu_workdir();
+        let workspace = crate::workspace_root();
+        let boot_chain = workspace.join("target/live-mock-boot-chain-legacy");
+        std::fs::create_dir_all(&boot_chain).expect("boot chain dir");
+        std::fs::write(boot_chain.join("hv-loader.efi"), b"loader").expect("loader");
+        std::fs::write(boot_chain.join("hv-hypervisor.efi"), b"hypervisor").expect("hypervisor");
+        let status = run_live_qemu_smoke_with(
+            "configs/qemu.yaml",
+            "target/live-mock-boot-chain-legacy",
             1,
             false,
             |_, _| 0,
@@ -521,13 +603,7 @@ mod tests {
                 let serial_log = crate::workspace_root()
                     .join(crate::constants::LIVE_QEMU_SMOKE_WORK_DIR)
                     .join("serial.log");
-                std::fs::write(
-                    &serial_log,
-                    format!(
-                        "BdsDxe: starting Boot0001 \"UEFI Application\"\n{REAL_HW_BOOT_SUCCESS_MARKER}\n",
-                    ),
-                )
-                .expect("serial log");
+                std::fs::write(&serial_log, gate_d_relay_live_success_log()).expect("serial log");
                 124
             },
             locate_ovmf_firmware,

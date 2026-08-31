@@ -214,6 +214,9 @@ fn run_build_boot_chain_with(
 
 /// Builds loader and REAL_HW hypervisor `.efi` images into one output directory.
 pub fn run_build_boot_chain_live(config_path: &str, output_dir: &str) -> i32 {
+    if build_guests::run_build_guests() != 0 {
+        return 1;
+    }
     run_build_boot_chain_live_with(
         config_path,
         output_dir,

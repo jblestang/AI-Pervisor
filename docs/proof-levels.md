@@ -48,5 +48,6 @@ Each critical requirement declares its validation level using these categories:
 | Host live datapath benchmark | PERFORMANCE (Phase 23: `cargo xtask datapath-live-benchmark` wall-clock after `build-guests`) |
 | Live VMX guest execution seam | UNIT + REVIEW (Phase 25: VMLAUNCH scaffolding for source-tree guests) |
 | In-VM guest throughput benchmark | UNIT + PERFORMANCE (Phase 26–27: guest runtime relay mock + sustained live relay wiring; REAL_HW opt-in) |
+| KVM Gate D guest relay live smoke | INTEGRATION (Phase 28: `live-qemu-smoke` Gate D serial markers under nested KVM; skips without hardware) |
 
 QEMU is not sufficient proof for silicon-specific properties.

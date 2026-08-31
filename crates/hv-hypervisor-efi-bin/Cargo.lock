@@ -36,13 +36,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "hv-datapath"
+version = "0.1.0"
+dependencies = [
+ "hv-config-model",
+ "hv-guest-abi",
+ "hv-platform-model",
+ "hv-types",
+]
+
+[[package]]
 name = "hv-ept"
 version = "0.1.0"
 dependencies = [
  "hv-config-model",
+ "hv-datapath",
  "hv-platform-model",
  "hv-types",
  "hv-vmx",
+]
+
+[[package]]
+name = "hv-guest-abi"
+version = "0.1.0"
+dependencies = [
+ "hv-types",
+]
+
+[[package]]
+name = "hv-guest-boot"
+version = "0.1.0"
+dependencies = [
+ "hv-datapath",
+ "hv-guest-abi",
+ "hv-platform-model",
+ "hv-types",
 ]
 
 [[package]]
@@ -51,12 +79,15 @@ version = "0.1.0"
 dependencies = [
  "hv-boot-abi",
  "hv-config-model",
+ "hv-datapath",
  "hv-ept",
+ "hv-guest-boot",
  "hv-observation-types",
  "hv-platform-model",
  "hv-types",
  "hv-vmx",
  "hv-vtd",
+ "hv-x86-cpu",
 ]
 
 [[package]]
@@ -64,8 +95,12 @@ name = "hv-hypervisor-efi"
 version = "0.1.0"
 dependencies = [
  "hv-boot-abi",
+ "hv-datapath",
+ "hv-guest-boot",
  "hv-hypervisor-boot",
  "hv-types",
+ "hv-x86-cpu",
+ "uefi",
 ]
 
 [[package]]
@@ -73,6 +108,7 @@ name = "hv-hypervisor-efi-bin"
 version = "0.1.0"
 dependencies = [
  "hv-boot-abi",
+ "hv-guest-boot",
  "hv-hypervisor-efi",
  "hv-types",
  "log",
@@ -120,6 +156,17 @@ dependencies = [
  "hv-config-model",
  "hv-platform-model",
  "hv-types",
+]
+
+[[package]]
+name = "hv-x86-cpu"
+version = "0.1.0"
+dependencies = [
+ "hv-ept",
+ "hv-guest-boot",
+ "hv-types",
+ "hv-vmx",
+ "hv-vtd",
 ]
 
 [[package]]
