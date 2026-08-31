@@ -1,6 +1,6 @@
 # Benchmark specification
 
-Performance validation uses the official metric defined here. Phase 21 adds host mock and wall-clock benchmark harnesses. Phase 22 adds guest-driven datapath runtime under VMX (validate-only default). Phase 23 adds real `guests/` source-tree ELFs and `cargo xtask datapath-live-benchmark` (build guests + wall-clock); live VMX wall-clock throughput under guest execution remains future work.
+Performance validation uses the official metric defined here. Phase 21 adds host mock and wall-clock benchmark harnesses. Phase 22 adds guest-driven datapath runtime under VMX (validate-only default). Phase 23 adds real `guests/` source-tree ELFs and `cargo xtask datapath-live-benchmark` (build guests + wall-clock). Phase 24 adds guest boot-info install and VMCS RDI handoff (`datapath-guest-live`); live VMX wall-clock throughput under guest execution remains future work.
 
 ## Official throughput metric
 

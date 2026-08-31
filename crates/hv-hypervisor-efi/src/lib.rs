@@ -577,7 +577,7 @@ pub fn boot_hypervisor_from_transfer_datapath_guest_sources<A: PageAllocator>(
         allocator,
     )
     .map_err(HypervisorEfiError::from)?;
-    boot_hypervisor_from_transfer_datapath_guest_sources_markers(&result)
+    Ok(boot_hypervisor_from_transfer_datapath_guest_sources_markers(&result))
 }
 
 /// Runs Gate B validation and Gate D datapath guest-live init with resident page installation.
@@ -602,9 +602,8 @@ pub fn boot_hypervisor_from_transfer_datapath_guest_live<A: PageAllocator>(
         allocator,
     )
     .map_err(HypervisorEfiError::from)?;
-    let sources_markers = boot_hypervisor_from_transfer_datapath_guest_sources_markers(&result.sources)?;
     Ok(DatapathGuestLiveBootMarkers {
-        sources: sources_markers,
+        sources: boot_hypervisor_from_transfer_datapath_guest_sources_markers(&result.sources),
         guest_boot_infos_installed: result.boot_infos_installed,
     })
 }
@@ -612,10 +611,10 @@ pub fn boot_hypervisor_from_transfer_datapath_guest_live<A: PageAllocator>(
 #[cfg(feature = "datapath-guest-sources")]
 fn boot_hypervisor_from_transfer_datapath_guest_sources_markers(
     result: &hv_hypervisor_boot::GateDDatapathGuestSourcesResult,
-) -> Result<DatapathGuestSourcesBootMarkers, HypervisorEfiError> {
+) -> DatapathGuestSourcesBootMarkers {
     use hv_guest_boot::REFERENCE_GUEST_PARTITION_IDS;
     let runtime = &result.runtime;
-    Ok(DatapathGuestSourcesBootMarkers {
+    DatapathGuestSourcesBootMarkers {
         runtime: DatapathRuntimeBootMarkers {
             benchmark: DatapathBenchmarkBootMarkers {
                 guests: DatapathGuestsBootMarkers {
@@ -634,7 +633,7 @@ fn boot_hypervisor_from_transfer_datapath_guest_sources_markers(
             vmexit_dispatch_validated: runtime.runtime.vmexit_dispatch_validated,
         },
         guest_source_elfs_installed: runtime.datapath_elf_images_installed,
-    })
+    }
 }
 
 #[cfg(test)]

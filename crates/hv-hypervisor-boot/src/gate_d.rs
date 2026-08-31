@@ -505,11 +505,13 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
 ) -> Result<GateDDatapathGuestsResult, BootCheckError> {
     use hv_guest_boot::{reference_guest_elf_for_kind, REFERENCE_GUEST_PARTITION_IDS};
     use hv_vmx::{patch_guest_entry_in_fields, plan_vmx_launch_all_partitions, program_vmcs_fields};
-    use hv_x86_cpu::{install_guest_elf, install_vmcs_region, run_multi_vmx_launch_cpu_seam};
     #[cfg(feature = "datapath-guest-live")]
-    use hv_vmx::patch_guest_boot_info_rdi;
+    use hv_vmx::{guest_boot_info_rdi_programmed, patch_guest_boot_info_rdi};
+    use hv_x86_cpu::{install_vmcs_region, run_multi_vmx_launch_cpu_seam};
+    #[cfg(not(feature = "datapath-guest-live"))]
+    use hv_x86_cpu::install_guest_elf;
     #[cfg(feature = "datapath-guest-live")]
-    use hv_x86_cpu::install_guest_boot_info_colocated;
+    use hv_x86_cpu::install_guest_elf_with_boot_info;
 
     let malicious = init_gate_d_datapath_malicious_from_validated(
         requirements,
@@ -533,9 +535,7 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
         .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
 
     #[cfg(feature = "datapath-guest-live")]
-    let partition_boot_infos = build_guest_boot_infos_all_partitions(layout).map_err(|err| {
-        BootCheckError::new(BootCheckErrorKind::Platform, err.message)
-    })?;
+    let partition_boot_infos = &malicious.live.foundation.partition_boot_infos;
 
     let mut partition_launches = alloc::vec::Vec::with_capacity(launch_plans.len());
     let mut seam_inputs = alloc::vec::Vec::with_capacity(launch_plans.len());
@@ -551,18 +551,11 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
         hv_guest_boot::parse_elf64(elf_bytes).map_err(|err| {
             BootCheckError::new(BootCheckErrorKind::Platform, err.message)
         })?;
+        #[cfg(not(feature = "datapath-guest-live"))]
         let guest_entry_phys =
             install_guest_elf(allocator, elf_bytes).map_err(map_cpu_seam_error)?;
-        elf_images_installed = elf_images_installed.saturating_add(1);
-        let vmcs_phys = install_vmcs_region(allocator).map_err(map_cpu_seam_error)?;
-        let mut vmcs_fields = program_vmcs_fields(launch_plan);
-        patch_guest_entry_in_fields(
-            &mut vmcs_fields,
-            guest_entry_phys,
-            launch_plan.guest_stack_phys.raw(),
-        );
         #[cfg(feature = "datapath-guest-live")]
-        let boot_info_guest_phys = {
+        let (guest_entry_phys, boot_info_guest_phys) = {
             let boot_info_blob = partition_boot_infos
                 .iter()
                 .find(|(vm_id, _)| *vm_id == launch_plan.vm_id)
@@ -576,16 +569,34 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
             GuestBootInfoView::parse(boot_info_blob).map_err(|err| {
                 BootCheckError::new(BootCheckErrorKind::Platform, err.message)
             })?;
-            let boot_info_phys = install_guest_boot_info_colocated(
-                allocator,
-                elf_bytes,
-                guest_entry_phys,
-                boot_info_blob,
-            )
-            .map_err(map_cpu_seam_error)?;
-            patch_guest_boot_info_rdi(&mut vmcs_fields, boot_info_phys);
-            Some(boot_info_phys)
+            let install = install_guest_elf_with_boot_info(allocator, elf_bytes, boot_info_blob)
+                .map_err(map_cpu_seam_error)?;
+            (install.entry_phys, Some(install.boot_info_phys))
         };
+        elf_images_installed = elf_images_installed.saturating_add(1);
+        let vmcs_phys = install_vmcs_region(allocator).map_err(map_cpu_seam_error)?;
+        let mut vmcs_fields = program_vmcs_fields(launch_plan);
+        patch_guest_entry_in_fields(
+            &mut vmcs_fields,
+            guest_entry_phys,
+            launch_plan.guest_stack_phys.raw(),
+        );
+        #[cfg(feature = "datapath-guest-live")]
+        {
+            let boot_info_phys = boot_info_guest_phys.ok_or_else(|| {
+                BootCheckError::new(
+                    BootCheckErrorKind::Platform,
+                    "guest boot info address missing after install",
+                )
+            })?;
+            patch_guest_boot_info_rdi(&mut vmcs_fields, boot_info_phys);
+            if !guest_boot_info_rdi_programmed(&vmcs_fields, boot_info_phys) {
+                return Err(BootCheckError::new(
+                    BootCheckErrorKind::Platform,
+                    "guest boot info RDI was not programmed in VMCS fields",
+                ));
+            }
+        }
         #[cfg(not(feature = "datapath-guest-live"))]
         let boot_info_guest_phys = None;
         seam_inputs.push((vmcs_phys, vmcs_fields, launch_plan.vm_id));

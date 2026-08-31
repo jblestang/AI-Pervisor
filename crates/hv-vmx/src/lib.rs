@@ -25,9 +25,9 @@ pub use constants::{VMXON_REGION_ALIGNMENT_BYTES, VMXON_REGION_MIN_BYTES};
 pub use error::{VmxError, VmxErrorKind};
 pub use init::{init_vmx, vmx_init_required};
 pub use launch::{
-    patch_guest_boot_info_rdi, patch_guest_entry_in_fields, plan_vmx_launch,
-    plan_vmx_launch_all_partitions, program_vmcs_fields, VmcsProgrammedField, VmcsProgrammedFields,
-    VmxLaunchPlan, DEFAULT_SMOKE_GUEST_PARTITION_ID,
+    guest_boot_info_rdi_programmed, patch_guest_boot_info_rdi, patch_guest_entry_in_fields,
+    plan_vmx_launch, plan_vmx_launch_all_partitions, program_vmcs_fields, vmcs_guest_rdi,
+    VmcsProgrammedField, VmcsProgrammedFields, VmxLaunchPlan, DEFAULT_SMOKE_GUEST_PARTITION_ID,
 };
 pub use launch_constants::{
     VMCS_CPU_BASED_VM_EXEC_CONTROL, VMCS_GUEST_CR3, VMCS_GUEST_RDI, VMCS_GUEST_RIP, VMCS_GUEST_RSP,

@@ -206,6 +206,20 @@ pub fn patch_guest_boot_info_rdi(fields: &mut VmcsProgrammedFields, boot_info_gu
     });
 }
 
+/// Returns the programmed guest RDI value when present.
+pub fn vmcs_guest_rdi(fields: &VmcsProgrammedFields) -> Option<u64> {
+    fields
+        .fields
+        .iter()
+        .find(|field| field.field == VMCS_GUEST_RDI)
+        .map(|field| field.value)
+}
+
+/// Returns whether VMCS guest RDI matches the installed boot-info address.
+pub fn guest_boot_info_rdi_programmed(fields: &VmcsProgrammedFields, boot_info_phys: u64) -> bool {
+    boot_info_phys != 0 && vmcs_guest_rdi(fields) == Some(boot_info_phys)
+}
+
 fn find_guest_region<'a>(
     layout: &'a StaticPlatformIR,
     partition_id: &str,
@@ -321,6 +335,19 @@ mod tests {
         let vmx_plan = plan_vmx_init(&layout.hypervisor_reserve).expect("vmx");
         let launches = plan_vmx_launch_all_partitions(&layout, &vmx_plan).expect("all");
         assert_eq!(launches.len(), 3);
+    }
+
+    #[test]
+    fn patch_guest_boot_info_rdi_programs_guest_rdi_field() {
+        let yaml = include_str!("../../../configs/qemu.yaml");
+        let compiled = compile_config_from_str(yaml).expect("compile");
+        let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
+        let vmx_plan = plan_vmx_init(&layout.hypervisor_reserve).expect("vmx");
+        let launch = plan_vmx_launch(&layout, &vmx_plan, DEFAULT_SMOKE_GUEST_PARTITION_ID)
+            .expect("launch plan");
+        let mut fields = program_vmcs_fields(&launch);
+        patch_guest_boot_info_rdi(&mut fields, 0x0000_0000_1234_5000);
+        assert!(guest_boot_info_rdi_programmed(&fields, 0x0000_0000_1234_5000));
     }
 
     #[test]

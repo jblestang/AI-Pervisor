@@ -105,7 +105,10 @@ fn boot_from_transfer_and_init_gate_d_datapath_guest_live_accepts_reference_tran
     );
     assert!(result.sources.runtime.runtime.guest_frame_forwarded);
     for record in &result.sources.runtime.benchmark.guests.partition_launches {
-        assert!(record.boot_info_guest_phys.is_some());
+        let boot_info_phys = record
+            .boot_info_guest_phys
+            .expect("boot info installed for partition");
+        assert!(boot_info_phys > record.guest_entry_phys);
     }
 }
 
