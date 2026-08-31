@@ -1,12 +1,11 @@
-//! Gate D datapath guest-sources orchestration tests (requires `datapath-guest-sources`).
+//! Gate D datapath guest-sources hypervisor EFI entry tests.
 
 #![allow(clippy::expect_used, clippy::indexing_slicing)]
 
 use hv_config_model::compile_config_from_str;
-use hv_guest_boot::GUEST_SOURCE_ELFS_AVAILABLE;
+use hv_guest_boot::{GUEST_SOURCE_ELFS_AVAILABLE, REFERENCE_GUEST_PARTITION_IDS};
+use hv_hypervisor_efi::boot_hypervisor_from_transfer_datapath_guest_sources;
 use hv_hypervisor_boot::{
-    boot_from_transfer_and_init_gate_d_datapath_guest_sources,
-    boot_from_transfer_and_init_gate_d_datapath_guest_sources_from_snapshots,
     layout_snapshot_from_platform_ir, requirements_snapshot_from_platform,
 };
 use hv_loader::{
@@ -22,13 +21,24 @@ use hv_platform_model::plan_static_platform_ir;
 use hv_types::{PciBdf, PciBus, PciDevice, PciFunction, PciSegment};
 use hv_x86_cpu::MockPageAllocator;
 
-fn reference_handoff_snapshot_and_layout() -> (
-    Vec<u8>,
-    hv_boot_abi::RequirementsSnapshot,
-    hv_platform_model::StaticPlatformIR,
-) {
+#[test]
+fn boot_hypervisor_from_transfer_datapath_guest_sources_accepts_reference_handoff() {
+    if !GUEST_SOURCE_ELFS_AVAILABLE {
+        eprintln!("skipping: run cargo xtask build-guests to embed source ELFs");
+        return;
+    }
+
     let yaml = include_str!("../../../configs/qemu.yaml");
     let compiled = compile_config_from_str(yaml).expect("compile");
+    let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
+    let requirements = requirements_snapshot_from_platform(
+        &compiled.requirements,
+        compiled.digest.bytes,
+        layout.hypervisor_reserve.host_phys.raw(),
+        layout.hypervisor_reserve.size.bytes(),
+    )
+    .expect("snapshot");
+    let layout_snapshot = layout_snapshot_from_platform_ir(&layout).expect("layout snapshot");
     let firmware = encode_qemu_reference_firmware();
     let handoff = build_loader_handoff(
         &LoaderHandoffInput::with_default_descriptor_size(
@@ -72,54 +82,21 @@ fn reference_handoff_snapshot_and_layout() -> (
     )
     .expect("handoff");
     let transfer = build_hypervisor_transfer(&handoff).expect("transfer");
-    let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
-    let snapshot = requirements_snapshot_from_platform(
-        &compiled.requirements,
-        compiled.digest.bytes,
-        layout.hypervisor_reserve.host_phys.raw(),
-        layout.hypervisor_reserve.size.bytes(),
-    )
-    .expect("snapshot");
-    (transfer, snapshot, layout)
-}
-
-#[test]
-fn boot_from_transfer_and_init_gate_d_datapath_guest_sources_accepts_reference_transfer() {
-    if !GUEST_SOURCE_ELFS_AVAILABLE {
-        eprintln!("skipping: run cargo xtask build-guests to embed source ELFs");
-        return;
-    }
-
-    let (transfer, snapshot, layout) = reference_handoff_snapshot_and_layout();
-    let mut allocator = MockPageAllocator::new(0x0000_0000_1C00_0000);
-    let result = boot_from_transfer_and_init_gate_d_datapath_guest_sources(
+    let mut allocator = MockPageAllocator::new(0x0000_0000_1E00_0000);
+    let markers = boot_hypervisor_from_transfer_datapath_guest_sources(
         &transfer,
-        &snapshot,
-        &layout,
-        &mut allocator,
-    )
-    .expect("guest sources");
-    assert!(result.runtime.runtime.guest_frame_forwarded);
-    assert!(result.runtime.benchmark.benchmark.target_met);
-}
-
-#[test]
-fn boot_from_transfer_and_init_gate_d_datapath_guest_sources_from_snapshots_accepts_reference_transfer(
-) {
-    if !GUEST_SOURCE_ELFS_AVAILABLE {
-        eprintln!("skipping: run cargo xtask build-guests to embed source ELFs");
-        return;
-    }
-
-    let (transfer, snapshot, layout) = reference_handoff_snapshot_and_layout();
-    let layout_snapshot = layout_snapshot_from_platform_ir(&layout).expect("layout snapshot");
-    let mut allocator = MockPageAllocator::new(0x0000_0000_1D00_0000);
-    let result = boot_from_transfer_and_init_gate_d_datapath_guest_sources_from_snapshots(
-        &transfer,
-        &snapshot,
+        &compiled.digest.bytes,
+        &requirements,
         &layout_snapshot,
         &mut allocator,
     )
-    .expect("guest sources snapshots");
-    assert!(result.runtime.runtime.guest_frame_forwarded);
+    .expect("datapath guest-sources boot");
+    assert!(markers.runtime.benchmark.guests.malicious.integrity_checks_passed);
+    assert!(markers.runtime.benchmark.benchmark_target_met);
+    assert_eq!(
+        markers.guest_source_elfs_installed,
+        REFERENCE_GUEST_PARTITION_IDS.len() as u32
+    );
+    assert!(markers.runtime.guest_datapath_frame_forwarded);
+    assert!(markers.runtime.vmexit_dispatch_validated);
 }

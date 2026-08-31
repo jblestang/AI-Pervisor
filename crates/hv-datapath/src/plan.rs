@@ -195,4 +195,53 @@ mod tests {
         assert_eq!(plan.ipc_regions.first().expect("ipc").role, GuestIpcRole::Consumer);
         assert_eq!(plan.device_regions.len(), 1);
     }
+
+    #[test]
+    fn reference_guest_ipc_layout_matches_planner() {
+        use crate::constants::{
+            REFERENCE_IPC_CHAN_A_GUEST_PHYS, REFERENCE_IPC_CHAN_B_GUEST_PHYS,
+            REFERENCE_IPC_SHARED_BYTES,
+        };
+
+        let yaml = include_str!("../../../configs/qemu.yaml");
+        let compiled = compile_config_from_str(yaml).expect("compile");
+        let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
+        let chan_a = layout.ipc_memory.first().expect("chan_a");
+        let chan_b = layout.ipc_memory.get(1).expect("chan_b");
+        assert_eq!(chan_a.host_phys.raw(), REFERENCE_IPC_CHAN_A_GUEST_PHYS);
+        assert_eq!(chan_b.host_phys.raw(), REFERENCE_IPC_CHAN_B_GUEST_PHYS);
+        assert_eq!(chan_a.size.bytes(), REFERENCE_IPC_SHARED_BYTES);
+        assert_eq!(chan_b.size.bytes(), REFERENCE_IPC_SHARED_BYTES);
+
+        let in_plan = plan_datapath_for_partition(&layout, "in").expect("in");
+        let producer = in_plan
+            .ipc_regions
+            .iter()
+            .find(|region| region.role == GuestIpcRole::Producer)
+            .expect("in producer");
+        assert_eq!(producer.guest_phys.raw(), REFERENCE_IPC_CHAN_A_GUEST_PHYS);
+        assert_eq!(producer.size, REFERENCE_IPC_SHARED_BYTES);
+
+        let mid_plan = plan_datapath_for_partition(&layout, "mid").expect("mid");
+        let mid_consumer = mid_plan
+            .ipc_regions
+            .iter()
+            .find(|region| region.role == GuestIpcRole::Consumer)
+            .expect("mid consumer");
+        let mid_producer = mid_plan
+            .ipc_regions
+            .iter()
+            .find(|region| region.role == GuestIpcRole::Producer)
+            .expect("mid producer");
+        assert_eq!(mid_consumer.guest_phys.raw(), REFERENCE_IPC_CHAN_A_GUEST_PHYS);
+        assert_eq!(mid_producer.guest_phys.raw(), REFERENCE_IPC_CHAN_B_GUEST_PHYS);
+
+        let out_plan = plan_datapath_for_partition(&layout, "out").expect("out");
+        let out_consumer = out_plan
+            .ipc_regions
+            .iter()
+            .find(|region| region.role == GuestIpcRole::Consumer)
+            .expect("out consumer");
+        assert_eq!(out_consumer.guest_phys.raw(), REFERENCE_IPC_CHAN_B_GUEST_PHYS);
+    }
 }

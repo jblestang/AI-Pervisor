@@ -25,6 +25,7 @@ datapath-malicious = ["hv-hypervisor-efi/datapath-malicious"]
 datapath-guests = ["hv-hypervisor-efi/datapath-guests"]
 datapath-benchmark = ["hv-hypervisor-efi/datapath-benchmark"]
 datapath-runtime = ["hv-hypervisor-efi/datapath-runtime"]
+datapath-guest-sources = ["hv-hypervisor-efi/datapath-guest-sources"]
 
 [profile.dev]
 panic = "abort"

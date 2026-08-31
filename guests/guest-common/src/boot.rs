@@ -23,11 +23,6 @@ pub fn resolve_layout_for_role(role: Role, boot_info: *const u8) -> ResolvedLayo
     reference_layout_for_role(role)
 }
 
-/// Resolves layout from boot info when valid, otherwise uses IN reference constants.
-pub fn resolve_layout(boot_info: *const u8) -> ResolvedLayout {
-    resolve_layout_for_role(Role::In, boot_info)
-}
-
 fn reference_layout_for_role(role: Role) -> ResolvedLayout {
     match role {
         Role::In => ResolvedLayout::reference_in(),

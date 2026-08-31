@@ -1,5 +1,14 @@
 //! Datapath layout constants.
 
+/// Reference IPC shared mapping size for `configs/qemu.yaml` (slot metadata + payload per slot).
+pub const REFERENCE_IPC_SHARED_BYTES: u64 = 0x840_000;
+
+/// Guest physical base for `chan_a` in the reference planner output.
+pub const REFERENCE_IPC_CHAN_A_GUEST_PHYS: u64 = 0x0000_0002_0000_0000;
+
+/// Guest physical base for `chan_b` in the reference planner output.
+pub const REFERENCE_IPC_CHAN_B_GUEST_PHYS: u64 = 0x0000_0002_0084_0000;
+
 /// Intel e1000 MMIO window size in bytes (128 KiB BAR).
 pub const E1000_MMIO_SIZE_BYTES: u64 = 0x20_000;
 

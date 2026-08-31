@@ -1,4 +1,6 @@
 //! Resolved guest datapath layout for IPC and e1000 MMIO.
+//!
+//! Reference constants mirror `hv-datapath` planner output for `configs/qemu.yaml`.
 
 use hv_types::GuestPhysAddr;
 
@@ -27,6 +29,9 @@ impl Role {
 /// Reference IPC slot payload size for `configs/qemu.yaml`.
 pub const REFERENCE_SLOT_SIZE: u32 = 2048;
 
+/// Reference IPC shared mapping size for `configs/qemu.yaml`.
+pub const REFERENCE_IPC_REGION_SIZE: u64 = 0x840_000;
+
 /// One mapped IPC queue.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IpcQueueMapping {
@@ -53,8 +58,8 @@ impl ResolvedLayout {
         Self {
             e1000_mmio: Some(GuestPhysAddr::new(0xFEB0_0000)),
             ipc_producer: Some(IpcQueueMapping {
-                guest_phys: GuestPhysAddr::new(0x4000_0000),
-                size: 0x20_00_00,
+                guest_phys: GuestPhysAddr::new(0x0000_0002_0000_0000),
+                size: REFERENCE_IPC_REGION_SIZE,
             }),
             ipc_consumer: None,
         }
@@ -65,12 +70,12 @@ impl ResolvedLayout {
         Self {
             e1000_mmio: None,
             ipc_producer: Some(IpcQueueMapping {
-                guest_phys: GuestPhysAddr::new(0x4020_0000),
-                size: 0x20_00_00,
+                guest_phys: GuestPhysAddr::new(0x0000_0002_0084_0000),
+                size: REFERENCE_IPC_REGION_SIZE,
             }),
             ipc_consumer: Some(IpcQueueMapping {
-                guest_phys: GuestPhysAddr::new(0x4000_0000),
-                size: 0x20_00_00,
+                guest_phys: GuestPhysAddr::new(0x0000_0002_0000_0000),
+                size: REFERENCE_IPC_REGION_SIZE,
             }),
         }
     }
@@ -81,8 +86,8 @@ impl ResolvedLayout {
             e1000_mmio: Some(GuestPhysAddr::new(0xFEB1_0000)),
             ipc_producer: None,
             ipc_consumer: Some(IpcQueueMapping {
-                guest_phys: GuestPhysAddr::new(0x4020_0000),
-                size: 0x20_00_00,
+                guest_phys: GuestPhysAddr::new(0x0000_0002_0084_0000),
+                size: REFERENCE_IPC_REGION_SIZE,
             }),
         }
     }
