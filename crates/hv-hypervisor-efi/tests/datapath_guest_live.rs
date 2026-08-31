@@ -4,10 +4,8 @@
 
 use hv_config_model::compile_config_from_str;
 use hv_guest_boot::{GUEST_SOURCE_ELFS_AVAILABLE, REFERENCE_GUEST_PARTITION_IDS};
+use hv_hypervisor_boot::{layout_snapshot_from_platform_ir, requirements_snapshot_from_platform};
 use hv_hypervisor_efi::boot_hypervisor_from_transfer_datapath_guest_live;
-use hv_hypervisor_boot::{
-    layout_snapshot_from_platform_ir, requirements_snapshot_from_platform,
-};
 use hv_loader::{
     build_hypervisor_transfer, build_loader_handoff, encode_qemu_reference_firmware,
     LoaderHandoffInput,
@@ -45,7 +43,8 @@ fn boot_hypervisor_from_transfer_datapath_guest_live_accepts_reference_handoff()
             compiled.digest.bytes,
             {
                 let mut memory_map = vec![0u8; 48];
-                memory_map[0..4].copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
+                memory_map[0..4]
+                    .copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
                 memory_map[24..32].copy_from_slice(&(2_097_152u64).to_le_bytes());
                 memory_map
             },

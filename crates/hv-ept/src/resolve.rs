@@ -23,20 +23,19 @@ pub fn resolve_guest_phys_range_to_host(
             "guest physical read length must be non-zero",
         ));
     }
-    let guest_end = guest_phys.checked_add(len as u64).ok_or_else(|| {
-        EptError::new(EptErrorKind::Planning, "guest physical read end overflow")
-    })?;
+    let guest_end = guest_phys
+        .checked_add(len as u64)
+        .ok_or_else(|| EptError::new(EptErrorKind::Planning, "guest physical read end overflow"))?;
     for mapping in &tables.mappings {
         let start = mapping.guest_phys;
-        let end = start.checked_add(mapping.size_bytes).ok_or_else(|| {
-            EptError::new(EptErrorKind::Planning, "EPT mapping end overflow")
-        })?;
+        let end = start
+            .checked_add(mapping.size_bytes)
+            .ok_or_else(|| EptError::new(EptErrorKind::Planning, "EPT mapping end overflow"))?;
         if guest_phys >= start && guest_end <= end {
             let offset = guest_phys - start;
-            return mapping
-                .host_phys
-                .checked_add(offset)
-                .ok_or_else(|| EptError::new(EptErrorKind::Planning, "resolved host phys overflow"));
+            return mapping.host_phys.checked_add(offset).ok_or_else(|| {
+                EptError::new(EptErrorKind::Planning, "resolved host phys overflow")
+            });
         }
     }
     Err(EptError::new(
@@ -49,8 +48,8 @@ pub fn resolve_guest_phys_range_to_host(
 #[allow(clippy::expect_used)]
 mod tests {
     use super::*;
-    use alloc::vec;
     use crate::program::{encode_identity_ept_entry, EptProgrammedMapping};
+    use alloc::vec;
 
     fn sample_tables() -> EptProgrammedTables {
         EptProgrammedTables {

@@ -51,7 +51,8 @@ mod tests {
         let compiled = compile_config_from_str(yaml).expect("compile");
         let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
         let plan = plan_vtd_init(&layout, true).expect("vtd plan");
-        let observed = include_str!("../../hv-platform-model/tests/fixtures/observed/qemu_reference.json");
+        let observed =
+            include_str!("../../hv-platform-model/tests/fixtures/observed/qemu_reference.json");
         let observed = hv_platform_model::parse_observed_platform_json(observed).expect("parse");
         let (validated, _) =
             validate_platform(&compiled.requirements, &observed).expect("validate");
@@ -66,8 +67,10 @@ mod tests {
         let compiled = compile_config_from_str(yaml).expect("compile");
         let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
         let plan = plan_vtd_init(&layout, true).expect("vtd plan");
-        let observed_json = include_str!("../../hv-platform-model/tests/fixtures/observed/qemu_reference.json");
-        let mut observed = hv_platform_model::parse_observed_platform_json(observed_json).expect("parse");
+        let observed_json =
+            include_str!("../../hv-platform-model/tests/fixtures/observed/qemu_reference.json");
+        let mut observed =
+            hv_platform_model::parse_observed_platform_json(observed_json).expect("parse");
         observed.vtd = false;
         let validated = ValidatedPlatform::new(observed);
         let mut backend = MockVtdBackend::default();
@@ -81,8 +84,10 @@ mod tests {
         let compiled = compile_config_from_str(yaml).expect("compile");
         let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
         let plan = plan_vtd_init(&layout, true).expect("vtd plan");
-        let observed_json = include_str!("../../hv-platform-model/tests/fixtures/observed/qemu_reference.json");
-        let mut observed = hv_platform_model::parse_observed_platform_json(observed_json).expect("parse");
+        let observed_json =
+            include_str!("../../hv-platform-model/tests/fixtures/observed/qemu_reference.json");
+        let mut observed =
+            hv_platform_model::parse_observed_platform_json(observed_json).expect("parse");
         observed.interrupt_remapping = false;
         let validated = ValidatedPlatform::new(observed);
         let mut backend = MockVtdBackend::default();
@@ -96,7 +101,8 @@ mod tests {
         let compiled = compile_config_from_str(yaml).expect("compile");
         let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
         let plan = plan_vtd_init(&layout, true).expect("vtd plan");
-        let observed = include_str!("../../hv-platform-model/tests/fixtures/observed/qemu_reference.json");
+        let observed =
+            include_str!("../../hv-platform-model/tests/fixtures/observed/qemu_reference.json");
         let observed = hv_platform_model::parse_observed_platform_json(observed).expect("parse");
         let (validated, _) =
             validate_platform(&compiled.requirements, &observed).expect("validate");

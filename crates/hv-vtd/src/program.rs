@@ -35,7 +35,10 @@ pub struct VtdProgrammedTables {
 }
 
 /// Encodes VT-d context metadata for one device assignment.
-pub fn encode_vtd_context_entry(assignment: &VtdDeviceAssignment, interrupt_remapping: bool) -> VtdProgrammedAssignment {
+pub fn encode_vtd_context_entry(
+    assignment: &VtdDeviceAssignment,
+    interrupt_remapping: bool,
+) -> VtdProgrammedAssignment {
     let mut context_flags = 1u64;
     if interrupt_remapping {
         context_flags |= 1 << 1;
@@ -86,9 +89,9 @@ impl VtdBackend for ProgrammingVtdBackend {
 #[allow(clippy::expect_used)]
 mod tests {
     use super::*;
+    use crate::plan::plan_vtd_init;
     use hv_config_model::compile_config_from_str;
     use hv_platform_model::plan_static_platform_ir;
-    use crate::plan::plan_vtd_init;
 
     #[test]
     fn program_vtd_tables_preserves_device_assignments() {

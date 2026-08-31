@@ -8,7 +8,8 @@ use hv_guest_boot::REFERENCE_GUEST_PARTITION_IDS;
 use hv_hypervisor_boot::{
     boot_from_transfer_and_init_gate_d_datapath_runtime,
     boot_from_transfer_and_init_gate_d_datapath_runtime_from_snapshots,
-    layout_snapshot_from_platform_ir, requirements_snapshot_from_platform, GateDDatapathRuntimeResult,
+    layout_snapshot_from_platform_ir, requirements_snapshot_from_platform,
+    GateDDatapathRuntimeResult,
 };
 use hv_loader::{
     build_hypervisor_transfer, build_loader_handoff, encode_qemu_reference_firmware,
@@ -36,7 +37,8 @@ fn reference_handoff_snapshot_and_layout() -> (
             compiled.digest.bytes,
             {
                 let mut memory_map = vec![0u8; 48];
-                memory_map[0..4].copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
+                memory_map[0..4]
+                    .copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
                 memory_map[24..32].copy_from_slice(&(2_097_152u64).to_le_bytes());
                 memory_map
             },
@@ -104,16 +106,18 @@ fn assert_datapath_runtime_validate_only(result: &GateDDatapathRuntimeResult) {
         result.runtime_seam.disposition,
         CpuInstructionDisposition::Executed
     );
-    assert!(!result
-        .benchmark
-        .guests
-        .malicious
-        .live
-        .foundation
-        .vmx_launch
-        .real_hw
-        .live
-        .live_environment_ready);
+    assert!(
+        !result
+            .benchmark
+            .guests
+            .malicious
+            .live
+            .foundation
+            .vmx_launch
+            .real_hw
+            .live
+            .live_environment_ready
+    );
 }
 
 #[test]

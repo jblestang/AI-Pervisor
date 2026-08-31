@@ -4,10 +4,10 @@ use hv_config_model::IPC_SLOT_METADATA_BYTES;
 
 use crate::e1000::{handle_e1000_mmio_write, E1000_REG_RDH};
 use crate::error::{DatapathError, DatapathErrorKind};
-use crate::topology::DatapathForwardPlan;
 use crate::ipc::{
     queue_storage_bytes, IpcQueueHeader, REFERENCE_IPC_QUEUE_SLOTS, REFERENCE_IPC_SLOT_SIZE_BYTES,
 };
+use crate::topology::DatapathForwardPlan;
 
 /// Which IPC channel a compromised guest action targets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -103,7 +103,11 @@ pub fn apply_compromised_guest_write(
             slot_index,
             forged_payload_len,
         } => {
-            forge_slot_metadata(channel_bytes_mut(plan, channel)?, slot_index, forged_payload_len)?;
+            forge_slot_metadata(
+                channel_bytes_mut(plan, channel)?,
+                slot_index,
+                forged_payload_len,
+            )?;
         }
         CompromisedGuestAction::CorruptHeadTail {
             channel,
@@ -121,7 +125,10 @@ pub fn apply_compromised_guest_write(
             }
             write_u32(bytes, 0, 9999)?;
         }
-        CompromisedGuestAction::StaleSlotReplay { channel, slot_index } => {
+        CompromisedGuestAction::StaleSlotReplay {
+            channel,
+            slot_index,
+        } => {
             prime_consumed_slot(channel_bytes_mut(plan, channel)?, slot_index)?;
         }
         CompromisedGuestAction::E1000ReadOnlyWrite {
@@ -283,13 +290,15 @@ fn slot_offset(header: &IpcQueueHeader, slot_index: u32) -> Result<usize, Datapa
     let header_bytes = core::mem::size_of::<IpcQueueHeader>() as u64;
     let per_slot = u64::from(header.slot_size_bytes)
         .checked_add(IPC_SLOT_METADATA_BYTES)
-        .ok_or_else(|| DatapathError::new(DatapathErrorKind::IpcViolation, "slot stride overflow"))?;
-    let slot_base = u64::from(slot_index)
-        .checked_mul(per_slot)
-        .ok_or_else(|| DatapathError::new(DatapathErrorKind::IpcViolation, "slot offset overflow"))?;
-    let offset = header_bytes
-        .checked_add(slot_base)
-        .ok_or_else(|| DatapathError::new(DatapathErrorKind::IpcViolation, "slot address overflow"))?;
+        .ok_or_else(|| {
+            DatapathError::new(DatapathErrorKind::IpcViolation, "slot stride overflow")
+        })?;
+    let slot_base = u64::from(slot_index).checked_mul(per_slot).ok_or_else(|| {
+        DatapathError::new(DatapathErrorKind::IpcViolation, "slot offset overflow")
+    })?;
+    let offset = header_bytes.checked_add(slot_base).ok_or_else(|| {
+        DatapathError::new(DatapathErrorKind::IpcViolation, "slot address overflow")
+    })?;
     usize::try_from(offset).map_err(|_| {
         DatapathError::new(DatapathErrorKind::IpcViolation, "slot offset exceeds usize")
     })
@@ -297,7 +306,10 @@ fn slot_offset(header: &IpcQueueHeader, slot_index: u32) -> Result<usize, Datapa
 
 fn read_u32(bytes: &[u8], offset: usize) -> Result<u32, DatapathError> {
     let slice = bytes.get(offset..offset + 4).ok_or_else(|| {
-        DatapathError::new(DatapathErrorKind::IpcViolation, "ipc u32 read out of bounds")
+        DatapathError::new(
+            DatapathErrorKind::IpcViolation,
+            "ipc u32 read out of bounds",
+        )
     })?;
     Ok(u32::from_le_bytes([
         slice.first().copied().unwrap_or(0),
@@ -309,7 +321,10 @@ fn read_u32(bytes: &[u8], offset: usize) -> Result<u32, DatapathError> {
 
 fn write_u32(bytes: &mut [u8], offset: usize, value: u32) -> Result<(), DatapathError> {
     let slice = bytes.get_mut(offset..offset + 4).ok_or_else(|| {
-        DatapathError::new(DatapathErrorKind::IpcViolation, "ipc u32 write out of bounds")
+        DatapathError::new(
+            DatapathErrorKind::IpcViolation,
+            "ipc u32 write out of bounds",
+        )
     })?;
     slice.copy_from_slice(&value.to_le_bytes());
     Ok(())
@@ -319,9 +334,9 @@ fn write_u32(bytes: &mut [u8], offset: usize, value: u32) -> Result<(), Datapath
 #[allow(clippy::expect_used)]
 mod tests {
     use super::*;
+    use crate::forward::plan_datapath_forward;
     use hv_config_model::compile_config_from_str;
     use hv_platform_model::plan_static_platform_ir;
-    use crate::forward::plan_datapath_forward;
 
     #[test]
     fn clean_plan_passes_integrity_scan() {
@@ -343,7 +358,9 @@ mod tests {
             slot_index: 0,
             forged_payload_len: REFERENCE_IPC_SLOT_SIZE_BYTES + 64,
         };
-        assert!(crate::forward::is_compromised_action_blocked(&mut plan, action));
+        assert!(crate::forward::is_compromised_action_blocked(
+            &mut plan, action
+        ));
     }
 
     #[test]

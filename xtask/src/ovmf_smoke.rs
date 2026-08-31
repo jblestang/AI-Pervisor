@@ -145,7 +145,10 @@ fn run_ovmf_smoke_boot_with(
     let log = match fs::read_to_string(&serial_log) {
         Ok(contents) => contents,
         Err(err) => {
-            eprintln!("failed to read OVMF serial log {}: {err}", serial_log.display());
+            eprintln!(
+                "failed to read OVMF serial log {}: {err}",
+                serial_log.display()
+            );
             return 1;
         }
     };

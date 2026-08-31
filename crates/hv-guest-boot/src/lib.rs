@@ -14,18 +14,16 @@ pub use boot_info::{
     build_guest_boot_infos_all_partitions, patch_relay_measurement_page_gpa,
     GuestBootInfoBuildError, GuestBootInfoBuildErrorKind,
 };
-pub use parse::{
-    GuestBootInfoParseError, GuestBootInfoParseErrorKind, GuestBootInfoView,
-};
 pub use elf::{
     guest_entry_phys_for_region, parse_elf64, GuestElfError, GuestElfErrorKind, GuestElfImage,
     GuestElfLoadSegment,
 };
+pub use parse::{GuestBootInfoParseError, GuestBootInfoParseErrorKind, GuestBootInfoView};
 pub use partition_images::{
     reference_datapath_guest_elf, reference_guest_elf, reference_guest_elf_for_kind,
     reference_guest_elf_for_vm_id, reference_guest_source_elf, GuestElfKind,
     GUEST_DATAPATH_CAPABLE_MARKER, GUEST_DATAPATH_RELAY_BENCHMARK_COMPLETE_MARKER,
-    GUEST_IN_RUNNING_MARKER, GUEST_MID_RUNNING_MARKER,
-    GUEST_OUT_RUNNING_MARKER, GUEST_SOURCE_ELFS_AVAILABLE, REFERENCE_GUEST_PARTITION_IDS,
+    GUEST_IN_RUNNING_MARKER, GUEST_MID_RUNNING_MARKER, GUEST_OUT_RUNNING_MARKER,
+    GUEST_SOURCE_ELFS_AVAILABLE, REFERENCE_GUEST_PARTITION_IDS,
 };
 pub use smoke::{GUEST_SMOKE_IMAGE, GUEST_SMOKE_RUNNING_MARKER};

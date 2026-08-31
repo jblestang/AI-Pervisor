@@ -12,25 +12,16 @@ const CODE_OFFSET: usize = ELF_HEADER_SIZE + PHDR_SIZE;
 
 fn guest_code(marker: u8) -> [u8; 24] {
     [
-        0x48, 0xC7, 0xC0, marker, 0x00, 0x00, 0x00,
-        0x48, 0xC7, 0xC2, 0xF8, 0x03, 0x00, 0x00,
-        0xEE,
-        0x48, 0xC7, 0xC0, 0x0A, 0x00, 0x00, 0x00,
-        0xEE,
-        0xF4,
+        0x48, 0xC7, 0xC0, marker, 0x00, 0x00, 0x00, 0x48, 0xC7, 0xC2, 0xF8, 0x03, 0x00, 0x00, 0xEE,
+        0x48, 0xC7, 0xC0, 0x0A, 0x00, 0x00, 0x00, 0xEE, 0xF4,
     ]
 }
 
 fn guest_datapath_code(marker: u8) -> [u8; 32] {
     [
-        0x48, 0xC7, 0xC0, marker, 0x00, 0x00, 0x00,
-        0x48, 0xC7, 0xC2, 0xF8, 0x03, 0x00, 0x00,
-        0xEE,
-        0x48, 0xC7, 0xC0, b'D', 0x00, 0x00, 0x00,
-        0xEE,
-        0x48, 0xC7, 0xC0, 0x0A, 0x00, 0x00, 0x00,
-        0xEE,
-        0xF4,
+        0x48, 0xC7, 0xC0, marker, 0x00, 0x00, 0x00, 0x48, 0xC7, 0xC2, 0xF8, 0x03, 0x00, 0x00, 0xEE,
+        0x48, 0xC7, 0xC0, b'D', 0x00, 0x00, 0x00, 0xEE, 0x48, 0xC7, 0xC0, 0x0A, 0x00, 0x00, 0x00,
+        0xEE, 0xF4,
     ]
 }
 
@@ -65,7 +56,9 @@ fn build_minimal_elf64(code: &[u8]) -> Vec<u8> {
 }
 
 fn write_byte_array(out: &mut String, const_name: &str, bytes: &[u8]) {
-    out.push_str(&format!("#[allow(dead_code)]\npub const {const_name}: &[u8] = &[\n"));
+    out.push_str(&format!(
+        "#[allow(dead_code)]\npub const {const_name}: &[u8] = &[\n"
+    ));
     for chunk in bytes.chunks(16) {
         out.push_str("    ");
         for byte in chunk {
@@ -91,7 +84,11 @@ fn write_elf_module(out_dir: &PathBuf, manifest_dir: &Path) {
 
     for (partition, marker) in partitions {
         let elf = build_minimal_elf64(&guest_code(marker));
-        write_byte_array(&mut source, &format!("GUEST_{}_ELF", partition.to_uppercase()), &elf);
+        write_byte_array(
+            &mut source,
+            &format!("GUEST_{}_ELF", partition.to_uppercase()),
+            &elf,
+        );
 
         let datapath_elf = build_minimal_elf64(&guest_datapath_code(marker));
         write_byte_array(
@@ -121,7 +118,7 @@ fn write_elf_module(out_dir: &PathBuf, manifest_dir: &Path) {
     }
 
     source.push_str(&format!(
-        "/// Whether built `guests/` source-tree ELFs were embedded at compile time.\npub const GUEST_SOURCE_ELFS_AVAILABLE: bool = {source_available};\n"
+        "/// Whether built `guests/` source-tree ELFs were embedded at compile time.\n#[allow(dead_code)]\npub const GUEST_SOURCE_ELFS_AVAILABLE: bool = {source_available};\n"
     ));
 
     fs::write(out_dir.join("partition_elfs.rs"), source).expect("write partition_elfs.rs");

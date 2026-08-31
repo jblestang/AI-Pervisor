@@ -391,7 +391,10 @@ pub fn patch_published_alloc_size(
 }
 
 /// Validates transfer size fields against the available byte slice.
-pub fn validate_transfer_bounds(header: &HypervisorTransferHeader, slice_len: usize) -> Result<(), BootError> {
+pub fn validate_transfer_bounds(
+    header: &HypervisorTransferHeader,
+    slice_len: usize,
+) -> Result<(), BootError> {
     if header.published_alloc_size < header.total_size {
         return Err(transfer_error(
             "transfer published allocation smaller than total size",

@@ -1,12 +1,14 @@
 //! CPU seam backends combining structure programming with instruction seams.
 
-use hv_ept::{program_ept_tables, EptBackend, EptInitPlan, EptProgrammedTables, EptError, EptErrorKind};
+use hv_ept::{
+    program_ept_tables, EptBackend, EptError, EptErrorKind, EptInitPlan, EptProgrammedTables,
+};
 use hv_vmx::{
-    program_vmxon_region, VmxBackend, VmxInitPlan, VmxonProgrammedRegion, VmxError, VmxErrorKind,
+    program_vmxon_region, VmxBackend, VmxError, VmxErrorKind, VmxInitPlan, VmxonProgrammedRegion,
     REFERENCE_VMXON_REVISION,
 };
 use hv_vtd::{
-    program_vtd_tables, VtdBackend, VtdInitPlan, VtdProgrammedTables, VtdError, VtdErrorKind,
+    program_vtd_tables, VtdBackend, VtdError, VtdErrorKind, VtdInitPlan, VtdProgrammedTables,
 };
 
 use crate::error::{CpuSeamError, CpuSeamErrorKind};

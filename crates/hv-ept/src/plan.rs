@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 use hv_datapath::{plan_e1000_mmio_guest_phys, E1000_MMIO_SIZE_BYTES};
 use hv_platform_model::StaticPlatformIR;
 use hv_types::{ByteSize, HostPhysAddr};
-use hv_vmx::{VMXON_REGION_MIN_BYTES, VmxInitPlan};
+use hv_vmx::{VmxInitPlan, VMXON_REGION_MIN_BYTES};
 
 use crate::constants::{EPT_PAGE_SIZE_BYTES, EPT_ROOT_TABLE_BYTES};
 use crate::error::{EptError, EptErrorKind};
@@ -56,9 +56,8 @@ pub fn plan_ept_init(
     }
     for device in &layout.pci_devices {
         if device.kind == "nic_e1000" {
-            let guest_phys = plan_e1000_mmio_guest_phys(device.vm_id).map_err(|_| {
-                planning_error("failed to plan e1000 mmio guest mapping")
-            })?;
+            let guest_phys = plan_e1000_mmio_guest_phys(device.vm_id)
+                .map_err(|_| planning_error("failed to plan e1000 mmio guest mapping"))?;
             let host_phys = HostPhysAddr::new(guest_phys.raw());
             push_identity_mapping(
                 &mut identity_mappings,

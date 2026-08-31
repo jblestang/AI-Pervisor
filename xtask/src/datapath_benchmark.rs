@@ -73,7 +73,10 @@ pub fn run_datapath_benchmark(config_path: &str) -> i32 {
         let mbit = match throughput_mbit_from_frames(payload_bytes, frames, elapsed_nanos) {
             Ok(mbit) => mbit,
             Err(err) => {
-                eprintln!("throughput calculation failed on run {run_idx}: {}", err.message);
+                eprintln!(
+                    "throughput calculation failed on run {run_idx}: {}",
+                    err.message
+                );
                 return 1;
             }
         };
@@ -86,7 +89,10 @@ pub fn run_datapath_benchmark(config_path: &str) -> i32 {
     eprintln!("datapath benchmark (host wall-clock)");
     eprintln!("  config: {}", config_path);
     eprintln!("  payload bytes/frame: {payload_bytes}");
-    eprintln!("  warmup/measurement: {}s/{}s", config.warmup_secs, config.measurement_secs);
+    eprintln!(
+        "  warmup/measurement: {}s/{}s",
+        config.warmup_secs, config.measurement_secs
+    );
     eprintln!("  runs: {}", config.min_runs);
     eprintln!(
         "  min/mean/median/p95 Mbit/s: {}/{}/{}/{}",
@@ -101,7 +107,11 @@ pub fn run_datapath_benchmark(config_path: &str) -> i32 {
         if target_met { "met" } else { "NOT MET" }
     );
 
-    if target_met { 0 } else { 1 }
+    if target_met {
+        0
+    } else {
+        1
+    }
 }
 
 #[cfg(test)]

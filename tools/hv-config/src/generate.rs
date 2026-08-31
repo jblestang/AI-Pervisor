@@ -5,14 +5,12 @@ use std::path::{Path, PathBuf};
 
 use crate::artifacts::{
     BOOT_LAYOUT, BOOT_MANIFEST, BUILD_MANIFEST, CONFIG_SHA256, CORE_OWNERSHIP, CPU_TOPOLOGY,
-    GUEST_IMAGES, HYPERVISOR_EMBEDDED_CONFIG_RS, IPC_MAP, MEMORY_MAP, PCI_MAP,
-    PLATFORM_LAYOUT, PLATFORM_REQUIREMENTS, QEMU_ARGS, STATIC_INTENT_JSON,
-    STATIC_PLATFORM_LAYOUT_JSON, STATIC_PLATFORM_RS,
+    GUEST_IMAGES, HYPERVISOR_EMBEDDED_CONFIG_RS, IPC_MAP, MEMORY_MAP, PCI_MAP, PLATFORM_LAYOUT,
+    PLATFORM_REQUIREMENTS, QEMU_ARGS, STATIC_INTENT_JSON, STATIC_PLATFORM_LAYOUT_JSON,
+    STATIC_PLATFORM_RS,
 };
 use hv_config_model::compile_config_from_path;
-use hv_hypervisor_boot::{
-    layout_snapshot_from_platform_ir, requirements_snapshot_from_platform,
-};
+use hv_hypervisor_boot::{layout_snapshot_from_platform_ir, requirements_snapshot_from_platform};
 use hv_platform_model::plan_static_platform_ir;
 
 /// Generates configuration artifacts into `output`.
@@ -288,7 +286,11 @@ fn render_hypervisor_embedded_config(
     .map_err(|err| err.message)?;
     let layout_snapshot =
         layout_snapshot_from_platform_ir(platform_ir).map_err(|err| err.message)?;
-    Ok(render_embedded_config_rs(digest, &snapshot, &layout_snapshot))
+    Ok(render_embedded_config_rs(
+        digest,
+        &snapshot,
+        &layout_snapshot,
+    ))
 }
 
 fn render_embedded_config_rs(
@@ -313,10 +315,7 @@ fn render_embedded_config_rs(
         snapshot.min_physical_cores
     ));
     rendered.push_str(&format!("    smt_policy: {},\n", snapshot.smt_policy));
-    rendered.push_str(&format!(
-        "    min_ram_bytes: {},\n",
-        snapshot.min_ram_bytes
-    ));
+    rendered.push_str(&format!("    min_ram_bytes: {},\n", snapshot.min_ram_bytes));
     rendered.push_str(&format!(
         "    interrupt_remapping: {},\n",
         snapshot.interrupt_remapping
@@ -398,8 +397,14 @@ fn render_embedded_config_rs(
     for region in layout_snapshot.ipc_regions.iter() {
         rendered.push_str("        hv_boot_abi::LayoutIpcRegionSnapshot {\n");
         rendered.push_str(&format!("            channel_id: {},\n", region.channel_id));
-        rendered.push_str(&format!("            producer_vm_id: {},\n", region.producer_vm_id));
-        rendered.push_str(&format!("            consumer_vm_id: {},\n", region.consumer_vm_id));
+        rendered.push_str(&format!(
+            "            producer_vm_id: {},\n",
+            region.producer_vm_id
+        ));
+        rendered.push_str(&format!(
+            "            consumer_vm_id: {},\n",
+            region.consumer_vm_id
+        ));
         rendered.push_str(&format!("            host_phys: {},\n", region.host_phys));
         rendered.push_str(&format!("            size_bytes: {},\n", region.size_bytes));
         rendered.push_str("        },\n");
@@ -417,7 +422,10 @@ fn render_embedded_config_rs(
         rendered.push_str(&format!("            bus: {},\n", device.bus));
         rendered.push_str(&format!("            device: {},\n", device.device));
         rendered.push_str(&format!("            function: {},\n", device.function));
-        rendered.push_str(&format!("            device_kind: {},\n", device.device_kind));
+        rendered.push_str(&format!(
+            "            device_kind: {},\n",
+            device.device_kind
+        ));
         rendered.push_str("        },\n");
     }
     rendered.push_str("    ],\n");
@@ -454,12 +462,9 @@ mod tests {
         let yaml = include_str!("../../../configs/qemu.yaml");
         let compiled = hv_config_model::compile_config_from_str(yaml).expect("compile");
         let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
-        let rendered = render_hypervisor_embedded_config(
-            &compiled.digest.bytes,
-            &layout,
-            &compiled,
-        )
-        .expect("render");
+        let rendered =
+            render_hypervisor_embedded_config(&compiled.digest.bytes, &layout, &compiled)
+                .expect("render");
         assert!(rendered.contains("hypervisor_reserve_bytes"));
         assert!(rendered.contains("REQUIREMENTS_SNAPSHOT"));
         assert!(rendered.contains("LAYOUT_SNAPSHOT"));
@@ -475,6 +480,8 @@ mod tests {
         assert!(render_build_manifest(source, &compiled).contains("schema_version"));
         assert!(render_qemu_args(&compiled).contains("-machine"));
         assert!(render_platform_layout(&layout).contains("hypervisor_reserve"));
-        assert!(render_static_platform_rs(&compiled).expect("static rs").contains("CONFIG_SHA256"));
+        assert!(render_static_platform_rs(&compiled)
+            .expect("static rs")
+            .contains("CONFIG_SHA256"));
     }
 }

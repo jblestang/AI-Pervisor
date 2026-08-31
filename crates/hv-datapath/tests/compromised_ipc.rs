@@ -5,12 +5,13 @@
 use hv_config_model::compile_config_from_str;
 use hv_datapath::{
     apply_compromised_guest_write, enforce_forward_integrity, plan_datapath_forward,
-    run_reference_compromised_scenarios, CompromisedGuestAction, DatapathErrorKind, E1000Partition, IpcChannelSelector, REFERENCE_COMPROMISED_SCENARIOS,
-    REFERENCE_IPC_SLOT_SIZE_BYTES,
+    run_reference_compromised_scenarios, CompromisedGuestAction, DatapathErrorKind, E1000Partition,
+    IpcChannelSelector, REFERENCE_COMPROMISED_SCENARIOS, REFERENCE_IPC_SLOT_SIZE_BYTES,
 };
 use hv_platform_model::plan_static_platform_ir;
 
-fn reference_forward_plan() -> Result<hv_datapath::DatapathForwardPlan, hv_datapath::DatapathError> {
+fn reference_forward_plan() -> Result<hv_datapath::DatapathForwardPlan, hv_datapath::DatapathError>
+{
     let yaml = include_str!("../../../configs/qemu.yaml");
     let compiled = compile_config_from_str(yaml).expect("compile");
     let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
@@ -59,8 +60,11 @@ fn corrupt_head_tail_detected_by_integrity_scan() {
 #[test]
 fn cross_partition_chan_a_corruption_detected() {
     let mut plan = reference_forward_plan().expect("plan");
-    apply_compromised_guest_write(&mut plan, CompromisedGuestAction::CrossPartitionCorruptChanA)
-        .expect("apply");
+    apply_compromised_guest_write(
+        &mut plan,
+        CompromisedGuestAction::CrossPartitionCorruptChanA,
+    )
+    .expect("apply");
     assert!(enforce_forward_integrity(&plan).is_err());
 }
 

@@ -11,7 +11,8 @@
 pub use hv_hypervisor_boot::{
     boot_check, boot_check_and_init_gate_c, boot_check_and_init_gate_c_programming,
     boot_check_and_init_vmx, boot_from_transfer, boot_from_transfer_and_init_gate_c,
-    boot_from_transfer_and_init_gate_c_from_snapshots, boot_from_transfer_and_init_gate_c_programming,
+    boot_from_transfer_and_init_gate_c_from_snapshots,
+    boot_from_transfer_and_init_gate_c_programming,
     boot_from_transfer_and_init_gate_c_programming_from_snapshots, boot_from_transfer_and_init_vmx,
     boot_from_transfer_snapshot, layout_snapshot_from_platform_ir,
     platform_requirements_from_snapshot, requirements_snapshot_from_platform,
@@ -25,8 +26,7 @@ pub use hv_hypervisor_boot::{
 };
 #[cfg(feature = "live-execution")]
 pub use hv_hypervisor_boot::{
-    boot_check_and_init_gate_c_live_execution,
-    boot_from_transfer_and_init_gate_c_live_execution,
+    boot_check_and_init_gate_c_live_execution, boot_from_transfer_and_init_gate_c_live_execution,
     boot_from_transfer_and_init_gate_c_live_execution_from_snapshots, GateCLiveExecutionResult,
 };
 #[cfg(feature = "real-hw-execution")]

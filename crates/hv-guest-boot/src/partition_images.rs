@@ -43,7 +43,10 @@ pub fn reference_guest_source_elf(partition_id: &str) -> Option<&'static [u8]> {
 }
 
 /// Returns the reference ELF image bytes for a partition id and image kind.
-pub fn reference_guest_elf_for_kind(partition_id: &str, kind: GuestElfKind) -> Option<&'static [u8]> {
+pub fn reference_guest_elf_for_kind(
+    partition_id: &str,
+    kind: GuestElfKind,
+) -> Option<&'static [u8]> {
     match kind {
         GuestElfKind::Standard => match partition_id {
             "in" => Some(GUEST_IN_ELF),

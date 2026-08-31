@@ -51,7 +51,8 @@ mod tests {
         let compiled = compile_config_from_str(yaml).expect("compile");
         let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
         let plan = plan_vmx_init(&layout.hypervisor_reserve).expect("vmx plan");
-        let observed = include_str!("../../hv-platform-model/tests/fixtures/observed/qemu_reference.json");
+        let observed =
+            include_str!("../../hv-platform-model/tests/fixtures/observed/qemu_reference.json");
         let observed = hv_platform_model::parse_observed_platform_json(observed).expect("parse");
         let (validated, _) =
             validate_platform(&compiled.requirements, &observed).expect("validate");
@@ -67,8 +68,10 @@ mod tests {
         let compiled = compile_config_from_str(yaml).expect("compile");
         let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
         let plan = plan_vmx_init(&layout.hypervisor_reserve).expect("vmx plan");
-        let observed_json = include_str!("../../hv-platform-model/tests/fixtures/observed/qemu_reference.json");
-        let mut observed = hv_platform_model::parse_observed_platform_json(observed_json).expect("parse");
+        let observed_json =
+            include_str!("../../hv-platform-model/tests/fixtures/observed/qemu_reference.json");
+        let mut observed =
+            hv_platform_model::parse_observed_platform_json(observed_json).expect("parse");
         observed.vmx = false;
         let validated = ValidatedPlatform::new(observed);
         let mut backend = MockVmxBackend::default();
@@ -82,8 +85,10 @@ mod tests {
         let compiled = compile_config_from_str(yaml).expect("compile");
         let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
         let plan = plan_vmx_init(&layout.hypervisor_reserve).expect("vmx plan");
-        let observed_json = include_str!("../../hv-platform-model/tests/fixtures/observed/qemu_reference.json");
-        let mut observed = hv_platform_model::parse_observed_platform_json(observed_json).expect("parse");
+        let observed_json =
+            include_str!("../../hv-platform-model/tests/fixtures/observed/qemu_reference.json");
+        let mut observed =
+            hv_platform_model::parse_observed_platform_json(observed_json).expect("parse");
         observed.ept = false;
         let validated = ValidatedPlatform::new(observed);
         let mut backend = MockVmxBackend::default();
@@ -106,7 +111,8 @@ mod tests {
         let compiled = compile_config_from_str(yaml).expect("compile");
         let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
         let plan = plan_vmx_init(&layout.hypervisor_reserve).expect("vmx plan");
-        let observed = include_str!("../../hv-platform-model/tests/fixtures/observed/qemu_reference.json");
+        let observed =
+            include_str!("../../hv-platform-model/tests/fixtures/observed/qemu_reference.json");
         let observed = hv_platform_model::parse_observed_platform_json(observed).expect("parse");
         let (validated, _) =
             validate_platform(&compiled.requirements, &observed).expect("validate");

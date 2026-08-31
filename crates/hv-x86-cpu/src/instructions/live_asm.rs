@@ -7,10 +7,10 @@
     not(coverage)
 ))]
 
-use crate::constants::{
-    CR4_VMXE_BIT, INVEPT_DESCRIPTOR_BYTES, INVEPT_TYPE_SINGLE_CONTEXT, VMCS_EPT_POINTER_FIELD,
-};
+use crate::constants::{CR4_VMXE_BIT, VMCS_EPT_POINTER_FIELD};
 use crate::error::{CpuSeamError, CpuSeamErrorKind};
+
+const INVEPT_TYPE_SINGLE_CONTEXT: u64 = 1;
 
 pub fn enable_vmx_in_cr4() -> Result<(), CpuSeamError> {
     let cr4 = read_cr4();
@@ -123,8 +123,16 @@ pub fn vmwrite_ept_pointer(value: u64) -> Result<(), CpuSeamError> {
 }
 
 pub fn invept_single_context(ept_pointer: u64) -> Result<(), CpuSeamError> {
-    let mut descriptor = [0u8; INVEPT_DESCRIPTOR_BYTES];
-    descriptor[..8].copy_from_slice(&ept_pointer.to_le_bytes());
+    #[repr(C, align(8))]
+    struct InveptDescriptor {
+        ept_pointer: u64,
+        reserved: u64,
+    }
+
+    let descriptor = InveptDescriptor {
+        ept_pointer,
+        reserved: 0,
+    };
     let mut cf: u8;
     let mut zf: u8;
     // SAFETY: INVEPT is defined in VMX root operation with a valid 128-bit descriptor.
@@ -134,7 +142,7 @@ pub fn invept_single_context(ept_pointer: u64) -> Result<(), CpuSeamError> {
             "setc {cf}",
             "setz {zf}",
             ty = in(reg) INVEPT_TYPE_SINGLE_CONTEXT,
-            desc = in(reg) descriptor.as_ptr(),
+            desc = in(reg) (&raw const descriptor),
             cf = out(reg_byte) cf,
             zf = out(reg_byte) zf,
             options(nostack),
@@ -173,6 +181,7 @@ pub fn vmlaunch() -> Result<(), CpuSeamError> {
 }
 
 /// VMLAUNCH followed by a return from the VM-exit stub when the guest executes `HLT`.
+#[allow(unused_assignments, unused_variables)]
 pub fn vmlaunch_wait_for_hlt_exit() -> Result<(), CpuSeamError> {
     let mut cf: u8 = 0;
     let mut zf: u8 = 0;

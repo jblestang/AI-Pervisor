@@ -22,9 +22,9 @@ mod backends;
 mod constants;
 mod cpuid;
 mod error;
-mod instructions;
 #[cfg(feature = "datapath-guest-relay-measurement")]
 mod guest_relay_measurement;
+mod instructions;
 mod resident;
 mod resident_backends;
 mod seams;
@@ -36,20 +36,27 @@ pub use constants::{
     VMCS_EPT_POINTER_FIELD, VMXON_REVISION_PREFIX_BYTES, X86_CPL_MASK, X86_RING_0,
 };
 pub use error::{CpuSeamError, CpuSeamErrorKind};
+#[cfg(feature = "datapath-guest-relay-measurement")]
+pub use guest_relay_measurement::{
+    measure_in_vm_relay_frames_from_boot_infos, measure_in_vm_relay_from_context,
+    publish_relay_measurement_page_authoritative, read_ipc_delivered_frames_from_guest,
+    read_relay_frames_completed_from_boot_info_blob, read_relay_measurement_extension_from_guest,
+    read_relay_measurement_extension_from_installed_boot_info, GuestBootInfoMeasurementSite,
+    GuestRelayMeasurementContext, InVmRelayMeasurement, GUEST_RELAY_MEASUREMENT_VM_ID,
+};
 pub use instructions::{
     current_privilege_level, execute_ept_pointer_load, execute_invept_single_context,
-    execute_vmxon, execute_vtd_enable,
-    execute_vmcs_prepare, execute_vmcs_field_programming, execute_vmlaunch,
-    firmware_live_execution_enabled, last_vtd_enable_intent,
+    execute_vmcs_field_programming, execute_vmcs_prepare, execute_vmlaunch, execute_vmxon,
+    execute_vtd_enable, firmware_live_execution_enabled, last_vtd_enable_intent,
     live_execution_environment_ready, live_execution_runtime_enabled, read_vmx_basic_msr,
     vmx_revision_from_basic_msr, VtdEnableIntent, IA32_VMX_BASIC,
 };
-pub use resident::{
-    install_ept_tables, install_guest_image, install_vmxon_region, install_vmcs_region,
-    resolve_vmxon_revision, MockPageAllocator, PageAllocator, VMCS_REGION_BYTES,
-};
 #[cfg(feature = "datapath-guests")]
 pub use resident::install_guest_elf;
+pub use resident::{
+    install_ept_tables, install_guest_image, install_vmcs_region, install_vmxon_region,
+    resolve_vmxon_revision, MockPageAllocator, PageAllocator, VMCS_REGION_BYTES,
+};
 #[cfg(feature = "datapath-guest-live")]
 pub use resident::{install_guest_elf_with_boot_info, GuestElfWithBootInfoInstall};
 #[cfg(feature = "datapath-guest-relay-measurement")]
@@ -57,28 +64,18 @@ pub use resident::{install_relay_measurement_page, RelayMeasurementPageInstall};
 pub use resident_backends::{
     ResidentCpuSeamEptBackend, ResidentCpuSeamVmxBackend, ResidentCpuSeamVtdBackend,
 };
-pub use seams::{
-    run_ept_pointer_cpu_seam, run_ept_pointer_reload_cpu_seam_batch, run_vmxon_cpu_seam,
-    run_vtd_enable_cpu_seam, run_vmx_launch_cpu_seam, CpuInstructionDisposition,
-    EptCpuSeamOutcome, EptPointerReloadCpuSeamOutcome, VmxCpuSeamOutcome, VmxLaunchCpuSeamOutcome,
-    VtdCpuSeamOutcome,
-};
-#[cfg(feature = "datapath-guests")]
-pub use seams::{run_multi_vmx_launch_cpu_seam, MultiVmxLaunchCpuSeamOutcome};
-#[cfg(feature = "datapath-live")]
-pub use seams::{run_datapath_live_cpu_seam, DatapathLiveCpuSeamOutcome};
-#[cfg(feature = "datapath-runtime")]
-pub use seams::{run_datapath_runtime_cpu_seam, DatapathRuntimeCpuSeamOutcome};
 #[cfg(feature = "datapath-guest-execution")]
 pub use seams::{run_datapath_guest_execution_cpu_seam, DatapathGuestExecutionCpuSeamOutcome};
 #[cfg(feature = "datapath-guest-throughput")]
 pub use seams::{run_datapath_guest_throughput_cpu_seam, DatapathGuestThroughputCpuSeamOutcome};
-#[cfg(feature = "datapath-guest-relay-measurement")]
-pub use guest_relay_measurement::{
-    measure_in_vm_relay_frames_from_boot_infos, measure_in_vm_relay_from_context,
-    read_ipc_delivered_frames_from_guest, read_relay_frames_completed_from_boot_info_blob,
-    publish_relay_measurement_page_authoritative,
-    read_relay_measurement_extension_from_guest,
-    read_relay_measurement_extension_from_installed_boot_info, GuestBootInfoMeasurementSite,
-    GuestRelayMeasurementContext, InVmRelayMeasurement, GUEST_RELAY_MEASUREMENT_VM_ID,
+#[cfg(feature = "datapath-live")]
+pub use seams::{run_datapath_live_cpu_seam, DatapathLiveCpuSeamOutcome};
+#[cfg(feature = "datapath-runtime")]
+pub use seams::{run_datapath_runtime_cpu_seam, DatapathRuntimeCpuSeamOutcome};
+pub use seams::{
+    run_ept_pointer_cpu_seam, run_ept_pointer_reload_cpu_seam_batch, run_vmx_launch_cpu_seam,
+    run_vmxon_cpu_seam, run_vtd_enable_cpu_seam, CpuInstructionDisposition, EptCpuSeamOutcome,
+    EptPointerReloadCpuSeamOutcome, VmxCpuSeamOutcome, VmxLaunchCpuSeamOutcome, VtdCpuSeamOutcome,
 };
+#[cfg(feature = "datapath-guests")]
+pub use seams::{run_multi_vmx_launch_cpu_seam, MultiVmxLaunchCpuSeamOutcome};

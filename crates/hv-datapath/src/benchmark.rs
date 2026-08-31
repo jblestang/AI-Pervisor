@@ -186,7 +186,9 @@ pub fn compute_benchmark_run_stats(values: &[u64]) -> DatapathBenchmarkRunStats 
     };
     let median = *sorted.get(sorted.len() / 2).unwrap_or(&0);
     let p95_idx = sorted.len().saturating_mul(95).saturating_add(99) / 100;
-    let p95_idx = p95_idx.saturating_sub(1).min(sorted.len().saturating_sub(1));
+    let p95_idx = p95_idx
+        .saturating_sub(1)
+        .min(sorted.len().saturating_sub(1));
     let p95 = *sorted.get(p95_idx).unwrap_or(&0);
     DatapathBenchmarkRunStats {
         min_mbit_per_sec: min,
@@ -210,7 +212,10 @@ mod tests {
         let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
         let result = run_mock_datapath_benchmark(&layout, &DatapathBenchmarkConfig::default())
             .expect("benchmark");
-        assert_eq!(result.payload_bytes_per_frame, SYNTHETIC_FRAME_PAYLOAD.len() as u32);
+        assert_eq!(
+            result.payload_bytes_per_frame,
+            SYNTHETIC_FRAME_PAYLOAD.len() as u32
+        );
         assert!(result.target_met);
         assert!(result.stats.min_mbit_per_sec >= TARGET_THROUGHPUT_MBIT_PER_SEC);
     }

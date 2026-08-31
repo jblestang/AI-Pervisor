@@ -85,7 +85,8 @@ fn plan_datapath_for_guest(
 
     let mut ipc_regions = Vec::new();
     for channel in &layout.ipc_memory {
-        if let Some(role) = ipc_role_for_vm(channel.producer_vm_id, channel.consumer_vm_id, guest.vm_id)
+        if let Some(role) =
+            ipc_role_for_vm(channel.producer_vm_id, channel.consumer_vm_id, guest.vm_id)
         {
             ipc_regions.push(GuestIpcRegion {
                 channel_id: channel.channel_id.raw(),
@@ -193,7 +194,10 @@ mod tests {
         assert_eq!(plan.vm_id, VmId::new(0));
         assert_eq!(plan.memory_regions.len(), 1);
         assert_eq!(plan.ipc_regions.len(), 1);
-        assert_eq!(plan.ipc_regions.first().expect("ipc").role, GuestIpcRole::Producer);
+        assert_eq!(
+            plan.ipc_regions.first().expect("ipc").role,
+            GuestIpcRole::Producer
+        );
         assert_eq!(plan.device_regions.len(), 1);
     }
 
@@ -214,7 +218,10 @@ mod tests {
         let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
         let plan = plan_datapath_for_partition(&layout, "out").expect("plan");
         assert_eq!(plan.ipc_regions.len(), 1);
-        assert_eq!(plan.ipc_regions.first().expect("ipc").role, GuestIpcRole::Consumer);
+        assert_eq!(
+            plan.ipc_regions.first().expect("ipc").role,
+            GuestIpcRole::Consumer
+        );
         assert_eq!(plan.device_regions.len(), 1);
     }
 
@@ -255,8 +262,14 @@ mod tests {
             .iter()
             .find(|region| region.role == GuestIpcRole::Producer)
             .expect("mid producer");
-        assert_eq!(mid_consumer.guest_phys.raw(), REFERENCE_IPC_CHAN_A_GUEST_PHYS);
-        assert_eq!(mid_producer.guest_phys.raw(), REFERENCE_IPC_CHAN_B_GUEST_PHYS);
+        assert_eq!(
+            mid_consumer.guest_phys.raw(),
+            REFERENCE_IPC_CHAN_A_GUEST_PHYS
+        );
+        assert_eq!(
+            mid_producer.guest_phys.raw(),
+            REFERENCE_IPC_CHAN_B_GUEST_PHYS
+        );
 
         let out_plan = plan_datapath_for_partition(&layout, "out").expect("out");
         let out_consumer = out_plan
@@ -264,7 +277,10 @@ mod tests {
             .iter()
             .find(|region| region.role == GuestIpcRole::Consumer)
             .expect("out consumer");
-        assert_eq!(out_consumer.guest_phys.raw(), REFERENCE_IPC_CHAN_B_GUEST_PHYS);
+        assert_eq!(
+            out_consumer.guest_phys.raw(),
+            REFERENCE_IPC_CHAN_B_GUEST_PHYS
+        );
     }
 
     #[test]

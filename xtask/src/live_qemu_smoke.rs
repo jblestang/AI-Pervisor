@@ -215,7 +215,10 @@ fn run_live_qemu_smoke_with(
     let log = match fs::read_to_string(&serial_log) {
         Ok(contents) => contents,
         Err(err) => {
-            eprintln!("failed to read live QEMU serial log {}: {err}", serial_log.display());
+            eprintln!(
+                "failed to read live QEMU serial log {}: {err}",
+                serial_log.display()
+            );
             return 1;
         }
     };
@@ -313,7 +316,9 @@ mod tests {
     static LIVE_QEMU_WORKDIR_LOCK: Mutex<()> = Mutex::new(());
 
     fn lock_live_qemu_workdir() -> MutexGuard<'static, ()> {
-        LIVE_QEMU_WORKDIR_LOCK.lock().expect("live qemu workdir lock")
+        LIVE_QEMU_WORKDIR_LOCK
+            .lock()
+            .expect("live qemu workdir lock")
     }
 
     fn gate_d_relay_live_success_log() -> String {
@@ -437,9 +442,7 @@ mod tests {
 
     #[test]
     fn evaluate_live_serial_accepts_legacy_real_hw_success_marker() {
-        let log = format!(
-            "BdsDxe: starting Boot0001 \"app\"\n{REAL_HW_BOOT_SUCCESS_MARKER}\n",
-        );
+        let log = format!("BdsDxe: starting Boot0001 \"app\"\n{REAL_HW_BOOT_SUCCESS_MARKER}\n",);
         assert!(evaluate_live_qemu_smoke_serial(&log).is_ok());
     }
 

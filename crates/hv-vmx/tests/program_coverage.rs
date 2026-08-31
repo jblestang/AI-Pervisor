@@ -2,8 +2,10 @@
 
 use hv_config_model::compile_config_from_str;
 use hv_platform_model::plan_static_platform_ir;
-use hv_vmx::{plan_vmx_init, program_vmxon_region, REFERENCE_VMXON_REVISION, VMXON_REGION_MIN_BYTES};
 use hv_types::ByteSize;
+use hv_vmx::{
+    plan_vmx_init, program_vmxon_region, REFERENCE_VMXON_REVISION, VMXON_REGION_MIN_BYTES,
+};
 
 #[test]
 fn program_vmxon_region_rejects_undersized_plan() {

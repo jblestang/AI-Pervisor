@@ -32,7 +32,10 @@ pub struct GuestBootInfoParseError {
 
 impl GuestBootInfoParseError {
     /// Creates a new guest boot info parse error.
-    pub fn new(kind: GuestBootInfoParseErrorKind, message: impl Into<alloc::string::String>) -> Self {
+    pub fn new(
+        kind: GuestBootInfoParseErrorKind,
+        message: impl Into<alloc::string::String>,
+    ) -> Self {
         Self {
             kind,
             message: message.into(),
@@ -231,12 +234,14 @@ impl<'a> GuestBootInfoView<'a> {
 
     fn slice_at(&self, offset: usize, len: usize) -> Result<&'a [u8], GuestBootInfoParseError> {
         self.bytes
-            .get(offset..offset.checked_add(len).ok_or_else(|| {
-                GuestBootInfoParseError::new(
-                    GuestBootInfoParseErrorKind::Bounds,
-                    "guest boot info slice overflow",
-                )
-            })?)
+            .get(
+                offset..offset.checked_add(len).ok_or_else(|| {
+                    GuestBootInfoParseError::new(
+                        GuestBootInfoParseErrorKind::Bounds,
+                        "guest boot info slice overflow",
+                    )
+                })?,
+            )
             .ok_or_else(|| {
                 GuestBootInfoParseError::new(
                     GuestBootInfoParseErrorKind::Bounds,
@@ -378,7 +383,8 @@ mod tests {
         let yaml = include_str!("../../../configs/qemu.yaml");
         let compiled = compile_config_from_str(yaml).expect("compile");
         let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
-        let blob = crate::boot_info::build_guest_boot_info_for_partition(&layout, "in").expect("build");
+        let blob =
+            crate::boot_info::build_guest_boot_info_for_partition(&layout, "in").expect("build");
         let view = GuestBootInfoView::parse(&blob).expect("parse");
         assert_eq!(view.header().ipc_region_count, 1);
         assert_eq!(view.header().device_region_count, 1);

@@ -70,9 +70,9 @@ impl VmxBackend for ProgrammingVmxBackend {
 #[allow(clippy::expect_used)]
 mod tests {
     use super::*;
+    use crate::plan::plan_vmx_init;
     use hv_config_model::compile_config_from_str;
     use hv_platform_model::plan_static_platform_ir;
-    use crate::plan::plan_vmx_init;
 
     #[test]
     fn program_vmxon_region_writes_revision_prefix() {

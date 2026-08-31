@@ -4,8 +4,8 @@
 
 use hv_config_model::compile_config_from_str;
 use hv_datapath::{
-    run_mock_datapath_benchmark, DatapathBenchmarkConfig, TARGET_THROUGHPUT_MBIT_PER_SEC,
-    BENCHMARK_MEASUREMENT_SECS, BENCHMARK_MIN_RUNS, BENCHMARK_WARMUP_SECS,
+    run_mock_datapath_benchmark, DatapathBenchmarkConfig, BENCHMARK_MEASUREMENT_SECS,
+    BENCHMARK_MIN_RUNS, BENCHMARK_WARMUP_SECS, TARGET_THROUGHPUT_MBIT_PER_SEC,
 };
 use hv_platform_model::plan_static_platform_ir;
 

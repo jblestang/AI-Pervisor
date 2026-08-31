@@ -2,8 +2,8 @@
 
 use hv_ept::EptProgrammedTables;
 use hv_vmx::{
-    VmxonProgrammedRegion, VMXON_REGION_ALIGNMENT_BYTES, VMXON_REGION_MIN_BYTES,
-    REFERENCE_VMXON_REVISION,
+    VmxonProgrammedRegion, REFERENCE_VMXON_REVISION, VMXON_REGION_ALIGNMENT_BYTES,
+    VMXON_REGION_MIN_BYTES,
 };
 
 use crate::constants::VMXON_REVISION_PREFIX_BYTES;
@@ -63,18 +63,16 @@ pub fn install_ept_tables<A: PageAllocator>(
         ));
     }
     let mut prepared = tables.clone();
-    materialize_ept_paging(&mut prepared).map_err(|err| {
-        CpuSeamError::new(CpuSeamErrorKind::InvalidInput, err.message)
-    })?;
+    materialize_ept_paging(&mut prepared)
+        .map_err(|err| CpuSeamError::new(CpuSeamErrorKind::InvalidInput, err.message))?;
     let mut nested_phys = alloc::vec::Vec::with_capacity(prepared.paging_tables.len());
     for table in &prepared.paging_tables {
         let phys = allocator.allocate_pages(table.len(), VMXON_REGION_ALIGNMENT_BYTES)?;
         allocator.copy_to_pages(phys, table)?;
         nested_phys.push(phys);
     }
-    patch_ept_table_host_phys(&mut prepared, &nested_phys).map_err(|err| {
-        CpuSeamError::new(CpuSeamErrorKind::InvalidInput, err.message)
-    })?;
+    patch_ept_table_host_phys(&mut prepared, &nested_phys)
+        .map_err(|err| CpuSeamError::new(CpuSeamErrorKind::InvalidInput, err.message))?;
     let root_table_phys =
         allocator.allocate_pages(prepared.root_table.len(), VMXON_REGION_ALIGNMENT_BYTES)?;
     allocator.copy_to_pages(root_table_phys, &prepared.root_table)?;
@@ -87,9 +85,7 @@ pub fn install_ept_tables<A: PageAllocator>(
 }
 
 /// Allocates and clears a VMCS region page for EPT pointer programming.
-pub fn install_vmcs_region<A: PageAllocator>(
-    allocator: &mut A,
-) -> Result<u64, CpuSeamError> {
+pub fn install_vmcs_region<A: PageAllocator>(allocator: &mut A) -> Result<u64, CpuSeamError> {
     let revision = resolve_vmxon_revision();
     let mut bytes = alloc::vec![0u8; VMCS_REGION_BYTES];
     if let Some(prefix) = bytes.get_mut(0..VMXON_REVISION_PREFIX_BYTES) {
@@ -125,26 +121,27 @@ pub fn install_guest_elf<A: PageAllocator>(
 ) -> Result<u64, CpuSeamError> {
     use hv_guest_boot::parse_elf64;
 
-    let image = parse_elf64(elf_bytes).map_err(|err| {
-        CpuSeamError::new(CpuSeamErrorKind::InvalidInput, err.message)
-    })?;
+    let image = parse_elf64(elf_bytes)
+        .map_err(|err| CpuSeamError::new(CpuSeamErrorKind::InvalidInput, err.message))?;
     let mut image_end = 0u64;
     for segment in &image.load_segments {
         let end = segment
             .vaddr
             .checked_add(segment.bytes.len() as u64)
-            .ok_or_else(|| CpuSeamError::new(CpuSeamErrorKind::InvalidInput, "elf segment overflow"))?;
+            .ok_or_else(|| {
+                CpuSeamError::new(CpuSeamErrorKind::InvalidInput, "elf segment overflow")
+            })?;
         image_end = image_end.max(end);
     }
-    let alloc_size = core::cmp::max(
-        image_end as usize,
-        VMXON_REGION_MIN_BYTES as usize,
-    );
+    let alloc_size = core::cmp::max(image_end as usize, VMXON_REGION_MIN_BYTES as usize);
     let host_phys = allocator.allocate_pages(alloc_size, VMXON_REGION_ALIGNMENT_BYTES)?;
     for segment in &image.load_segments {
-        let dest = host_phys
-            .checked_add(segment.vaddr)
-            .ok_or_else(|| CpuSeamError::new(CpuSeamErrorKind::InvalidInput, "elf segment address overflow"))?;
+        let dest = host_phys.checked_add(segment.vaddr).ok_or_else(|| {
+            CpuSeamError::new(
+                CpuSeamErrorKind::InvalidInput,
+                "elf segment address overflow",
+            )
+        })?;
         allocator.copy_to_pages(dest, &segment.bytes)?;
     }
     host_phys
@@ -177,32 +174,45 @@ pub fn install_guest_elf_with_boot_info<A: PageAllocator>(
             "guest boot info blob must not be empty",
         ));
     }
-    let image = parse_elf64(elf_bytes).map_err(|err| {
-        CpuSeamError::new(CpuSeamErrorKind::InvalidInput, err.message)
-    })?;
+    let image = parse_elf64(elf_bytes)
+        .map_err(|err| CpuSeamError::new(CpuSeamErrorKind::InvalidInput, err.message))?;
     let mut image_end = 0u64;
     for segment in &image.load_segments {
         let end = segment
             .vaddr
             .checked_add(segment.bytes.len() as u64)
-            .ok_or_else(|| CpuSeamError::new(CpuSeamErrorKind::InvalidInput, "elf segment overflow"))?;
+            .ok_or_else(|| {
+                CpuSeamError::new(CpuSeamErrorKind::InvalidInput, "elf segment overflow")
+            })?;
         image_end = image_end.max(end);
     }
-    let boot_offset = align_up_usize(image_end as usize, VMXON_REGION_ALIGNMENT_BYTES as usize)? as u64;
-    let boot_end = boot_offset.checked_add(boot_info_blob.len() as u64).ok_or_else(|| {
-        CpuSeamError::new(CpuSeamErrorKind::InvalidInput, "guest boot info size overflow")
-    })?;
+    let boot_offset =
+        align_up_usize(image_end as usize, VMXON_REGION_ALIGNMENT_BYTES as usize)? as u64;
+    let boot_end = boot_offset
+        .checked_add(boot_info_blob.len() as u64)
+        .ok_or_else(|| {
+            CpuSeamError::new(
+                CpuSeamErrorKind::InvalidInput,
+                "guest boot info size overflow",
+            )
+        })?;
     let mut alloc_size = align_up_usize(boot_end as usize, VMXON_REGION_ALIGNMENT_BYTES as usize)?;
     alloc_size = core::cmp::max(alloc_size, VMXON_REGION_MIN_BYTES as usize);
     let host_phys = allocator.allocate_pages(alloc_size, VMXON_REGION_ALIGNMENT_BYTES)?;
     for segment in &image.load_segments {
-        let dest = host_phys
-            .checked_add(segment.vaddr)
-            .ok_or_else(|| CpuSeamError::new(CpuSeamErrorKind::InvalidInput, "elf segment address overflow"))?;
+        let dest = host_phys.checked_add(segment.vaddr).ok_or_else(|| {
+            CpuSeamError::new(
+                CpuSeamErrorKind::InvalidInput,
+                "elf segment address overflow",
+            )
+        })?;
         allocator.copy_to_pages(dest, &segment.bytes)?;
     }
     let boot_info_phys = host_phys.checked_add(boot_offset).ok_or_else(|| {
-        CpuSeamError::new(CpuSeamErrorKind::InvalidInput, "guest boot info address overflow")
+        CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "guest boot info address overflow",
+        )
     })?;
     allocator.copy_to_pages(boot_info_phys, boot_info_blob)?;
     let entry_phys = host_phys
@@ -256,12 +266,24 @@ pub fn install_relay_measurement_page<A: PageAllocator>(
     };
     let mut page = alloc::vec![0u8; size];
     let header_len = size_of::<GuestBootInfoRelayMeasurement>();
-    page[0..4].copy_from_slice(&extension.magic.to_le_bytes());
-    page[4..8].copy_from_slice(&extension.version.to_le_bytes());
-    page[8..16].copy_from_slice(&extension.frames_completed.to_le_bytes());
-    page[16..24].copy_from_slice(&extension.tsc_start.to_le_bytes());
-    page[24..32].copy_from_slice(&extension.tsc_end.to_le_bytes());
-    page[32..header_len].copy_from_slice(&extension.measurement_page_gpa.to_le_bytes());
+    if let Some(dest) = page.get_mut(0..4) {
+        dest.copy_from_slice(&extension.magic.to_le_bytes());
+    }
+    if let Some(dest) = page.get_mut(4..8) {
+        dest.copy_from_slice(&extension.version.to_le_bytes());
+    }
+    if let Some(dest) = page.get_mut(8..16) {
+        dest.copy_from_slice(&extension.frames_completed.to_le_bytes());
+    }
+    if let Some(dest) = page.get_mut(16..24) {
+        dest.copy_from_slice(&extension.tsc_start.to_le_bytes());
+    }
+    if let Some(dest) = page.get_mut(24..32) {
+        dest.copy_from_slice(&extension.tsc_end.to_le_bytes());
+    }
+    if let Some(dest) = page.get_mut(32..header_len) {
+        dest.copy_from_slice(&extension.measurement_page_gpa.to_le_bytes());
+    }
     allocator.copy_to_pages(host_phys, &page)?;
     Ok(RelayMeasurementPageInstall {
         host_phys,
@@ -279,9 +301,7 @@ fn align_up_usize(value: usize, alignment: usize) -> Result<usize, CpuSeamError>
     value
         .checked_add(alignment - 1)
         .map(|v| v & !(alignment - 1))
-        .ok_or_else(|| {
-            CpuSeamError::new(CpuSeamErrorKind::InvalidInput, "alignment overflow")
-        })
+        .ok_or_else(|| CpuSeamError::new(CpuSeamErrorKind::InvalidInput, "alignment overflow"))
 }
 
 /// Mock page allocator for host tests: records installs without real mapping.
@@ -352,9 +372,9 @@ impl PageAllocator for MockPageAllocator {
 #[allow(clippy::expect_used)]
 mod tests {
     use super::*;
-    use hv_ept::{EPT_PAGE_SIZE_BYTES, EPT_ROOT_TABLE_BYTES};
     use hv_config_model::compile_config_from_str;
     use hv_ept::{plan_ept_init, program_ept_tables};
+    use hv_ept::{EPT_PAGE_SIZE_BYTES, EPT_ROOT_TABLE_BYTES};
     use hv_platform_model::plan_static_platform_ir;
     use hv_vmx::{plan_vmx_init, program_vmxon_region};
 
@@ -364,8 +384,7 @@ mod tests {
         let compiled = compile_config_from_str(yaml).expect("compile");
         let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
         let plan = plan_vmx_init(&layout.hypervisor_reserve).expect("vmx");
-        let region =
-            program_vmxon_region(&plan, REFERENCE_VMXON_REVISION).expect("program");
+        let region = program_vmxon_region(&plan, REFERENCE_VMXON_REVISION).expect("program");
         let planner_phys = region.host_phys;
         let mut allocator = MockPageAllocator::new(0x0000_0000_0100_0000);
         let installed = install_vmxon_region(&mut allocator, &region).expect("install");
@@ -425,7 +444,9 @@ mod tests {
     #[test]
     fn resident_mock_allocator_rejects_zero_size() {
         let mut allocator = MockPageAllocator::new(0x1000);
-        assert!(allocator.allocate_pages(0, VMXON_REGION_ALIGNMENT_BYTES).is_err());
+        assert!(allocator
+            .allocate_pages(0, VMXON_REGION_ALIGNMENT_BYTES)
+            .is_err());
     }
 
     #[test]
@@ -441,8 +462,12 @@ mod tests {
     #[test]
     fn resident_mock_allocator_rejects_invalid_alignment() {
         let mut allocator = MockPageAllocator::new(0x1000);
-        assert!(allocator.allocate_pages(EPT_ROOT_TABLE_BYTES as usize, 0).is_err());
-        assert!(allocator.allocate_pages(EPT_ROOT_TABLE_BYTES as usize, 3).is_err());
+        assert!(allocator
+            .allocate_pages(EPT_ROOT_TABLE_BYTES as usize, 0)
+            .is_err());
+        assert!(allocator
+            .allocate_pages(EPT_ROOT_TABLE_BYTES as usize, 3)
+            .is_err());
     }
 
     #[test]
@@ -476,18 +501,21 @@ mod tests {
         let boot_info = build_guest_boot_info_for_partition(&layout, "in").expect("boot info");
         let mut allocator = MockPageAllocator::new(0x0000_0000_0500_0000);
         let elf_bytes = reference_guest_elf_for_kind("in", GuestElfKind::Datapath).expect("elf");
-        let install =
-            install_guest_elf_with_boot_info(&mut allocator, elf_bytes, &boot_info).expect("install");
+        let install = install_guest_elf_with_boot_info(&mut allocator, elf_bytes, &boot_info)
+            .expect("install");
         assert!(install.boot_info_phys > install.entry_phys);
-        assert!(allocator.copies.iter().any(|(phys, len)| {
-            *phys == install.boot_info_phys && *len == boot_info.len()
-        }));
+        assert!(allocator
+            .copies
+            .iter()
+            .any(|(phys, len)| { *phys == install.boot_info_phys && *len == boot_info.len() }));
         let elf_allocation = allocator
             .allocations
             .iter()
             .find(|(base, size)| {
                 install.entry_phys >= *base
-                    && install.boot_info_phys.saturating_add(boot_info.len() as u64)
+                    && install
+                        .boot_info_phys
+                        .saturating_add(boot_info.len() as u64)
                         <= base.saturating_add(*size as u64)
             })
             .expect("single allocation covers elf and boot info");

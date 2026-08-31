@@ -59,7 +59,10 @@ impl GuestDatapathRuntime {
     }
 
     /// Runs one in→mid→out guest datapath traversal.
-    pub fn run(&mut self, layout: &StaticPlatformIR) -> Result<DatapathRuntimeOutcome, DatapathError> {
+    pub fn run(
+        &mut self,
+        layout: &StaticPlatformIR,
+    ) -> Result<DatapathRuntimeOutcome, DatapathError> {
         validate_guest_topology(layout)?;
         enforce_forward_integrity(&self.forward_plan)?;
 

@@ -1,10 +1,10 @@
 //! Host execution environment probes for live privileged instructions.
 
+#[cfg(test)]
+use crate::constants::HV_X86_LIVE_INSTRUCTIONS_DISABLED;
 use crate::constants::{
     HV_X86_LIVE_INSTRUCTIONS_ENABLED, HV_X86_LIVE_INSTRUCTIONS_ENV, X86_CPL_MASK, X86_RING_0,
 };
-#[cfg(test)]
-use crate::constants::HV_X86_LIVE_INSTRUCTIONS_DISABLED;
 
 #[cfg(test)]
 use core::sync::atomic::{AtomicBool, Ordering};
@@ -113,7 +113,10 @@ mod tests {
         if cfg!(feature = "firmware-live-execution") {
             return;
         }
-        std::env::set_var(HV_X86_LIVE_INSTRUCTIONS_ENV, HV_X86_LIVE_INSTRUCTIONS_DISABLED);
+        std::env::set_var(
+            HV_X86_LIVE_INSTRUCTIONS_ENV,
+            HV_X86_LIVE_INSTRUCTIONS_DISABLED,
+        );
         assert!(!live_execution_runtime_enabled());
         std::env::remove_var(HV_X86_LIVE_INSTRUCTIONS_ENV);
     }
@@ -133,7 +136,10 @@ mod tests {
         if cfg!(feature = "firmware-live-execution") {
             return;
         }
-        std::env::set_var(HV_X86_LIVE_INSTRUCTIONS_ENV, HV_X86_LIVE_INSTRUCTIONS_ENABLED);
+        std::env::set_var(
+            HV_X86_LIVE_INSTRUCTIONS_ENV,
+            HV_X86_LIVE_INSTRUCTIONS_ENABLED,
+        );
         assert!(live_execution_runtime_enabled());
         std::env::remove_var(HV_X86_LIVE_INSTRUCTIONS_ENV);
     }

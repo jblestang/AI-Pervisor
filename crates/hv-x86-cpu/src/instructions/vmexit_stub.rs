@@ -3,9 +3,11 @@
 use crate::error::{CpuSeamError, CpuSeamErrorKind};
 
 /// Basic VM-exit reason for guest `HLT` (Intel SDM).
+#[allow(dead_code)]
 pub(crate) const VM_EXIT_REASON_HLT: u32 = 12;
 
 /// VMCS encoding for `VM_EXIT_REASON`.
+#[allow(dead_code)]
 pub(crate) const VMCS_VM_EXIT_REASON: u32 = 0x4402;
 
 /// Hand-assembled x86_64 stub:
@@ -69,6 +71,9 @@ mod tests {
         let mut buffer = [0u8; 32];
         let host_exit = buffer.as_mut_ptr() as u64;
         install_vmexit_stub(host_exit).expect("install");
-        assert_eq!(&buffer[..VMEXIT_STUB_BYTES.len()], VMEXIT_STUB_BYTES);
+        assert_eq!(
+            buffer.get(..VMEXIT_STUB_BYTES.len()),
+            Some(VMEXIT_STUB_BYTES.as_slice())
+        );
     }
 }

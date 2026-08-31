@@ -8,7 +8,8 @@ use hv_guest_boot::REFERENCE_GUEST_PARTITION_IDS;
 use hv_hypervisor_boot::{
     boot_from_transfer_and_init_gate_d_datapath_benchmark,
     boot_from_transfer_and_init_gate_d_datapath_benchmark_from_snapshots,
-    layout_snapshot_from_platform_ir, requirements_snapshot_from_platform, GateDDatapathBenchmarkResult,
+    layout_snapshot_from_platform_ir, requirements_snapshot_from_platform,
+    GateDDatapathBenchmarkResult,
 };
 use hv_loader::{
     build_hypervisor_transfer, build_loader_handoff, encode_qemu_reference_firmware,
@@ -36,7 +37,8 @@ fn reference_handoff_snapshot_and_layout() -> (
             compiled.digest.bytes,
             {
                 let mut memory_map = vec![0u8; 48];
-                memory_map[0..4].copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
+                memory_map[0..4]
+                    .copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
                 memory_map[24..32].copy_from_slice(&(2_097_152u64).to_le_bytes());
                 memory_map
             },
@@ -96,17 +98,22 @@ fn assert_datapath_benchmark_validate_only(result: &GateDDatapathBenchmarkResult
     for launch in &result.guests.partition_launches {
         assert!(launch.guest_entry_phys > 0);
         assert!(launch.vmcs_phys > 0);
-        assert_ne!(launch.launch_seam.disposition, CpuInstructionDisposition::Executed);
+        assert_ne!(
+            launch.launch_seam.disposition,
+            CpuInstructionDisposition::Executed
+        );
     }
-    assert!(!result
-        .guests
-        .malicious
-        .live
-        .foundation
-        .vmx_launch
-        .real_hw
-        .live
-        .live_environment_ready);
+    assert!(
+        !result
+            .guests
+            .malicious
+            .live
+            .foundation
+            .vmx_launch
+            .real_hw
+            .live
+            .live_environment_ready
+    );
 }
 
 #[test]
@@ -124,7 +131,8 @@ fn boot_from_transfer_and_init_gate_d_datapath_benchmark_accepts_reference_trans
 }
 
 #[test]
-fn boot_from_transfer_and_init_gate_d_datapath_benchmark_from_snapshots_accepts_reference_transfer() {
+fn boot_from_transfer_and_init_gate_d_datapath_benchmark_from_snapshots_accepts_reference_transfer()
+{
     let (transfer, snapshot, layout) = reference_handoff_snapshot_and_layout();
     let layout_snapshot = layout_snapshot_from_platform_ir(&layout).expect("layout snapshot");
     let mut allocator = MockPageAllocator::new(0x0000_0000_1800_0000);

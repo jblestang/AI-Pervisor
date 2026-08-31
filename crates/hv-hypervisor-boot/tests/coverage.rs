@@ -5,8 +5,8 @@
 use hv_config_model::{compile_config_from_str, PlatformRequirements};
 use hv_hypervisor_boot::{
     boot_check_and_init_gate_c, boot_check_and_init_vmx, boot_from_transfer_and_init_gate_c,
-    boot_from_transfer_and_init_vmx, boot_from_transfer_snapshot, BootCheckErrorKind,
-    requirements_snapshot_from_platform,
+    boot_from_transfer_and_init_vmx, boot_from_transfer_snapshot,
+    requirements_snapshot_from_platform, BootCheckErrorKind,
 };
 use hv_loader::{
     build_hypervisor_transfer, build_loader_handoff, encode_qemu_reference_firmware,
@@ -19,7 +19,7 @@ use hv_observation_types::{
 };
 use hv_platform_model::plan_static_platform_ir;
 use hv_types::{ByteSize, PciBdf, PciBus, PciDevice, PciFunction, PciSegment};
-use hv_vmx::{FailingVmxBackend, MockVmxBackend, init_vmx, VMXON_REGION_MIN_BYTES};
+use hv_vmx::{init_vmx, FailingVmxBackend, MockVmxBackend, VMXON_REGION_MIN_BYTES};
 
 fn reference_handoff_snapshot_and_layout() -> (
     Vec<u8>,
@@ -37,9 +37,10 @@ fn reference_handoff_snapshot_and_layout() -> (
 #[test]
 fn boot_from_transfer_and_init_gate_c_programming_accepts_reference_transfer() {
     let (transfer, snapshot, _, layout) = reference_handoff_snapshot_and_layout();
-    let result =
-        hv_hypervisor_boot::boot_from_transfer_and_init_gate_c_programming(&transfer, &snapshot, &layout)
-            .expect("gate c programming");
+    let result = hv_hypervisor_boot::boot_from_transfer_and_init_gate_c_programming(
+        &transfer, &snapshot, &layout,
+    )
+    .expect("gate c programming");
     assert!(result.init.validated.observed.vmx);
     assert!(result.vmxon_region.is_some());
     assert!(result.ept_tables.is_some());
@@ -86,7 +87,8 @@ fn boot_check_and_init_gate_c_programming_accepts_reference_inputs() {
             compiled.digest.bytes,
             {
                 let mut memory_map = vec![0u8; 48];
-                memory_map[0..4].copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
+                memory_map[0..4]
+                    .copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
                 memory_map[24..32].copy_from_slice(&(2_097_152u64).to_le_bytes());
                 memory_map
             },
@@ -157,7 +159,8 @@ fn boot_check_and_init_gate_c_accepts_reference_inputs() {
             compiled.digest.bytes,
             {
                 let mut memory_map = vec![0u8; 48];
-                memory_map[0..4].copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
+                memory_map[0..4]
+                    .copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
                 memory_map[24..32].copy_from_slice(&(2_097_152u64).to_le_bytes());
                 memory_map
             },
@@ -219,8 +222,7 @@ fn boot_from_transfer_and_init_gate_c_skips_optional_ept_and_vtd() {
     let (transfer, mut snapshot, _, layout) = reference_handoff_snapshot_and_layout();
     snapshot.ept = hv_boot_abi::FEATURE_OPTIONAL;
     snapshot.vtd = hv_boot_abi::FEATURE_OPTIONAL;
-    let result =
-        boot_from_transfer_and_init_gate_c(&transfer, &snapshot, &layout).expect("gate c");
+    let result = boot_from_transfer_and_init_gate_c(&transfer, &snapshot, &layout).expect("gate c");
     assert!(result.validated.observed.ept);
     assert!(result.validated.observed.vtd);
 }
@@ -238,7 +240,8 @@ fn reference_handoff_and_snapshot() -> (
             compiled.digest.bytes,
             {
                 let mut memory_map = vec![0u8; 48];
-                memory_map[0..4].copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
+                memory_map[0..4]
+                    .copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
                 memory_map[24..32].copy_from_slice(&(2_097_152u64).to_le_bytes());
                 memory_map
             },
@@ -296,7 +299,8 @@ fn boot_check_and_init_vmx_accepts_reference_inputs() {
             compiled.digest.bytes,
             {
                 let mut memory_map = vec![0u8; 48];
-                memory_map[0..4].copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
+                memory_map[0..4]
+                    .copy_from_slice(&hv_boot_abi::EFI_MEMORY_CONVENTIONAL.to_le_bytes());
                 memory_map[24..32].copy_from_slice(&(2_097_152u64).to_le_bytes());
                 memory_map
             },
@@ -419,7 +423,11 @@ fn requirements_snapshot_from_platform_rejects_oversized_pci_list() {
     let yaml = include_str!("../../../configs/qemu.yaml");
     let compiled = compile_config_from_str(yaml).expect("compile");
     let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
-    let device = requirements.expected_pci_devices.first().expect("device").clone();
+    let device = requirements
+        .expected_pci_devices
+        .first()
+        .expect("device")
+        .clone();
     let mut oversized = requirements.clone();
     oversized.expected_pci_devices = (0..=hv_boot_abi::MAX_REQUIREMENTS_PCI_DEVICES)
         .map(|_| device.clone())

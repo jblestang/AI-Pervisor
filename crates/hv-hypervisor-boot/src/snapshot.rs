@@ -4,11 +4,11 @@ use alloc::string::String;
 
 use hv_boot_abi::{
     ExpectedPciSnapshot, LayoutGuestRegionSnapshot, LayoutIpcRegionSnapshot, LayoutPciSnapshot,
-    LayoutSnapshot, LAYOUT_DEVICE_KIND_NIC_E1000, MAX_LAYOUT_GUEST_REGIONS, MAX_LAYOUT_IPC_REGIONS,
-    MAX_LAYOUT_PCI_DEVICES, RequirementsSnapshot, FEATURE_DISABLED, FEATURE_OPTIONAL,
-    FEATURE_PREFERRED, FEATURE_REQUIRED, MAX_REQUIREMENTS_PAGE_SIZES, MAX_REQUIREMENTS_PCI_DEVICES,
-    REQUIREMENTS_ARCH_X86_64, SMT_POLICY_ALLOW_CROSS_PARTITION, SMT_POLICY_DISABLED,
-    SMT_POLICY_EXCLUSIVE_CORE, SMT_POLICY_SAME_PARTITION_SIBLINGS,
+    LayoutSnapshot, RequirementsSnapshot, FEATURE_DISABLED, FEATURE_OPTIONAL, FEATURE_PREFERRED,
+    FEATURE_REQUIRED, LAYOUT_DEVICE_KIND_NIC_E1000, MAX_LAYOUT_GUEST_REGIONS,
+    MAX_LAYOUT_IPC_REGIONS, MAX_LAYOUT_PCI_DEVICES, MAX_REQUIREMENTS_PAGE_SIZES,
+    MAX_REQUIREMENTS_PCI_DEVICES, REQUIREMENTS_ARCH_X86_64, SMT_POLICY_ALLOW_CROSS_PARTITION,
+    SMT_POLICY_DISABLED, SMT_POLICY_EXCLUSIVE_CORE, SMT_POLICY_SAME_PARTITION_SIBLINGS,
 };
 use hv_config_model::{
     ExpectedPciDevice, FeatureRequirement, PageSizeSet, PlatformRequirements, SmtPolicy,
@@ -602,30 +602,54 @@ mod tests {
         )
         .expect("requirements snapshot");
         let layout_snapshot = layout_snapshot_from_platform_ir(&layout).expect("layout snapshot");
-        let restored =
-            static_platform_ir_from_layout_snapshot(&layout_snapshot, &requirements).expect("restore");
+        let restored = static_platform_ir_from_layout_snapshot(&layout_snapshot, &requirements)
+            .expect("restore");
         assert_eq!(restored.guest_memory.len(), layout.guest_memory.len());
         assert_eq!(restored.ipc_memory.len(), layout.ipc_memory.len());
         assert_eq!(restored.pci_devices.len(), layout.pci_devices.len());
         assert_eq!(
-            restored.guest_memory.iter().map(|region| region.vm_id).collect::<Vec<_>>(),
-            layout.guest_memory.iter().map(|region| region.vm_id).collect::<Vec<_>>()
+            restored
+                .guest_memory
+                .iter()
+                .map(|region| region.vm_id)
+                .collect::<Vec<_>>(),
+            layout
+                .guest_memory
+                .iter()
+                .map(|region| region.vm_id)
+                .collect::<Vec<_>>()
         );
         assert_eq!(
             restored
                 .ipc_memory
                 .iter()
-                .map(|region| (region.channel_id, region.producer_vm_id, region.consumer_vm_id))
+                .map(|region| (
+                    region.channel_id,
+                    region.producer_vm_id,
+                    region.consumer_vm_id
+                ))
                 .collect::<Vec<_>>(),
             layout
                 .ipc_memory
                 .iter()
-                .map(|region| (region.channel_id, region.producer_vm_id, region.consumer_vm_id))
+                .map(|region| (
+                    region.channel_id,
+                    region.producer_vm_id,
+                    region.consumer_vm_id
+                ))
                 .collect::<Vec<_>>()
         );
         assert_eq!(
-            restored.pci_devices.iter().map(|device| (device.vm_id, device.kind.as_str())).collect::<Vec<_>>(),
-            layout.pci_devices.iter().map(|device| (device.vm_id, device.kind.as_str())).collect::<Vec<_>>()
+            restored
+                .pci_devices
+                .iter()
+                .map(|device| (device.vm_id, device.kind.as_str()))
+                .collect::<Vec<_>>(),
+            layout
+                .pci_devices
+                .iter()
+                .map(|device| (device.vm_id, device.kind.as_str()))
+                .collect::<Vec<_>>()
         );
     }
 
@@ -641,7 +665,8 @@ mod tests {
             layout.hypervisor_reserve.size.bytes(),
         )
         .expect("requirements snapshot");
-        let mut layout_snapshot = layout_snapshot_from_platform_ir(&layout).expect("layout snapshot");
+        let mut layout_snapshot =
+            layout_snapshot_from_platform_ir(&layout).expect("layout snapshot");
         layout_snapshot.hypervisor_reserve_bytes ^= 1;
         assert!(static_platform_ir_from_layout_snapshot(&layout_snapshot, &requirements).is_err());
     }

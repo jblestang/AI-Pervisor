@@ -27,5 +27,10 @@ fn dequeue_rejects_empty_queue() {
 #[test]
 fn open_rejects_truncated_shared_region() {
     let mut bytes = vec![0u8; 16];
-    assert!(IpcQueueView::open(&mut bytes, REFERENCE_IPC_QUEUE_SLOTS, REFERENCE_IPC_SLOT_SIZE_BYTES).is_err());
+    assert!(IpcQueueView::open(
+        &mut bytes,
+        REFERENCE_IPC_QUEUE_SLOTS,
+        REFERENCE_IPC_SLOT_SIZE_BYTES
+    )
+    .is_err());
 }
