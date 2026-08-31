@@ -16,6 +16,13 @@ Read-only guest EPT mapping and hypervisor-authoritative measurement publish (`c
 
 Guests can no longer tamper with the hypervisor measurement page at runtime. Authoritative frame counts are derived from IPC delivered tail during hypervisor publish; TSC timing still originates from guest boot-info tail.
 
+## Review notes (addressed in Phase 38)
+
+- Restore guest boot-info vs IPC cross-check after hypervisor publish
+- Validate boot-info extension and read back published host page
+- Verify read-only mapping metadata survives EPT install
+- Reject guest boot-info frame over-report relative to IPC
+
 ## Verification
 
 - `cargo test -p hv-ept`
