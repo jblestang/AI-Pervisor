@@ -11,7 +11,8 @@ mod smoke;
 
 pub use boot_info::{
     build_guest_boot_info_for_partition, build_guest_boot_info_for_vm_id,
-    build_guest_boot_infos_all_partitions, GuestBootInfoBuildError, GuestBootInfoBuildErrorKind,
+    build_guest_boot_infos_all_partitions, patch_relay_measurement_page_gpa,
+    GuestBootInfoBuildError, GuestBootInfoBuildErrorKind,
 };
 pub use parse::{
     GuestBootInfoParseError, GuestBootInfoParseErrorKind, GuestBootInfoView,

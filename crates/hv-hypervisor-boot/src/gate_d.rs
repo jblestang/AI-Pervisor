@@ -439,6 +439,9 @@ pub struct PartitionGuestLaunchRecord {
     pub launch_seam: hv_x86_cpu::VmxLaunchCpuSeamOutcome,
     /// Guest physical address of installed boot-info blob when `datapath-guest-live` is enabled.
     pub boot_info_guest_phys: Option<u64>,
+    /// Host physical relay measurement page when `datapath-guest-relay-measurement` is enabled.
+    #[cfg(feature = "datapath-guest-relay-measurement")]
+    pub relay_measurement_page_host_phys: Option<u64>,
 }
 
 /// Result of Gate D datapath guests init atop datapath malicious.
@@ -545,7 +548,7 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
     #[cfg(feature = "datapath-guest-live")]
     use hv_x86_cpu::install_guest_elf_with_boot_info;
 
-    let malicious = init_gate_d_datapath_malicious_from_validated(
+    let mut malicious = init_gate_d_datapath_malicious_from_validated(
         requirements,
         layout,
         validated,
@@ -587,7 +590,7 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
         let guest_entry_phys =
             install_guest_elf(allocator, elf_bytes).map_err(map_cpu_seam_error)?;
         #[cfg(feature = "datapath-guest-live")]
-        let (guest_entry_phys, boot_info_guest_phys) = {
+        let (guest_entry_phys, boot_info_guest_phys, relay_measurement_page_host_phys) = {
             let boot_info_blob = partition_boot_infos
                 .iter()
                 .find(|(vm_id, _)| *vm_id == launch_plan.vm_id)
@@ -601,9 +604,69 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
             GuestBootInfoView::parse(boot_info_blob).map_err(|err| {
                 BootCheckError::new(BootCheckErrorKind::Platform, err.message)
             })?;
-            let install = install_guest_elf_with_boot_info(allocator, elf_bytes, boot_info_blob)
-                .map_err(map_cpu_seam_error)?;
-            (install.entry_phys, Some(install.boot_info_phys))
+            #[cfg(feature = "datapath-guest-relay-measurement")]
+            let (install_blob, relay_measurement_page_host_phys) = {
+                use hv_datapath::{plan_relay_measurement_page_gpa, RELAY_MEASUREMENT_PAGE_BYTES};
+                use hv_ept::append_ept_guest_mapping;
+                use hv_guest_boot::patch_relay_measurement_page_gpa;
+                use hv_x86_cpu::{
+                    install_relay_measurement_page, GUEST_RELAY_MEASUREMENT_VM_ID,
+                };
+
+                if launch_plan.vm_id == GUEST_RELAY_MEASUREMENT_VM_ID {
+                    let measurement_page_gpa = plan_relay_measurement_page_gpa(layout).map_err(
+                        |err| BootCheckError::new(BootCheckErrorKind::Platform, err.message),
+                    )?;
+                    let page = install_relay_measurement_page(allocator, measurement_page_gpa)
+                        .map_err(map_cpu_seam_error)?;
+                    let ept_tables = malicious
+                        .live
+                        .foundation
+                        .vmx_launch
+                        .real_hw
+                        .live
+                        .cpu_seam
+                        .programming
+                        .ept_tables
+                        .as_mut()
+                        .ok_or_else(|| {
+                            BootCheckError::new(
+                                BootCheckErrorKind::Platform,
+                                "relay measurement requires programmed EPT tables",
+                            )
+                        })?;
+                    append_ept_guest_mapping(
+                        ept_tables,
+                        page.guest_phys,
+                        page.host_phys,
+                        RELAY_MEASUREMENT_PAGE_BYTES,
+                    )
+                    .map_err(|err| {
+                        BootCheckError::new(BootCheckErrorKind::Platform, err.message)
+                    })?;
+                    let mut install_blob = boot_info_blob.to_vec();
+                    patch_relay_measurement_page_gpa(&mut install_blob, measurement_page_gpa)
+                        .map_err(|err| {
+                            BootCheckError::new(BootCheckErrorKind::Platform, err.message)
+                        })?;
+                    (install_blob, Some(page.host_phys))
+                } else {
+                    (boot_info_blob.to_vec(), None)
+                }
+            };
+            #[cfg(not(feature = "datapath-guest-relay-measurement"))]
+            let (install_blob, relay_measurement_page_host_phys): (
+                alloc::vec::Vec<u8>,
+                Option<u64>,
+            ) = (boot_info_blob.to_vec(), None);
+            let install =
+                install_guest_elf_with_boot_info(allocator, elf_bytes, &install_blob)
+                    .map_err(map_cpu_seam_error)?;
+            (
+                install.entry_phys,
+                Some(install.boot_info_phys),
+                relay_measurement_page_host_phys,
+            )
         };
         elf_images_installed = elf_images_installed.saturating_add(1);
         let vmcs_phys = install_vmcs_region(allocator).map_err(map_cpu_seam_error)?;
@@ -653,7 +716,7 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
             seam_inputs.push((vmcs_phys, vmcs_fields, launch_plan.vm_id));
         }
         #[cfg(not(feature = "datapath-guest-live"))]
-        let boot_info_guest_phys = None;
+        let relay_measurement_page_host_phys = None;
         partition_launches.push(PartitionGuestLaunchRecord {
             partition_id: launch_plan.partition_id.clone(),
             guest_entry_phys,
@@ -664,6 +727,8 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
                 guest_vm_id: launch_plan.vm_id,
             },
             boot_info_guest_phys,
+            #[cfg(feature = "datapath-guest-relay-measurement")]
+            relay_measurement_page_host_phys,
         });
     }
 
@@ -1425,6 +1490,7 @@ pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAlloca
         use hv_guest_abi::parse_guest_boot_info_relay_measurement;
         use hv_x86_cpu::{
             measure_in_vm_relay_frames_from_boot_infos, GuestBootInfoMeasurementSite,
+            GUEST_RELAY_MEASUREMENT_VM_ID,
         };
 
         let guests = &execution.live.sources.runtime.benchmark.guests;
@@ -1489,11 +1555,23 @@ pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAlloca
                 boot_info_size: view.header().size,
             });
         }
+        let measurement_page_host_phys = guests
+            .partition_launches
+            .iter()
+            .find(|record| record.vm_id == GUEST_RELAY_MEASUREMENT_VM_ID)
+            .and_then(|record| record.relay_measurement_page_host_phys);
+        if measurement_page_host_phys.is_none() {
+            return Err(BootCheckError::new(
+                BootCheckErrorKind::Platform,
+                "relay measurement requires installed hypervisor-owned measurement page",
+            ));
+        }
         let measurement = measure_in_vm_relay_frames_from_boot_infos(
             &execution.execution_seam,
             &ept_tables,
             &sites,
             out_ipc_consumer_guest_phys,
+            measurement_page_host_phys,
             expected_relay_frames,
         )
         .map_err(map_cpu_seam_error)?;

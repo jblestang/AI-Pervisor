@@ -120,7 +120,7 @@ pub struct GuestDeviceRegion {
 pub const GUEST_RELAY_MEASUREMENT_MAGIC: u32 = 0x5941_4C52;
 
 /// Relay measurement extension schema version.
-pub const GUEST_RELAY_MEASUREMENT_EXTENSION_VERSION: u32 = 1;
+pub const GUEST_RELAY_MEASUREMENT_EXTENSION_VERSION: u32 = 2;
 
 /// Explicit ABI v2 relay measurement extension appended to guest boot info blobs.
 #[repr(C)]
@@ -136,6 +136,8 @@ pub struct GuestBootInfoRelayMeasurement {
     pub tsc_start: u64,
     /// TSC value captured after the sustained relay loop.
     pub tsc_end: u64,
+    /// Guest physical base of the hypervisor-owned relay measurement page (extension v2+).
+    pub measurement_page_gpa: u64,
 }
 
 /// Size of the relay measurement extension tail appended to guest boot info blobs.
@@ -174,11 +176,15 @@ pub fn parse_guest_boot_info_relay_measurement(
         frames_completed: read_u64(tail, 8)?,
         tsc_start: read_u64(tail, 16)?,
         tsc_end: read_u64(tail, 24)?,
+        measurement_page_gpa: read_u64(tail, 32).unwrap_or(0),
     };
     if extension.magic != GUEST_RELAY_MEASUREMENT_MAGIC {
         return None;
     }
     if extension.version == 0 || extension.version > GUEST_RELAY_MEASUREMENT_EXTENSION_VERSION {
+        return None;
+    }
+    if extension.version >= 2 && tail.len() < 40 {
         return None;
     }
     Some(extension)
@@ -278,12 +284,12 @@ mod tests {
             device_region_count: 0,
         };
         assert!(guest_boot_info_has_relay_measurement_tail(&header));
-        assert_eq!(size_of::<GuestBootInfoRelayMeasurement>(), 32);
+        assert_eq!(size_of::<GuestBootInfoRelayMeasurement>(), 40);
     }
 
     #[test]
     fn parse_guest_boot_info_relay_measurement_validates_magic() {
-        let mut blob = [0u8; 48 + 32];
+        let mut blob = [0u8; 48 + 40];
         blob[0..8].copy_from_slice(&GUEST_BOOT_INFO_MAGIC);
         blob[8..12].copy_from_slice(&2u32.to_le_bytes());
         let total = blob.len() as u32;

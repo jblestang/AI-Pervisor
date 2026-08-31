@@ -51,6 +51,8 @@ pub use resident::{
 pub use resident::install_guest_elf;
 #[cfg(feature = "datapath-guest-live")]
 pub use resident::{install_guest_elf_with_boot_info, GuestElfWithBootInfoInstall};
+#[cfg(feature = "datapath-guest-relay-measurement")]
+pub use resident::{install_relay_measurement_page, RelayMeasurementPageInstall};
 pub use resident_backends::{
     ResidentCpuSeamEptBackend, ResidentCpuSeamVmxBackend, ResidentCpuSeamVtdBackend,
 };

@@ -6,13 +6,16 @@ use core::mem::size_of;
 
 use hv_datapath::{plan_datapath_for_partition, plan_datapath_for_vm_id, DatapathPartitionPlan};
 use hv_guest_abi::{
-    guest_abi_is_compatible, GuestBootInfoHeader, GuestDeviceRegion, GuestIpcRegion,
-    GuestMemoryRegion, GuestBootInfoRelayMeasurement, GUEST_ABI_VERSION, GUEST_BOOT_INFO_MAGIC,
+    guest_abi_is_compatible, guest_boot_info_relay_measurement_offset,
+    parse_guest_boot_info_relay_measurement, GuestBootInfoHeader, GuestBootInfoRelayMeasurement,
+    GuestDeviceRegion, GuestIpcRegion, GuestMemoryRegion, GUEST_ABI_VERSION, GUEST_BOOT_INFO_MAGIC,
     GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES, GUEST_RELAY_MEASUREMENT_EXTENSION_VERSION,
     GUEST_RELAY_MEASUREMENT_MAGIC,
 };
 use hv_platform_model::StaticPlatformIR;
 use hv_types::VmId;
+
+use crate::parse::GuestBootInfoView;
 
 /// Category of guest boot info build failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -125,6 +128,7 @@ fn serialize_guest_boot_info(plan: &DatapathPartitionPlan) -> Result<Vec<u8>, Gu
         frames_completed: 0,
         tsc_start: 0,
         tsc_end: 0,
+        measurement_page_gpa: 0,
     };
     write_relay_measurement_extension(&mut bytes, tail_offset, &extension);
     Ok(bytes)
@@ -141,7 +145,39 @@ fn write_relay_measurement_extension(
         slice[8..16].copy_from_slice(&extension.frames_completed.to_le_bytes());
         slice[16..24].copy_from_slice(&extension.tsc_start.to_le_bytes());
         slice[24..32].copy_from_slice(&extension.tsc_end.to_le_bytes());
+        slice[32..40].copy_from_slice(&extension.measurement_page_gpa.to_le_bytes());
     }
+}
+
+/// Patches the relay measurement page GPA into an out-partition boot info blob.
+pub fn patch_relay_measurement_page_gpa(
+    blob: &mut [u8],
+    measurement_page_gpa: u64,
+) -> Result<(), GuestBootInfoBuildError> {
+    let extension = parse_guest_boot_info_relay_measurement(blob).ok_or_else(|| {
+        GuestBootInfoBuildError::new(
+            GuestBootInfoBuildErrorKind::InvalidInput,
+            "boot info missing relay measurement extension",
+        )
+    })?;
+    let offset = guest_boot_info_relay_measurement_offset(
+        GuestBootInfoView::parse(blob)
+            .map_err(|err| {
+                GuestBootInfoBuildError::new(GuestBootInfoBuildErrorKind::InvalidInput, err.message)
+            })?
+            .header()
+            .size,
+    )
+    .ok_or_else(|| {
+        GuestBootInfoBuildError::new(
+            GuestBootInfoBuildErrorKind::InvalidInput,
+            "boot info relay measurement tail offset unavailable",
+        )
+    })?;
+    let mut updated = extension;
+    updated.measurement_page_gpa = measurement_page_gpa;
+    write_relay_measurement_extension(blob, offset, &updated);
+    Ok(())
 }
 
 fn write_guest_boot_info_header(bytes: &mut [u8], header: &GuestBootInfoHeader) {

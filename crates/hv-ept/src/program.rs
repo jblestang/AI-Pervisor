@@ -45,6 +45,34 @@ pub struct EptProgrammedTables {
     pub mappings: Vec<EptProgrammedMapping>,
 }
 
+/// Appends one guest/host EPT mapping record for runtime-installed pages.
+pub fn append_ept_guest_mapping(
+    tables: &mut EptProgrammedTables,
+    guest_phys: u64,
+    host_phys: u64,
+    size_bytes: u64,
+) -> Result<(), EptError> {
+    if size_bytes == 0 || size_bytes % EPT_PAGE_SIZE_BYTES != 0 {
+        return Err(EptError::new(
+            EptErrorKind::Planning,
+            "EPT mapping size must be a non-zero page multiple",
+        ));
+    }
+    if guest_phys % EPT_PAGE_SIZE_BYTES != 0 || host_phys % EPT_PAGE_SIZE_BYTES != 0 {
+        return Err(EptError::new(
+            EptErrorKind::Planning,
+            "EPT mapping bases must be page aligned",
+        ));
+    }
+    tables.mappings.push(EptProgrammedMapping {
+        guest_phys,
+        host_phys,
+        size_bytes,
+        encoded_entry: encode_identity_ept_entry(host_phys),
+    });
+    Ok(())
+}
+
 /// Encodes a leaf EPT entry for an identity mapping.
 pub fn encode_identity_ept_entry(host_phys: u64) -> u64 {
     let page_frame = host_phys >> 12;

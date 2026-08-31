@@ -155,6 +155,12 @@ pub fn plan_e1000_mmio_guest_phys(vm_id: VmId) -> Result<GuestPhysAddr, Datapath
     Ok(GuestPhysAddr::new(base))
 }
 
+/// Returns the out-partition relay measurement page guest physical address.
+pub fn plan_relay_measurement_page_gpa(_layout: &StaticPlatformIR) -> Result<u64, DatapathError> {
+    use crate::constants::RELAY_MEASUREMENT_PAGE_GUEST_PHYS;
+    Ok(RELAY_MEASUREMENT_PAGE_GUEST_PHYS)
+}
+
 /// Returns the out-partition IPC consumer queue guest physical address.
 pub fn plan_out_ipc_consumer_guest_phys(layout: &StaticPlatformIR) -> Result<u64, DatapathError> {
     let plan = plan_datapath_for_vm_id(layout, VmId::new(2))?;

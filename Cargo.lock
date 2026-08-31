@@ -453,6 +453,7 @@ name = "hv-x86-cpu"
 version = "0.1.0"
 dependencies = [
  "hv-config-model",
+ "hv-datapath",
  "hv-ept",
  "hv-guest-abi",
  "hv-guest-boot",
