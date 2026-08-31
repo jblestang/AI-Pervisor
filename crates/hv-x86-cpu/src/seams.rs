@@ -232,8 +232,8 @@ pub struct DatapathGuestExecutionCpuSeamOutcome {
     pub disposition: CpuInstructionDisposition,
     /// Whether VM-exit stub addresses were validated for all partitions.
     pub vmexit_stub_validated: bool,
-    /// Number of partition launch contexts included in the batch.
-    pub partitions_launched: u32,
+    /// Number of partition launch contexts validated.
+    pub partitions_validated: u32,
     /// Number of live VMLAUNCH attempts made when execution was enabled.
     pub vmlaunch_attempts: u32,
 }
@@ -257,7 +257,7 @@ pub fn run_datapath_guest_execution_cpu_seam(
         return Ok(DatapathGuestExecutionCpuSeamOutcome {
             disposition: CpuInstructionDisposition::SkippedNoHardware,
             vmexit_stub_validated: true,
-            partitions_launched: launches.len() as u32,
+            partitions_validated: launches.len() as u32,
             vmlaunch_attempts: 0,
         });
     }
@@ -265,7 +265,7 @@ pub fn run_datapath_guest_execution_cpu_seam(
     Ok(DatapathGuestExecutionCpuSeamOutcome {
         disposition,
         vmexit_stub_validated: true,
-        partitions_launched: launches.len() as u32,
+        partitions_validated: launches.len() as u32,
         vmlaunch_attempts,
     })
 }
@@ -742,5 +742,34 @@ mod tests {
         if cpuid_vmx_available() {
             assert_eq!(outcome.disposition, CpuInstructionDisposition::SeamValidated);
         }
+    }
+
+    #[cfg(feature = "datapath-guest-execution")]
+    #[test]
+    fn run_datapath_guest_execution_cpu_seam_rejects_empty_batch() {
+        assert!(run_datapath_guest_execution_cpu_seam(&[]).is_err());
+    }
+
+    #[cfg(all(feature = "datapath-guest-execution", feature = "execute-instructions"))]
+    #[test]
+    fn run_datapath_guest_execution_cpu_seam_covers_live_path_in_test_harness() {
+        use crate::instructions::environment::test_force_live_environment_ready;
+        use hv_vmx::program_vmcs_fields;
+        use hv_vmx::plan_vmx_launch;
+        use hv_vmx::DEFAULT_SMOKE_GUEST_PARTITION_ID;
+
+        let yaml = include_str!("../../../configs/qemu.yaml");
+        let compiled = compile_config_from_str(yaml).expect("compile");
+        let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
+        let vmx_plan = plan_vmx_init(&layout.hypervisor_reserve).expect("vmx");
+        let launch_plan =
+            plan_vmx_launch(&layout, &vmx_plan, DEFAULT_SMOKE_GUEST_PARTITION_ID).expect("launch");
+        let fields = program_vmcs_fields(&launch_plan);
+        let launches = [(0x5000_u64, &fields, 0x6000_u64, hv_types::VmId::new(0))];
+        test_force_live_environment_ready(true);
+        let outcome = run_datapath_guest_execution_cpu_seam(&launches).expect("guest execution");
+        test_force_live_environment_ready(false);
+        assert_eq!(outcome.partitions_validated, 1);
+        assert_ne!(outcome.disposition, CpuInstructionDisposition::Executed);
     }
 }

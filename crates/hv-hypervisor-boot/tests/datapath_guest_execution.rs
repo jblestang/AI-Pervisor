@@ -92,7 +92,7 @@ fn assert_datapath_guest_execution_validate_only(result: &GateDDatapathGuestExec
     );
     assert!(result.live.sources.runtime.runtime.guest_frame_forwarded);
     assert_eq!(
-        result.execution_seam.partitions_launched,
+        result.execution_seam.partitions_validated,
         REFERENCE_GUEST_PARTITION_IDS.len() as u32
     );
     assert!(result.execution_seam.vmexit_stub_validated);

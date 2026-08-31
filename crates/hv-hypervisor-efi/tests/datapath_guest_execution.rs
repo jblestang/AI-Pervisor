@@ -89,4 +89,5 @@ fn boot_hypervisor_from_transfer_datapath_guest_execution_accepts_reference_hand
     assert!(markers.live.sources.runtime.guest_datapath_frame_forwarded);
     assert!(!markers.guest_code_executed);
     assert!(!markers.runtime_disposition_executed);
+    assert_eq!(markers.guest_code_executed, markers.runtime_disposition_executed);
 }

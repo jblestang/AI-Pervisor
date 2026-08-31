@@ -281,9 +281,36 @@ pub(crate) fn init_gate_d_datapath_live_from_validated<A: PageAllocator>(
     })
 }
 
-#[cfg(any(feature = "datapath-live", feature = "datapath-guests", feature = "datapath-runtime"))]
+#[cfg(any(feature = "datapath-live", feature = "datapath-guests", feature = "datapath-runtime", feature = "datapath-guest-execution"))]
 fn map_cpu_seam_error(err: hv_x86_cpu::CpuSeamError) -> BootCheckError {
     BootCheckError::new(BootCheckErrorKind::Platform, err.message)
+}
+
+#[cfg(all(feature = "datapath-guest-live", feature = "datapath-guest-execution"))]
+fn build_guest_live_vmcs_fields(
+    launch_plan: &hv_vmx::VmxLaunchPlan,
+    guest_entry_phys: u64,
+    boot_info_phys: u64,
+) -> Result<hv_vmx::VmcsProgrammedFields, BootCheckError> {
+    use hv_vmx::{
+        guest_boot_info_rdi_programmed, patch_guest_boot_info_rdi, patch_guest_entry_in_fields,
+        program_vmcs_fields,
+    };
+
+    let mut vmcs_fields = program_vmcs_fields(launch_plan);
+    patch_guest_entry_in_fields(
+        &mut vmcs_fields,
+        guest_entry_phys,
+        launch_plan.guest_stack_phys.raw(),
+    );
+    patch_guest_boot_info_rdi(&mut vmcs_fields, boot_info_phys);
+    if !guest_boot_info_rdi_programmed(&vmcs_fields, boot_info_phys) {
+        return Err(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "guest VMCS RDI was not programmed",
+        ));
+    }
+    Ok(vmcs_fields)
 }
 
 /// Result of Gate D datapath malicious init atop datapath live.
@@ -504,8 +531,10 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
     elf_kind: hv_guest_boot::GuestElfKind,
 ) -> Result<GateDDatapathGuestsResult, BootCheckError> {
     use hv_guest_boot::{reference_guest_elf_for_kind, REFERENCE_GUEST_PARTITION_IDS};
-    use hv_vmx::{patch_guest_entry_in_fields, plan_vmx_launch_all_partitions, program_vmcs_fields};
-    #[cfg(feature = "datapath-guest-live")]
+    use hv_vmx::plan_vmx_launch_all_partitions;
+    #[cfg(not(feature = "datapath-guest-execution"))]
+    use hv_vmx::{patch_guest_entry_in_fields, program_vmcs_fields};
+    #[cfg(all(feature = "datapath-guest-live", not(feature = "datapath-guest-execution")))]
     use hv_vmx::{guest_boot_info_rdi_programmed, patch_guest_boot_info_rdi};
     use hv_x86_cpu::{install_vmcs_region, run_multi_vmx_launch_cpu_seam};
     #[cfg(not(feature = "datapath-guest-live"))]
@@ -575,14 +604,14 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
         };
         elf_images_installed = elf_images_installed.saturating_add(1);
         let vmcs_phys = install_vmcs_region(allocator).map_err(map_cpu_seam_error)?;
-        let mut vmcs_fields = program_vmcs_fields(launch_plan);
-        patch_guest_entry_in_fields(
-            &mut vmcs_fields,
-            guest_entry_phys,
-            launch_plan.guest_stack_phys.raw(),
-        );
-        #[cfg(feature = "datapath-guest-live")]
+        #[cfg(all(feature = "datapath-guest-live", not(feature = "datapath-guest-execution")))]
         {
+            let mut vmcs_fields = program_vmcs_fields(launch_plan);
+            patch_guest_entry_in_fields(
+                &mut vmcs_fields,
+                guest_entry_phys,
+                launch_plan.guest_stack_phys.raw(),
+            );
             let boot_info_phys = boot_info_guest_phys.ok_or_else(|| {
                 BootCheckError::new(
                     BootCheckErrorKind::Platform,
@@ -596,10 +625,32 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
                     "guest boot info RDI was not programmed in VMCS fields",
                 ));
             }
+            seam_inputs.push((vmcs_phys, vmcs_fields, launch_plan.vm_id));
+        }
+        #[cfg(all(feature = "datapath-guest-live", feature = "datapath-guest-execution"))]
+        {
+            let boot_info_phys = boot_info_guest_phys.ok_or_else(|| {
+                BootCheckError::new(
+                    BootCheckErrorKind::Platform,
+                    "guest boot info address missing after install",
+                )
+            })?;
+            let vmcs_fields =
+                build_guest_live_vmcs_fields(launch_plan, guest_entry_phys, boot_info_phys)?;
+            seam_inputs.push((vmcs_phys, vmcs_fields, launch_plan.vm_id));
+        }
+        #[cfg(not(feature = "datapath-guest-live"))]
+        {
+            let mut vmcs_fields = program_vmcs_fields(launch_plan);
+            patch_guest_entry_in_fields(
+                &mut vmcs_fields,
+                guest_entry_phys,
+                launch_plan.guest_stack_phys.raw(),
+            );
+            seam_inputs.push((vmcs_phys, vmcs_fields, launch_plan.vm_id));
         }
         #[cfg(not(feature = "datapath-guest-live"))]
         let boot_info_guest_phys = None;
-        seam_inputs.push((vmcs_phys, vmcs_fields, launch_plan.vm_id));
         partition_launches.push(PartitionGuestLaunchRecord {
             partition_id: launch_plan.partition_id.clone(),
             guest_entry_phys,
@@ -1137,12 +1188,12 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
     warnings: alloc::vec::Vec<PlatformWarning>,
     allocator: &mut A,
 ) -> Result<GateDDatapathGuestExecutionResult, BootCheckError> {
-    use hv_datapath::{apply_runtime_disposition, DatapathRuntimeDisposition};
-    use hv_guest_boot::REFERENCE_GUEST_PARTITION_IDS;
-    use hv_vmx::{
-        guest_boot_info_rdi_programmed, patch_guest_boot_info_rdi, patch_guest_entry_in_fields,
-        plan_vmx_launch_all_partitions, program_vmcs_fields,
+    use hv_datapath::{
+        apply_runtime_disposition, runtime_disposition_for_guest_execution_seam,
+        DatapathRuntimeDisposition,
     };
+    use hv_guest_boot::REFERENCE_GUEST_PARTITION_IDS;
+    use hv_vmx::plan_vmx_launch_all_partitions;
     use hv_x86_cpu::{run_datapath_guest_execution_cpu_seam, CpuInstructionDisposition};
 
     let mut live = init_gate_d_datapath_guest_live_from_validated(
@@ -1153,7 +1204,7 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
         allocator,
     )?;
 
-    let guests = &live.sources.runtime.benchmark.guests;
+    let guests = &mut live.sources.runtime.benchmark.guests;
     let vmx_plan = &guests
         .malicious
         .live
@@ -1186,19 +1237,11 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
                 "guest execution requires installed boot info for partition",
             )
         })?;
-        let mut vmcs_fields = program_vmcs_fields(launch_plan);
-        patch_guest_entry_in_fields(
-            &mut vmcs_fields,
+        let vmcs_fields = build_guest_live_vmcs_fields(
+            launch_plan,
             record.guest_entry_phys,
-            launch_plan.guest_stack_phys.raw(),
-        );
-        patch_guest_boot_info_rdi(&mut vmcs_fields, boot_info_phys);
-        if !guest_boot_info_rdi_programmed(&vmcs_fields, boot_info_phys) {
-            return Err(BootCheckError::new(
-                BootCheckErrorKind::Platform,
-                "guest execution VMCS RDI was not programmed",
-            ));
-        }
+            boot_info_phys,
+        )?;
         execution_launches.push((
             record.vmcs_phys,
             vmcs_fields_store.len(),
@@ -1235,11 +1278,17 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
     let execution_seam =
         run_datapath_guest_execution_cpu_seam(&seam_inputs).map_err(map_cpu_seam_error)?;
 
-    let runtime_disposition = match execution_seam.disposition {
-        CpuInstructionDisposition::Executed => DatapathRuntimeDisposition::Executed,
-        CpuInstructionDisposition::SkippedNoHardware => DatapathRuntimeDisposition::Unavailable,
-        CpuInstructionDisposition::SeamValidated => DatapathRuntimeDisposition::ValidatedOnly,
-    };
+    let executed = execution_seam.disposition == CpuInstructionDisposition::Executed;
+    let skipped_no_hardware =
+        execution_seam.disposition == CpuInstructionDisposition::SkippedNoHardware;
+    let runtime_disposition =
+        runtime_disposition_for_guest_execution_seam(executed, skipped_no_hardware);
+    if executed && execution_seam.vmlaunch_attempts != execution_seam.partitions_validated {
+        return Err(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "guest execution reported Executed without a VMLAUNCH per partition",
+        ));
+    }
     if !live.sources.runtime.runtime.guest_frame_forwarded {
         return Err(BootCheckError::new(
             BootCheckErrorKind::Platform,
@@ -1250,6 +1299,17 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
         live.sources.runtime.runtime.clone(),
         runtime_disposition,
     );
+    if (runtime_disposition == DatapathRuntimeDisposition::Executed) != executed {
+        return Err(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "guest execution runtime disposition mismatch",
+        ));
+    }
+    if executed {
+        for record in &mut guests.partition_launches {
+            record.launch_seam.disposition = CpuInstructionDisposition::Executed;
+        }
+    }
 
     Ok(GateDDatapathGuestExecutionResult {
         live,

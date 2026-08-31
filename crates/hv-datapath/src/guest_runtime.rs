@@ -111,6 +111,20 @@ pub fn apply_runtime_disposition(
     outcome
 }
 
+/// Maps guest execution seam flags to a runtime disposition.
+pub fn runtime_disposition_for_guest_execution_seam(
+    executed: bool,
+    skipped_no_hardware: bool,
+) -> DatapathRuntimeDisposition {
+    if executed {
+        DatapathRuntimeDisposition::Executed
+    } else if skipped_no_hardware {
+        DatapathRuntimeDisposition::Unavailable
+    } else {
+        DatapathRuntimeDisposition::ValidatedOnly
+    }
+}
+
 /// Plans a forward path and runs one guest datapath traversal.
 pub fn run_guest_datapath_runtime(
     layout: &StaticPlatformIR,
@@ -170,5 +184,32 @@ mod tests {
         assert!(outcome.e1000_tx_from_guest);
         assert_eq!(outcome.ipc_hops_completed, GUEST_DATAPATH_IPC_HOPS);
         assert!(outcome.vmexit_dispatch_validated);
+    }
+
+    #[test]
+    fn apply_runtime_disposition_updates_disposition_field() {
+        let yaml = include_str!("../../../configs/qemu.yaml");
+        let compiled = compile_config_from_str(yaml).expect("compile");
+        let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
+        let (_plan, outcome) = run_guest_datapath_runtime(&layout).expect("runtime");
+        let updated = apply_runtime_disposition(outcome, DatapathRuntimeDisposition::Executed);
+        assert_eq!(updated.disposition, DatapathRuntimeDisposition::Executed);
+        assert!(updated.guest_frame_forwarded);
+    }
+
+    #[test]
+    fn runtime_disposition_for_guest_execution_seam_maps_outcomes() {
+        assert_eq!(
+            runtime_disposition_for_guest_execution_seam(true, false),
+            DatapathRuntimeDisposition::Executed
+        );
+        assert_eq!(
+            runtime_disposition_for_guest_execution_seam(false, true),
+            DatapathRuntimeDisposition::Unavailable
+        );
+        assert_eq!(
+            runtime_disposition_for_guest_execution_seam(false, false),
+            DatapathRuntimeDisposition::ValidatedOnly
+        );
     }
 }
