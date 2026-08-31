@@ -11,6 +11,9 @@ use hv_types::VmId;
 use crate::error::{CpuSeamError, CpuSeamErrorKind};
 use crate::instructions::{hypervisor_elapsed_tsc, validate_hypervisor_tsc_bracket};
 use crate::seams::{CpuInstructionDisposition, DatapathGuestExecutionCpuSeamOutcome};
+use crate::vmexit_relay_counter::{
+    read_relay_measurement_page_frames, validate_vmexit_relay_frame_count,
+};
 
 /// VM id for the reference `out` partition whose counter reflects delivered frames.
 pub const GUEST_RELAY_MEASUREMENT_VM_ID: VmId = VmId::new(2);
@@ -44,6 +47,8 @@ pub struct InVmRelayMeasurement {
     pub ipc_delivered_frames: u64,
     /// Frames published on the hypervisor-owned measurement page.
     pub extension_frames: u64,
+    /// Frames counted by the hypervisor on VM-exits during out-partition execution.
+    pub vmexit_relay_frames: u64,
     /// Frames reported by the guest boot-info tail (cross-check input).
     pub guest_boot_info_frames: u64,
 }
@@ -160,6 +165,7 @@ pub fn publish_relay_measurement_page_authoritative(
     expected_frames: u64,
     hypervisor_tsc_start: u64,
     hypervisor_tsc_end: u64,
+    vmexit_relay_frames: u64,
 ) -> Result<(), CpuSeamError> {
     let host_phys = context.measurement_page_host_phys.ok_or_else(|| {
         CpuSeamError::new(
@@ -175,7 +181,15 @@ pub fn publish_relay_measurement_page_authoritative(
     validate_boot_relay_measurement_extension(&boot_extension)?;
     validate_hypervisor_tsc_bracket(hypervisor_tsc_start, hypervisor_tsc_end)?;
     let ipc_delivered_frames = read_ipc_delivered_frames_from_guest(context)?;
-    let frames_completed = ipc_delivered_frames.min(expected_frames);
+    validate_vmexit_relay_frame_count(vmexit_relay_frames, ipc_delivered_frames, expected_frames)?;
+    let page_frames = read_relay_measurement_page_frames(host_phys)?;
+    if page_frames != vmexit_relay_frames {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "relay measurement page frame count mismatch with VM-exit counter",
+        ));
+    }
+    let frames_completed = vmexit_relay_frames.min(expected_frames);
     let published = GuestBootInfoRelayMeasurement {
         magic: boot_extension.magic,
         version: boot_extension.version,
@@ -221,6 +235,7 @@ pub fn measure_in_vm_relay_from_context(
             elapsed_tsc: 0,
             ipc_delivered_frames: 0,
             extension_frames: 0,
+            vmexit_relay_frames: 0,
             guest_boot_info_frames: 0,
         });
     }
@@ -246,10 +261,12 @@ pub fn measure_in_vm_relay_from_context(
         expected_frames,
         execution_seam.hypervisor_tsc_start,
         execution_seam.hypervisor_tsc_end,
+        execution_seam.vmexit_relay_frames,
     )?;
     let host_extension = read_relay_measurement_extension_from_guest(context)?;
     let guest_boot_info_frames = guest_boot_extension.frames_completed;
     let extension_frames = host_extension.frames_completed;
+    let vmexit_relay_frames = execution_seam.vmexit_relay_frames;
     let elapsed_tsc = hypervisor_elapsed_tsc(
         execution_seam.hypervisor_tsc_start,
         execution_seam.hypervisor_tsc_end,
@@ -275,21 +292,24 @@ pub fn measure_in_vm_relay_from_context(
             "relay measurement requires non-zero IPC delivered frame count",
         ));
     }
-    let frames = end_to_end_relay_frames(
-        guest_boot_info_frames,
-        ipc_delivered_frames,
-        expected_frames,
-    );
-    if guest_boot_info_frames > ipc_delivered_frames {
+    let frames =
+        end_to_end_relay_frames(vmexit_relay_frames, ipc_delivered_frames, expected_frames);
+    if guest_boot_info_frames > ipc_delivered_frames && guest_boot_info_frames > 0 {
         return Err(CpuSeamError::new(
             CpuSeamErrorKind::InvalidInput,
             "guest boot-info frame count exceeds IPC delivered frames",
         ));
     }
-    if extension_frames != ipc_delivered_frames.min(expected_frames) {
+    if extension_frames != vmexit_relay_frames.min(expected_frames) {
         return Err(CpuSeamError::new(
             CpuSeamErrorKind::InvalidInput,
-            "relay measurement authoritative frame count mismatch with IPC tail",
+            "relay measurement authoritative frame count mismatch with VM-exit counter",
+        ));
+    }
+    if vmexit_relay_frames == 0 {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "relay measurement requires non-zero VM-exit relay frame count",
         ));
     }
     Ok(InVmRelayMeasurement {
@@ -297,6 +317,7 @@ pub fn measure_in_vm_relay_from_context(
         elapsed_tsc,
         ipc_delivered_frames,
         extension_frames,
+        vmexit_relay_frames,
         guest_boot_info_frames,
     })
 }
@@ -341,13 +362,11 @@ pub fn read_relay_frames_completed_from_boot_info_blob(blob: &[u8]) -> Result<u6
 }
 
 fn end_to_end_relay_frames(
-    extension_frames: u64,
+    vmexit_frames: u64,
     ipc_delivered_frames: u64,
     expected_frames: u64,
 ) -> u64 {
-    extension_frames
-        .min(ipc_delivered_frames)
-        .min(expected_frames)
+    vmexit_frames.min(ipc_delivered_frames).min(expected_frames)
 }
 
 fn read_guest_bytes_via_ept(
@@ -485,6 +504,7 @@ mod tests {
             vmlaunch_attempts: 3,
             hypervisor_tsc_start: 0,
             hypervisor_tsc_end: 0,
+            vmexit_relay_frames: 0,
         };
         let context = GuestRelayMeasurementContext {
             ept_tables: sample_ept(),
@@ -525,6 +545,7 @@ mod tests {
             vmlaunch_attempts: 3,
             hypervisor_tsc_start: 0,
             hypervisor_tsc_end: 0,
+            vmexit_relay_frames: 0,
         };
         let site = GuestBootInfoMeasurementSite {
             vm_id: VmId::new(0),
