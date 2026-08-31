@@ -47,9 +47,10 @@ pub use guest_relay_measurement::{
 pub use instructions::{
     current_privilege_level, execute_ept_pointer_load, execute_invept_single_context,
     execute_vmcs_field_programming, execute_vmcs_prepare, execute_vmlaunch, execute_vmxon,
-    execute_vtd_enable, firmware_live_execution_enabled, last_vtd_enable_intent,
-    live_execution_environment_ready, live_execution_runtime_enabled, read_vmx_basic_msr,
-    vmx_revision_from_basic_msr, VtdEnableIntent, IA32_VMX_BASIC,
+    execute_vtd_enable, firmware_live_execution_enabled, hypervisor_elapsed_tsc,
+    last_vtd_enable_intent, live_execution_environment_ready, live_execution_runtime_enabled,
+    read_timestamp_counter, read_vmx_basic_msr, vmx_revision_from_basic_msr, VtdEnableIntent,
+    IA32_VMX_BASIC,
 };
 #[cfg(feature = "datapath-guests")]
 pub use resident::install_guest_elf;

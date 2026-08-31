@@ -10,6 +10,7 @@ pub mod ept;
 ))]
 mod live_asm;
 pub mod msr;
+pub mod tsc;
 pub mod vmcs;
 pub mod vmcs_fields;
 pub mod vmexit_stub;
@@ -24,6 +25,7 @@ pub use environment::{
 };
 pub use ept::{execute_ept_pointer_load, execute_invept_single_context};
 pub use msr::{read_vmx_basic_msr, vmx_revision_from_basic_msr, IA32_VMX_BASIC};
+pub use tsc::{hypervisor_elapsed_tsc, read_timestamp_counter};
 pub use vmcs::execute_vmcs_prepare;
 pub use vmcs_fields::execute_vmcs_field_programming;
 pub use vmlaunch::execute_vmlaunch;

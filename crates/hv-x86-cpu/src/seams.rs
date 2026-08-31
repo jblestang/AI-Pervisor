@@ -283,6 +283,12 @@ pub struct DatapathGuestExecutionCpuSeamOutcome {
     pub partitions_validated: u32,
     /// Number of live VMLAUNCH attempts made when execution was enabled.
     pub vmlaunch_attempts: u32,
+    /// Host TSC sampled before the guest execution batch.
+    #[cfg(feature = "datapath-guest-relay-measurement")]
+    pub hypervisor_tsc_start: u64,
+    /// Host TSC sampled after the guest execution batch.
+    #[cfg(feature = "datapath-guest-relay-measurement")]
+    pub hypervisor_tsc_end: u64,
 }
 
 /// Validates (and optionally executes) live VMX guest code for all source-tree partitions.
@@ -306,22 +312,34 @@ pub fn run_datapath_guest_execution_cpu_seam(
             vmexit_stub_validated: true,
             partitions_validated: launches.len() as u32,
             vmlaunch_attempts: 0,
+            #[cfg(feature = "datapath-guest-relay-measurement")]
+            hypervisor_tsc_start: 0,
+            #[cfg(feature = "datapath-guest-relay-measurement")]
+            hypervisor_tsc_end: 0,
         });
     }
-    let (disposition, vmlaunch_attempts) =
+    let (disposition, vmlaunch_attempts, hypervisor_tsc_start, hypervisor_tsc_end) =
         execute_datapath_guest_vmlaunch_fields_if_enabled(launches)?;
     Ok(DatapathGuestExecutionCpuSeamOutcome {
         disposition,
         vmexit_stub_validated: true,
         partitions_validated: launches.len() as u32,
         vmlaunch_attempts,
+        #[cfg(feature = "datapath-guest-relay-measurement")]
+        hypervisor_tsc_start,
+        #[cfg(feature = "datapath-guest-relay-measurement")]
+        hypervisor_tsc_end,
     })
 }
 
 #[cfg(feature = "datapath-guest-execution")]
 fn execute_datapath_guest_vmlaunch_fields_if_enabled(
     launches: &[(u64, &VmcsProgrammedFields, u64, hv_types::VmId)],
-) -> Result<(CpuInstructionDisposition, u32), CpuSeamError> {
+) -> Result<(CpuInstructionDisposition, u32, u64, u64), CpuSeamError> {
+    #[cfg(feature = "datapath-guest-relay-measurement")]
+    let hypervisor_tsc_start = crate::instructions::tsc::read_timestamp_counter().unwrap_or(0);
+    #[cfg(not(feature = "datapath-guest-relay-measurement"))]
+    let hypervisor_tsc_start = 0;
     #[cfg(feature = "execute-instructions")]
     {
         if crate::instructions::live_execution_environment_ready() {
@@ -369,14 +387,34 @@ fn execute_datapath_guest_vmlaunch_fields_if_enabled(
                     Err(err) => return Err(err),
                 }
             }
+            #[cfg(feature = "datapath-guest-relay-measurement")]
+            let hypervisor_tsc_end =
+                crate::instructions::tsc::read_timestamp_counter().unwrap_or(0);
+            #[cfg(not(feature = "datapath-guest-relay-measurement"))]
+            let hypervisor_tsc_end = 0;
             if all_executed && vmlaunch_attempts == launches.len() as u32 {
-                return Ok((CpuInstructionDisposition::Executed, vmlaunch_attempts));
+                return Ok((
+                    CpuInstructionDisposition::Executed,
+                    vmlaunch_attempts,
+                    hypervisor_tsc_start,
+                    hypervisor_tsc_end,
+                ));
             }
-            return Ok((CpuInstructionDisposition::SeamValidated, vmlaunch_attempts));
+            return Ok((
+                CpuInstructionDisposition::SeamValidated,
+                vmlaunch_attempts,
+                hypervisor_tsc_start,
+                hypervisor_tsc_end,
+            ));
         }
     }
     let _ = launches;
-    Ok((CpuInstructionDisposition::SeamValidated, 0))
+    Ok((
+        CpuInstructionDisposition::SeamValidated,
+        0,
+        hypervisor_tsc_start,
+        0,
+    ))
 }
 
 /// Outcome of a Gate D datapath guest throughput CPU seam batch.
@@ -1052,6 +1090,10 @@ mod tests {
             vmexit_stub_validated: true,
             partitions_validated: 0,
             vmlaunch_attempts: 0,
+            #[cfg(feature = "datapath-guest-relay-measurement")]
+            hypervisor_tsc_start: 0,
+            #[cfg(feature = "datapath-guest-relay-measurement")]
+            hypervisor_tsc_end: 0,
         };
         assert!(run_datapath_guest_throughput_cpu_seam(&execution, 1, 0, 0).is_err());
     }
@@ -1064,6 +1106,10 @@ mod tests {
             vmexit_stub_validated: true,
             partitions_validated: 1,
             vmlaunch_attempts: 0,
+            #[cfg(feature = "datapath-guest-relay-measurement")]
+            hypervisor_tsc_start: 0,
+            #[cfg(feature = "datapath-guest-relay-measurement")]
+            hypervisor_tsc_end: 0,
         };
         assert!(run_datapath_guest_throughput_cpu_seam(&execution, 0, 0, 0).is_err());
     }
@@ -1076,6 +1122,10 @@ mod tests {
             vmexit_stub_validated: true,
             partitions_validated: 3,
             vmlaunch_attempts: 0,
+            #[cfg(feature = "datapath-guest-relay-measurement")]
+            hypervisor_tsc_start: 0,
+            #[cfg(feature = "datapath-guest-relay-measurement")]
+            hypervisor_tsc_end: 0,
         };
         let outcome =
             run_datapath_guest_throughput_cpu_seam(&execution, 5, 0, 0).expect("guest throughput");
@@ -1101,6 +1151,10 @@ mod tests {
             vmexit_stub_validated: true,
             partitions_validated: 3,
             vmlaunch_attempts: 3,
+            #[cfg(feature = "datapath-guest-relay-measurement")]
+            hypervisor_tsc_start: 1_000,
+            #[cfg(feature = "datapath-guest-relay-measurement")]
+            hypervisor_tsc_end: 2_000,
         };
         let outcome = run_datapath_guest_throughput_cpu_seam(&execution, 5, 64, 64)
             .expect("guest throughput measurement");
