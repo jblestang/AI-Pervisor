@@ -35,7 +35,7 @@ uefi = { version = "0.31", optional = true }
 hv-config-model = { workspace = true }
 hv-datapath = { workspace = true }
 hv-hypervisor = { workspace = true }
-hv-hypervisor-boot = { workspace = true, features = ["real-hw-execution", "vmx-launch", "datapath-foundation", "datapath-live", "datapath-malicious", "datapath-guests", "datapath-benchmark", "datapath-runtime", "datapath-guest-sources", "datapath-guest-live"] }
+hv-hypervisor-boot = { workspace = true }
 hv-loader = { workspace = true }
 hv-observation-types = { workspace = true }
 hv-platform-model = { workspace = true }

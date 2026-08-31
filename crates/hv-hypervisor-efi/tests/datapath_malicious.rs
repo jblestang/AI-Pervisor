@@ -2,6 +2,9 @@
 
 #![allow(clippy::expect_used, clippy::indexing_slicing)]
 
+mod common;
+
+use common::assert_datapath_live_markers_validate_only;
 use hv_config_model::compile_config_from_str;
 use hv_datapath::REFERENCE_COMPROMISED_SCENARIOS;
 use hv_hypervisor_efi::boot_hypervisor_from_transfer_datapath_malicious;
@@ -86,12 +89,10 @@ fn boot_hypervisor_from_transfer_datapath_malicious_accepts_reference_handoff() 
         &mut allocator,
     )
     .expect("datapath malicious boot");
-    assert!(markers.live.ipc_forward_executed);
-    assert!(markers.live.e1000_mmio_handled);
+    assert_datapath_live_markers_validate_only(&markers.live);
     assert!(markers.integrity_checks_passed);
     assert_eq!(
         markers.compromised_scenarios_blocked,
         REFERENCE_COMPROMISED_SCENARIOS.len() as u32
     );
-    assert!(!markers.live.foundation.vmx_launch.vmlaunch_executed);
 }
