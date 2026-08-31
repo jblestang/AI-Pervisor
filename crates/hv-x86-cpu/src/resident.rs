@@ -54,18 +54,33 @@ pub fn install_ept_tables<A: PageAllocator>(
     allocator: &mut A,
     tables: &EptProgrammedTables,
 ) -> Result<EptProgrammedTables, CpuSeamError> {
+    use hv_ept::{materialize_ept_paging, patch_ept_table_host_phys};
+
     if tables.root_table.is_empty() {
         return Err(CpuSeamError::new(
             CpuSeamErrorKind::InvalidInput,
             "EPT root table bytes must not be empty",
         ));
     }
-    let root_table_phys = allocator.allocate_pages(tables.root_table.len(), VMXON_REGION_ALIGNMENT_BYTES)?;
-    allocator.copy_to_pages(root_table_phys, &tables.root_table)?;
+    let mut prepared = tables.clone();
+    materialize_ept_paging(&mut prepared).map_err(|err| {
+        CpuSeamError::new(CpuSeamErrorKind::InvalidInput, err.message)
+    })?;
+    let mut nested_phys = alloc::vec::Vec::with_capacity(prepared.paging_tables.len());
+    for table in &prepared.paging_tables {
+        let phys = allocator.allocate_pages(table.len(), VMXON_REGION_ALIGNMENT_BYTES)?;
+        allocator.copy_to_pages(phys, table)?;
+        nested_phys.push(phys);
+    }
+    patch_ept_table_host_phys(&mut prepared, &nested_phys);
+    let root_table_phys =
+        allocator.allocate_pages(prepared.root_table.len(), VMXON_REGION_ALIGNMENT_BYTES)?;
+    allocator.copy_to_pages(root_table_phys, &prepared.root_table)?;
     Ok(EptProgrammedTables {
         root_table_phys,
-        root_table: tables.root_table.clone(),
-        mappings: tables.mappings.clone(),
+        root_table: prepared.root_table,
+        mappings: prepared.mappings,
+        paging_tables: prepared.paging_tables,
     })
 }
 

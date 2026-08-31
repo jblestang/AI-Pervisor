@@ -766,6 +766,7 @@ mod tests {
             root_table_phys: 0x2000,
             root_table: alloc::vec![0u8; EPT_ROOT_TABLE_BYTES as usize],
             mappings: alloc::vec::Vec::new(),
+            paging_tables: alloc::vec::Vec::new(),
         };
         assert!(run_ept_pointer_cpu_seam(&tables, None).is_err());
     }
@@ -781,6 +782,7 @@ mod tests {
                 size_bytes: EPT_PAGE_SIZE_BYTES,
                 encoded_entry: 1,
             }],
+            paging_tables: alloc::vec::Vec::new(),
         };
         assert!(run_ept_pointer_cpu_seam(&tables, None).is_err());
     }

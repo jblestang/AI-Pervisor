@@ -62,6 +62,7 @@ mod tests {
                 size_bytes: 0x20_0000,
                 encoded_entry: encode_identity_ept_entry(0x10_0000),
             }],
+            paging_tables: vec![],
         }
     }
 

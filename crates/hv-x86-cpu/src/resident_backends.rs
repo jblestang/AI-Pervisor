@@ -247,6 +247,7 @@ mod tests {
                 size_bytes: EPT_PAGE_SIZE_BYTES,
                 encoded_entry: 1,
             }],
+            paging_tables: alloc::vec::Vec::new(),
         };
         let mut allocator = MockPageAllocator::new(0x1000);
         assert!(install_ept_tables(&mut allocator, &tables).is_err());
