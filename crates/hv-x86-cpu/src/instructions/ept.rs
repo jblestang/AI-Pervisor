@@ -44,6 +44,40 @@ pub fn execute_ept_pointer_load(_ept_pointer: u64, _vmcs_phys: u64) -> Result<()
     ))
 }
 
+/// Attempts INVEPT single-context invalidation for the given encoded EPT pointer.
+#[cfg(all(target_arch = "x86_64", feature = "execute-instructions"))]
+pub fn execute_invept_single_context(ept_pointer: u64) -> Result<(), CpuSeamError> {
+    use super::environment::live_execution_environment_ready;
+    validate_ept_pointer_operand(ept_pointer)?;
+    if !live_execution_environment_ready() {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::Unavailable,
+            "live INVEPT requires live execution opt-in in ring 0",
+        ));
+    }
+    #[cfg(not(any(test, coverage)))]
+    {
+        super::live_asm::invept_single_context(ept_pointer)
+    }
+    #[cfg(any(test, coverage))]
+    {
+        let _ = ept_pointer;
+        Err(CpuSeamError::new(
+            CpuSeamErrorKind::ExecutionFailed,
+            "INVEPT skipped in test harness",
+        ))
+    }
+}
+
+/// Without live execution support, INVEPT is unavailable.
+#[cfg(not(all(target_arch = "x86_64", feature = "execute-instructions")))]
+pub fn execute_invept_single_context(_ept_pointer: u64) -> Result<(), CpuSeamError> {
+    Err(CpuSeamError::new(
+        CpuSeamErrorKind::Unavailable,
+        "live INVEPT unavailable in this build",
+    ))
+}
+
 fn validate_ept_pointer_operand(ept_pointer: u64) -> Result<(), CpuSeamError> {
     if ept_pointer & EPT_PAGE_OFFSET_MASK != 0 {
         return Err(CpuSeamError::new(
@@ -74,6 +108,21 @@ mod tests {
         use crate::instructions::environment::test_force_live_environment_ready;
         test_force_live_environment_ready(true);
         let result = execute_ept_pointer_load(0x2000, 0x3000);
+        test_force_live_environment_ready(false);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn execute_invept_single_context_unavailable_without_live_environment() {
+        assert!(execute_invept_single_context(0x2000).is_err());
+    }
+
+    #[cfg(feature = "execute-instructions")]
+    #[test]
+    fn execute_invept_single_context_covers_live_path_in_test_harness() {
+        use crate::instructions::environment::test_force_live_environment_ready;
+        test_force_live_environment_ready(true);
+        let result = execute_invept_single_context(0x2000);
         test_force_live_environment_ready(false);
         assert!(result.is_err());
     }

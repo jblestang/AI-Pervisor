@@ -22,7 +22,7 @@ pub use environment::{
     current_privilege_level, firmware_live_execution_enabled, live_execution_environment_ready,
     live_execution_runtime_enabled,
 };
-pub use ept::execute_ept_pointer_load;
+pub use ept::{execute_ept_pointer_load, execute_invept_single_context};
 pub use msr::{read_vmx_basic_msr, vmx_revision_from_basic_msr, IA32_VMX_BASIC};
 pub use vtd::{execute_vtd_enable, last_vtd_enable_intent, VtdEnableIntent};
 pub use vmcs::execute_vmcs_prepare;

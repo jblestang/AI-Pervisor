@@ -37,7 +37,8 @@ pub use constants::{
 };
 pub use error::{CpuSeamError, CpuSeamErrorKind};
 pub use instructions::{
-    current_privilege_level, execute_ept_pointer_load, execute_vmxon, execute_vtd_enable,
+    current_privilege_level, execute_ept_pointer_load, execute_invept_single_context,
+    execute_vmxon, execute_vtd_enable,
     execute_vmcs_prepare, execute_vmcs_field_programming, execute_vmlaunch,
     firmware_live_execution_enabled, last_vtd_enable_intent,
     live_execution_environment_ready, live_execution_runtime_enabled, read_vmx_basic_msr,
@@ -57,9 +58,10 @@ pub use resident_backends::{
     ResidentCpuSeamEptBackend, ResidentCpuSeamVmxBackend, ResidentCpuSeamVtdBackend,
 };
 pub use seams::{
-    run_ept_pointer_cpu_seam, run_vmxon_cpu_seam, run_vtd_enable_cpu_seam,
-    run_vmx_launch_cpu_seam, CpuInstructionDisposition, EptCpuSeamOutcome, VmxCpuSeamOutcome,
-    VmxLaunchCpuSeamOutcome, VtdCpuSeamOutcome,
+    run_ept_pointer_cpu_seam, run_ept_pointer_reload_cpu_seam_batch, run_vmxon_cpu_seam,
+    run_vtd_enable_cpu_seam, run_vmx_launch_cpu_seam, CpuInstructionDisposition,
+    EptCpuSeamOutcome, EptPointerReloadCpuSeamOutcome, VmxCpuSeamOutcome, VmxLaunchCpuSeamOutcome,
+    VtdCpuSeamOutcome,
 };
 #[cfg(feature = "datapath-guests")]
 pub use seams::{run_multi_vmx_launch_cpu_seam, MultiVmxLaunchCpuSeamOutcome};
