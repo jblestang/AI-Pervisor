@@ -9,6 +9,7 @@ mod error;
 mod init;
 mod plan;
 mod program;
+mod resolve;
 
 pub use backend::{FailingEptBackend, MockEptBackend, EptBackend};
 pub use constants::{
@@ -24,3 +25,4 @@ pub use program::{
     ProgrammingEptBackend, EPT_ENTRY_EXECUTE, EPT_ENTRY_MEMORY_TYPE_WB, EPT_ENTRY_READ,
     EPT_ENTRY_WRITE,
 };
+pub use resolve::resolve_guest_phys_to_host;

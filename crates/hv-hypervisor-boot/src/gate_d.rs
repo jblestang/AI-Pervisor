@@ -1419,14 +1419,37 @@ pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAlloca
     let expected_relay_frames = 0u64;
 
     #[cfg(feature = "datapath-guest-relay-measurement")]
-    let in_vm_relay_frames = {
+    let (in_vm_relay_frames, in_vm_elapsed_tsc) = {
+        use hv_datapath::plan_out_ipc_consumer_guest_phys;
         use hv_guest_boot::GuestBootInfoView;
+        use hv_guest_abi::parse_guest_boot_info_relay_measurement;
         use hv_x86_cpu::{
             measure_in_vm_relay_frames_from_boot_infos, GuestBootInfoMeasurementSite,
         };
 
         let guests = &execution.live.sources.runtime.benchmark.guests;
         let partition_boot_infos = &guests.malicious.live.foundation.partition_boot_infos;
+        let ept_tables = guests
+            .malicious
+            .live
+            .foundation
+            .vmx_launch
+            .real_hw
+            .live
+            .cpu_seam
+            .programming
+            .ept_tables
+            .clone()
+            .ok_or_else(|| {
+                BootCheckError::new(
+                    BootCheckErrorKind::Platform,
+                    "relay measurement requires programmed EPT tables",
+                )
+            })?;
+        let out_ipc_consumer_guest_phys =
+            plan_out_ipc_consumer_guest_phys(layout).map_err(|err| {
+                BootCheckError::new(BootCheckErrorKind::Platform, err.message)
+            })?;
         let mut sites = alloc::vec::Vec::with_capacity(guests.partition_launches.len());
         for record in &guests.partition_launches {
             let boot_info_phys = record.boot_info_guest_phys.ok_or_else(|| {
@@ -1454,23 +1477,32 @@ pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAlloca
                     "relay measurement requires ABI v2 boot info tail",
                 ));
             }
+            if parse_guest_boot_info_relay_measurement(blob).is_none() {
+                return Err(BootCheckError::new(
+                    BootCheckErrorKind::Platform,
+                    "relay measurement requires valid boot info extension",
+                ));
+            }
             sites.push(GuestBootInfoMeasurementSite {
                 vm_id: record.vm_id,
-                host_boot_info_phys: boot_info_phys,
+                boot_info_guest_phys: boot_info_phys,
                 boot_info_size: view.header().size,
             });
         }
-        measure_in_vm_relay_frames_from_boot_infos(
+        let measurement = measure_in_vm_relay_frames_from_boot_infos(
             &execution.execution_seam,
+            &ept_tables,
             &sites,
+            out_ipc_consumer_guest_phys,
             expected_relay_frames,
         )
-        .map_err(map_cpu_seam_error)?
+        .map_err(map_cpu_seam_error)?;
+        (measurement.frames, measurement.elapsed_tsc)
     };
     #[cfg(all(feature = "datapath-guest-relay-live", not(feature = "datapath-guest-relay-measurement")))]
-    let in_vm_relay_frames = 0u64;
+    let (in_vm_relay_frames, in_vm_elapsed_tsc) = (0u64, 0u64);
     #[cfg(not(feature = "datapath-guest-relay-live"))]
-    let in_vm_relay_frames = 0u64;
+    let (in_vm_relay_frames, in_vm_elapsed_tsc) = (0u64, 0u64);
 
     let throughput_seam = run_datapath_guest_throughput_cpu_seam(
         &execution.execution_seam,
@@ -1521,6 +1553,7 @@ pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAlloca
             throughput,
             guest_execution_executed,
             in_vm_relay_frames,
+            in_vm_elapsed_tsc,
             expected_relay_frames,
             &benchmark_config,
             skipped_no_hardware,

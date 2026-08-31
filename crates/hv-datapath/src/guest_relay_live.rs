@@ -3,8 +3,8 @@
 use hv_platform_model::StaticPlatformIR;
 
 use crate::benchmark::{
-    compute_benchmark_run_stats, throughput_mbit_from_frames, DatapathBenchmarkConfig,
-    DatapathBenchmarkResult, TARGET_THROUGHPUT_MBIT_PER_SEC,
+    compute_benchmark_run_stats, elapsed_nanos_from_tsc, throughput_mbit_from_frames,
+    DatapathBenchmarkConfig, DatapathBenchmarkResult, TARGET_THROUGHPUT_MBIT_PER_SEC,
 };
 use crate::error::{DatapathError, DatapathErrorKind};
 use crate::forward::{plan_datapath_forward, SYNTHETIC_FRAME_PAYLOAD};
@@ -87,6 +87,7 @@ pub fn validate_sustained_host_relay_benchmark(
 pub fn apply_live_guest_throughput_benchmark(
     mut result: GuestThroughputBenchmarkResult,
     in_vm_relay_frames: u64,
+    in_vm_elapsed_tsc: u64,
     config: &DatapathBenchmarkConfig,
 ) -> Result<GuestThroughputBenchmarkResult, DatapathError> {
     if in_vm_relay_frames == 0 {
@@ -95,14 +96,21 @@ pub fn apply_live_guest_throughput_benchmark(
             "live guest throughput requires in-VM relay frames",
         ));
     }
-    if config.mock_nanos_per_frame == 0 {
-        return Err(DatapathError::new(
-            DatapathErrorKind::InvalidInput,
-            "live guest throughput requires non-zero timing budget",
-        ));
-    }
+    let elapsed_nanos = elapsed_nanos_from_tsc(in_vm_elapsed_tsc, config.tsc_hz)
+        .or_else(|| {
+            if config.mock_nanos_per_frame == 0 {
+                None
+            } else {
+                Some(in_vm_relay_frames.saturating_mul(config.mock_nanos_per_frame))
+            }
+        })
+        .ok_or_else(|| {
+            DatapathError::new(
+                DatapathErrorKind::InvalidInput,
+                "live guest throughput requires TSC or mock timing budget",
+            )
+        })?;
     let payload_bytes = SYNTHETIC_FRAME_PAYLOAD.len() as u32;
-    let elapsed_nanos = in_vm_relay_frames.saturating_mul(config.mock_nanos_per_frame);
     let mbit = throughput_mbit_from_frames(payload_bytes, in_vm_relay_frames, elapsed_nanos)?;
     let stats = compute_benchmark_run_stats(&[mbit]);
     result.benchmark = DatapathBenchmarkResult {
@@ -121,6 +129,7 @@ pub fn guest_throughput_result_with_live_relay(
     mut result: GuestThroughputBenchmarkResult,
     guest_execution_executed: bool,
     in_vm_relay_frames: u64,
+    in_vm_elapsed_tsc: u64,
     expected_relay_frames: u64,
     config: &DatapathBenchmarkConfig,
     skipped_no_hardware: bool,
@@ -131,7 +140,12 @@ pub fn guest_throughput_result_with_live_relay(
         expected_relay_frames,
     );
     if live_completed {
-        result = apply_live_guest_throughput_benchmark(result, in_vm_relay_frames, config)?;
+        result = apply_live_guest_throughput_benchmark(
+            result,
+            in_vm_relay_frames,
+            in_vm_elapsed_tsc,
+            config,
+        )?;
         if !result.benchmark.target_met {
             return Err(DatapathError::new(
                 DatapathErrorKind::InvalidInput,
@@ -194,6 +208,7 @@ mod tests {
             mock,
             true,
             0,
+            0,
             u64::from(GUEST_RELAY_BENCHMARK_FRAMES),
             &DatapathBenchmarkConfig::default(),
             false,
@@ -213,6 +228,7 @@ mod tests {
             mock,
             true,
             u64::from(GUEST_RELAY_BENCHMARK_FRAMES),
+            49_152,
             u64::from(GUEST_RELAY_BENCHMARK_FRAMES),
             &DatapathBenchmarkConfig::default(),
             false,
