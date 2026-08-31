@@ -23,7 +23,8 @@ pub use elf::{
 pub use partition_images::{
     reference_datapath_guest_elf, reference_guest_elf, reference_guest_elf_for_kind,
     reference_guest_elf_for_vm_id, reference_guest_source_elf, GuestElfKind,
-    GUEST_DATAPATH_CAPABLE_MARKER, GUEST_IN_RUNNING_MARKER, GUEST_MID_RUNNING_MARKER,
+    GUEST_DATAPATH_CAPABLE_MARKER, GUEST_DATAPATH_RELAY_BENCHMARK_COMPLETE_MARKER,
+    GUEST_IN_RUNNING_MARKER, GUEST_MID_RUNNING_MARKER,
     GUEST_OUT_RUNNING_MARKER, GUEST_SOURCE_ELFS_AVAILABLE, REFERENCE_GUEST_PARTITION_IDS,
 };
 pub use smoke::{GUEST_SMOKE_IMAGE, GUEST_SMOKE_RUNNING_MARKER};

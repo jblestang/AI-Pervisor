@@ -24,6 +24,7 @@ datapath-guest-sources = ["datapath-runtime", "hv-hypervisor-boot/datapath-guest
 datapath-guest-live = ["datapath-guest-sources", "hv-hypervisor-boot/datapath-guest-live"]
 datapath-guest-execution = ["datapath-guest-live", "hv-hypervisor-boot/datapath-guest-execution", "dep:hv-datapath"]
 datapath-guest-throughput = ["datapath-guest-execution", "hv-hypervisor-boot/datapath-guest-throughput", "dep:hv-datapath"]
+datapath-guest-relay-live = ["datapath-guest-throughput", "hv-hypervisor-boot/datapath-guest-relay-live", "dep:hv-datapath"]
 
 [dependencies]
 hv-boot-abi = { path = "../hv-boot-abi" }
@@ -98,6 +99,11 @@ required-features = ["datapath-guest-execution"]
 name = "datapath_guest_throughput"
 path = "tests/datapath_guest_throughput.rs"
 required-features = ["datapath-guest-throughput"]
+
+[[test]]
+name = "datapath_guest_relay_live"
+path = "tests/datapath_guest_relay_live.rs"
+required-features = ["datapath-guest-relay-live"]
 
 [[test]]
 name = "real_hw"

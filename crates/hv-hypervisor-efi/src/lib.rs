@@ -46,6 +46,8 @@ use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_guest_live_f
 use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_guest_execution_from_snapshots;
 #[cfg(feature = "datapath-guest-throughput")]
 use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_guest_throughput_from_snapshots;
+#[cfg(feature = "datapath-guest-relay-live")]
+use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_guest_relay_live_from_snapshots;
 
 pub use error::{HypervisorEfiError, HypervisorEfiErrorKind};
 pub use hv_hypervisor_boot::{
@@ -202,6 +204,9 @@ pub struct DatapathGuestThroughputBootMarkers {
     pub guest_throughput_min_mbit_per_sec: u64,
     /// Whether live guest throughput measurement executed under VMX.
     pub guest_throughput_executed: bool,
+    /// Sustained guest relay frames validated on the host runtime path.
+    #[cfg(feature = "datapath-guest-relay-live")]
+    pub sustained_relay_frames: u64,
 }
 
 /// Runs full Gate B validation and mock-backed Gate C init from a transfer blob.
@@ -718,7 +723,38 @@ fn boot_hypervisor_from_transfer_datapath_guest_throughput_markers(
         guest_throughput_target_met: result.throughput.benchmark.target_met,
         guest_throughput_min_mbit_per_sec: result.throughput.benchmark.stats.min_mbit_per_sec,
         guest_throughput_executed: result.throughput.disposition == GuestThroughputDisposition::Executed,
+        #[cfg(feature = "datapath-guest-relay-live")]
+        sustained_relay_frames: result.sustained_relay_frames,
     }
+}
+
+/// Gate D datapath guest relay live boot outcome markers (extends guest throughput).
+#[cfg(feature = "datapath-guest-relay-live")]
+pub type DatapathGuestRelayLiveBootMarkers = DatapathGuestThroughputBootMarkers;
+
+/// Runs Gate B validation and Gate D datapath guest relay live init with resident page installation.
+#[cfg(feature = "datapath-guest-relay-live")]
+pub fn boot_hypervisor_from_transfer_datapath_guest_relay_live<A: PageAllocator>(
+    transfer: &[u8],
+    expected_config_digest: &[u8; SHA256_DIGEST_BYTES],
+    requirements: &RequirementsSnapshot,
+    layout: &LayoutSnapshot,
+    allocator: &mut A,
+) -> Result<DatapathGuestRelayLiveBootMarkers, HypervisorEfiError> {
+    if requirements.config_digest != *expected_config_digest {
+        return Err(HypervisorEfiError::new(
+            HypervisorEfiErrorKind::Requirements,
+            "requirements snapshot digest mismatch",
+        ));
+    }
+    let result = boot_from_transfer_and_init_gate_d_datapath_guest_relay_live_from_snapshots(
+        transfer,
+        requirements,
+        layout,
+        allocator,
+    )
+    .map_err(HypervisorEfiError::from)?;
+    Ok(boot_hypervisor_from_transfer_datapath_guest_throughput_markers(&result))
 }
 
 #[cfg(feature = "datapath-guest-sources")]

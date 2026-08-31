@@ -28,6 +28,7 @@
 | 24 | D | Guest boot-info install + VMCS RDI handoff (`datapath-guest-live`) |
 | 25 | D | Live VMX guest execution seam for source-tree guests (`datapath-guest-execution`); in-VM throughput deferred to 26+ |
 | 26 | D | In-VM guest throughput benchmark (`datapath-guest-throughput`); mock default + live REAL_HW opt-in |
+| 27 | D | Sustained guest relay live (`datapath-guest-relay-live`); 64-frame guest loops + live throughput wiring |
 
 Phases 0–3 complete Gate A. Phase 4 begins Gate B with host-side platform validation and deterministic layout planning.
 

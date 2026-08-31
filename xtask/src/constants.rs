@@ -36,6 +36,9 @@ pub const HYPERVISOR_EFI_DATAPATH_GUEST_EXECUTION_FEATURE: &str = "datapath-gues
 /// Cargo feature enabling Gate D datapath guest throughput on the REAL_HW hypervisor EFI path.
 pub const HYPERVISOR_EFI_DATAPATH_GUEST_THROUGHPUT_FEATURE: &str = "datapath-guest-throughput";
 
+/// Cargo feature enabling Gate D sustained guest relay live on the REAL_HW hypervisor EFI path.
+pub const HYPERVISOR_EFI_DATAPATH_GUEST_RELAY_LIVE_FEATURE: &str = "datapath-guest-relay-live";
+
 /// OVMF serial marker emitted when BDS attempts to boot an application.
 pub const OVMF_BOOT_ATTEMPT_MARKER: &str = "BdsDxe: starting Boot";
 

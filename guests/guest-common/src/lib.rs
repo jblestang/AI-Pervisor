@@ -22,6 +22,12 @@ pub const GUEST_MID_RUNNING_MARKER: &str = "GUEST: mid partition running";
 pub const GUEST_OUT_RUNNING_MARKER: &str = "GUEST: out partition running";
 /// Serial marker for datapath-capable guests.
 pub const GUEST_DATAPATH_CAPABLE_MARKER: &str = "GUEST: datapath capable";
+/// Serial marker after sustained in→mid→out relay benchmark completes.
+pub const GUEST_DATAPATH_RELAY_BENCHMARK_COMPLETE_MARKER: &str =
+    "GUEST: datapath relay benchmark complete";
+
+/// Frames each partition relays during the sustained benchmark loop.
+pub const GUEST_RELAY_BENCHMARK_FRAMES: u32 = 64;
 
 /// Runs one partition role using boot info when valid, otherwise reference layout.
 pub fn run(role: Role, boot_info: *const u8) -> ! {
@@ -30,13 +36,32 @@ pub fn run(role: Role, boot_info: *const u8) -> ! {
     serial::write_line(GUEST_DATAPATH_CAPABLE_MARKER);
 
     match role {
-        Role::In => run_in(&layout),
-        Role::Mid => run_mid(&layout),
-        Role::Out => run_out(&layout),
+        Role::In => run_in_sustained(&layout, GUEST_RELAY_BENCHMARK_FRAMES),
+        Role::Mid => run_mid_sustained(&layout, GUEST_RELAY_BENCHMARK_FRAMES),
+        Role::Out => run_out_sustained(&layout, GUEST_RELAY_BENCHMARK_FRAMES),
     }
 
+    serial::write_line(GUEST_DATAPATH_RELAY_BENCHMARK_COMPLETE_MARKER);
     serial::write_byte(b'\n');
     halt();
+}
+
+fn run_in_sustained(layout: &layout::ResolvedLayout, frames: u32) {
+    for _ in 0..frames {
+        run_in(layout);
+    }
+}
+
+fn run_mid_sustained(layout: &layout::ResolvedLayout, frames: u32) {
+    for _ in 0..frames {
+        run_mid(layout);
+    }
+}
+
+fn run_out_sustained(layout: &layout::ResolvedLayout, frames: u32) {
+    for _ in 0..frames {
+        run_out(layout);
+    }
 }
 
 fn run_in(layout: &layout::ResolvedLayout) {
