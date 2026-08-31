@@ -9,6 +9,7 @@ use crate::constants::{
     EPT_ROOT_TABLE_BYTES,
 };
 use crate::error::{EptError, EptErrorKind};
+use crate::paging::materialize_ept_paging;
 use crate::plan::{EptIdentityMapping, EptInitPlan};
 
 /// EPT permission and memory-type bits used for identity leaf entries (MODEL encoding).
@@ -43,6 +44,8 @@ pub struct EptProgrammedTables {
     pub root_table: Vec<u8>,
     /// Encoded identity mappings backing the hierarchy.
     pub mappings: Vec<EptProgrammedMapping>,
+    /// Additional paging levels materialized for non-contiguous guest mappings.
+    pub paging_tables: Vec<Vec<u8>>,
 }
 
 /// Appends one guest/host EPT mapping record for runtime-installed pages.
@@ -70,6 +73,7 @@ pub fn append_ept_guest_mapping(
         size_bytes,
         encoded_entry: encode_identity_ept_entry(host_phys),
     });
+    materialize_ept_paging(tables)?;
     Ok(())
 }
 
@@ -92,18 +96,15 @@ pub fn program_ept_tables(plan: &EptInitPlan) -> Result<EptProgrammedTables, Ept
     for mapping in &plan.identity_mappings {
         mappings.push(program_identity_mapping(mapping)?);
     }
-    let mut root_table = vec![0u8; EPT_ROOT_TABLE_BYTES as usize];
-    if let Some(first) = mappings.first() {
-        let entry_bytes = first.encoded_entry.to_le_bytes();
-        if let Some(slot) = root_table.get_mut(0..8) {
-            slot.copy_from_slice(&entry_bytes);
-        }
-    }
-    Ok(EptProgrammedTables {
+    let root_table = vec![0u8; EPT_ROOT_TABLE_BYTES as usize];
+    let mut tables = EptProgrammedTables {
         root_table_phys: plan.root_table_phys.raw(),
         root_table,
         mappings,
-    })
+        paging_tables: Vec::new(),
+    };
+    materialize_ept_paging(&mut tables)?;
+    Ok(tables)
 }
 
 fn program_identity_mapping(mapping: &EptIdentityMapping) -> Result<EptProgrammedMapping, EptError> {

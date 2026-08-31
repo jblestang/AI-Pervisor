@@ -292,6 +292,7 @@ mod tests {
                 size_bytes: 0x10_0000,
                 encoded_entry: encode_identity_ept_entry(0),
             }],
+            paging_tables: alloc::vec::Vec::new(),
         }
     }
 

@@ -572,6 +572,53 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
     #[cfg(feature = "datapath-guest-live")]
     let partition_boot_infos = &malicious.live.foundation.partition_boot_infos;
 
+    #[cfg(feature = "datapath-guest-relay-measurement")]
+    let relay_measurement_install = {
+        use hv_datapath::{plan_relay_measurement_page_gpa, RELAY_MEASUREMENT_PAGE_BYTES};
+        use hv_ept::{append_ept_guest_mapping, ept_maps_guest_page};
+        use hv_x86_cpu::install_relay_measurement_page;
+
+        let measurement_page_gpa = plan_relay_measurement_page_gpa(layout).map_err(|err| {
+            BootCheckError::new(BootCheckErrorKind::Platform, err.message)
+        })?;
+        let page = install_relay_measurement_page(allocator, measurement_page_gpa)
+            .map_err(map_cpu_seam_error)?;
+        let ept_tables = malicious
+            .live
+            .foundation
+            .vmx_launch
+            .real_hw
+            .live
+            .cpu_seam
+            .programming
+            .ept_tables
+            .as_mut()
+            .ok_or_else(|| {
+                BootCheckError::new(
+                    BootCheckErrorKind::Platform,
+                    "relay measurement requires programmed EPT tables",
+                )
+            })?;
+        append_ept_guest_mapping(
+            ept_tables,
+            page.guest_phys,
+            page.host_phys,
+            RELAY_MEASUREMENT_PAGE_BYTES,
+        )
+        .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
+        if !ept_maps_guest_page(ept_tables, measurement_page_gpa) {
+            return Err(BootCheckError::new(
+                BootCheckErrorKind::Platform,
+                "relay measurement page GPA not mapped in EPT hierarchy",
+            ));
+        }
+        *ept_tables = hv_x86_cpu::install_ept_tables(allocator, ept_tables)
+            .map_err(map_cpu_seam_error)?;
+        Some((page.host_phys, measurement_page_gpa))
+    };
+    #[cfg(not(feature = "datapath-guest-relay-measurement"))]
+    let relay_measurement_install: Option<(u64, u64)> = None;
+
     let mut partition_launches = alloc::vec::Vec::with_capacity(launch_plans.len());
     let mut seam_inputs = alloc::vec::Vec::with_capacity(launch_plans.len());
     let mut elf_images_installed = 0u32;
@@ -606,47 +653,18 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
             })?;
             #[cfg(feature = "datapath-guest-relay-measurement")]
             let (install_blob, relay_measurement_page_host_phys) = {
-                use hv_datapath::{plan_relay_measurement_page_gpa, RELAY_MEASUREMENT_PAGE_BYTES};
-                use hv_ept::append_ept_guest_mapping;
                 use hv_guest_abi::parse_guest_boot_info_relay_measurement;
                 use hv_guest_boot::patch_relay_measurement_page_gpa;
-                use hv_x86_cpu::{
-                    install_relay_measurement_page, GUEST_RELAY_MEASUREMENT_VM_ID,
-                };
+                use hv_x86_cpu::GUEST_RELAY_MEASUREMENT_VM_ID;
 
                 if launch_plan.vm_id == GUEST_RELAY_MEASUREMENT_VM_ID {
-                    let measurement_page_gpa = plan_relay_measurement_page_gpa(layout).map_err(
-                        |err| BootCheckError::new(BootCheckErrorKind::Platform, err.message),
-                    )?;
-                    let page = install_relay_measurement_page(allocator, measurement_page_gpa)
-                        .map_err(map_cpu_seam_error)?;
-                    let ept_tables = malicious
-                        .live
-                        .foundation
-                        .vmx_launch
-                        .real_hw
-                        .live
-                        .cpu_seam
-                        .programming
-                        .ept_tables
-                        .as_mut()
-                        .ok_or_else(|| {
+                    let (page_host_phys, measurement_page_gpa) =
+                        relay_measurement_install.ok_or_else(|| {
                             BootCheckError::new(
                                 BootCheckErrorKind::Platform,
-                                "relay measurement requires programmed EPT tables",
+                                "relay measurement page install missing for out partition",
                             )
                         })?;
-                    append_ept_guest_mapping(
-                        ept_tables,
-                        page.guest_phys,
-                        page.host_phys,
-                        RELAY_MEASUREMENT_PAGE_BYTES,
-                    )
-                    .map_err(|err| {
-                        BootCheckError::new(BootCheckErrorKind::Platform, err.message)
-                    })?;
-                    *ept_tables = hv_x86_cpu::install_ept_tables(allocator, ept_tables)
-                        .map_err(map_cpu_seam_error)?;
                     let mut install_blob = boot_info_blob.to_vec();
                     patch_relay_measurement_page_gpa(&mut install_blob, measurement_page_gpa)
                         .map_err(|err| {
@@ -665,7 +683,7 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
                             "relay measurement boot info GPA mismatch with installed page",
                         ));
                     }
-                    (install_blob, Some(page.host_phys))
+                    (install_blob, Some(page_host_phys))
                 } else {
                     (boot_info_blob.to_vec(), None)
                 }
@@ -753,6 +771,30 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
             BootCheckErrorKind::Platform,
             "guest elf install count mismatch with reference partitions",
         ));
+    }
+
+    #[cfg(feature = "datapath-guest-relay-measurement")]
+    if relay_measurement_install.is_some() {
+        use hv_x86_cpu::run_ept_pointer_cpu_seam;
+        let ept_tables = malicious
+            .live
+            .foundation
+            .vmx_launch
+            .real_hw
+            .live
+            .cpu_seam
+            .programming
+            .ept_tables
+            .as_ref()
+            .ok_or_else(|| {
+                BootCheckError::new(
+                    BootCheckErrorKind::Platform,
+                    "relay measurement requires installed EPT tables for pointer reload",
+                )
+            })?;
+        for (vmcs_phys, _, _) in &seam_inputs {
+            run_ept_pointer_cpu_seam(ept_tables, Some(*vmcs_phys)).map_err(map_cpu_seam_error)?;
+        }
     }
 
     let multi_launch_seam = run_multi_vmx_launch_cpu_seam(&seam_inputs).map_err(map_cpu_seam_error)?;
