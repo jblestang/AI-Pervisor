@@ -4,7 +4,8 @@ use hv_ept::{resolve_guest_phys_range_to_host, EptProgrammedTables};
 use hv_guest_abi::{
     guest_relay_measurement_elapsed_tsc, parse_guest_boot_info_relay_measurement,
     parse_relay_measurement_page_header, GuestBootInfoRelayMeasurement,
-    GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES,
+    GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES, GUEST_RELAY_MEASUREMENT_EXTENSION_VERSION,
+    GUEST_RELAY_MEASUREMENT_MAGIC,
 };
 use hv_types::VmId;
 
@@ -41,8 +42,10 @@ pub struct InVmRelayMeasurement {
     pub elapsed_tsc: u64,
     /// Frames derived from the out-partition IPC consumer tail.
     pub ipc_delivered_frames: u64,
-    /// Frames reported by the guest boot-info extension.
+    /// Frames published on the hypervisor-owned measurement page.
     pub extension_frames: u64,
+    /// Frames reported by the guest boot-info tail (cross-check input).
+    pub guest_boot_info_frames: u64,
 }
 
 /// Host-mapped guest boot info site (legacy validate-only tests).
@@ -159,12 +162,12 @@ pub fn publish_relay_measurement_page_authoritative(
             "relay measurement requires hypervisor-owned measurement page",
         )
     })?;
-    let boot_extension =
-        read_relay_measurement_extension_from_installed_boot_info(
-            &context.ept_tables,
-            context.out_boot_info_guest_phys,
-            context.boot_info_size,
-        )?;
+    let boot_extension = read_relay_measurement_extension_from_installed_boot_info(
+        &context.ept_tables,
+        context.out_boot_info_guest_phys,
+        context.boot_info_size,
+    )?;
+    validate_boot_relay_measurement_extension(&boot_extension)?;
     let ipc_delivered_frames = read_ipc_delivered_frames_from_guest(context)?;
     let frames_completed = ipc_delivered_frames.min(expected_frames);
     let published = GuestBootInfoRelayMeasurement {
@@ -175,7 +178,15 @@ pub fn publish_relay_measurement_page_authoritative(
         tsc_end: boot_extension.tsc_end,
         measurement_page_gpa: boot_extension.measurement_page_gpa,
     };
-    write_host_measurement_extension(host_phys, &published)
+    write_host_measurement_extension(host_phys, &published)?;
+    let host_extension = read_host_measurement_extension(host_phys)?;
+    if host_extension.frames_completed != frames_completed {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "published relay measurement page frame count mismatch",
+        ));
+    }
+    Ok(())
 }
 
 /// Measures in-VM relay frames using EPT-aware boot-info and IPC cross-checks.
@@ -196,6 +207,7 @@ pub fn measure_in_vm_relay_from_context(
             elapsed_tsc: 0,
             ipc_delivered_frames: 0,
             extension_frames: 0,
+            guest_boot_info_frames: 0,
         });
     }
     if context.measurement_page_host_phys.is_none() {
@@ -210,10 +222,16 @@ pub fn measure_in_vm_relay_from_context(
             "relay measurement requires out-partition boot info guest address",
         ));
     }
+    let guest_boot_extension = read_relay_measurement_extension_from_installed_boot_info(
+        &context.ept_tables,
+        context.out_boot_info_guest_phys,
+        context.boot_info_size,
+    )?;
     publish_relay_measurement_page_authoritative(context, expected_frames)?;
-    let extension = read_relay_measurement_extension_from_guest(context)?;
-    let extension_frames = extension.frames_completed;
-    let elapsed_tsc = guest_relay_measurement_elapsed_tsc(&extension);
+    let host_extension = read_relay_measurement_extension_from_guest(context)?;
+    let guest_boot_info_frames = guest_boot_extension.frames_completed;
+    let extension_frames = host_extension.frames_completed;
+    let elapsed_tsc = guest_relay_measurement_elapsed_tsc(&host_extension);
     let ipc_delivered_frames = read_ipc_delivered_frames_from_guest(context)?;
     if ipc_delivered_frames == 0 {
         return Err(CpuSeamError::new(
@@ -221,12 +239,25 @@ pub fn measure_in_vm_relay_from_context(
             "relay measurement requires non-zero IPC delivered frame count",
         ));
     }
-    let frames = end_to_end_relay_frames(extension_frames, ipc_delivered_frames, expected_frames);
+    let frames = end_to_end_relay_frames(guest_boot_info_frames, ipc_delivered_frames, expected_frames);
+    if guest_boot_info_frames > ipc_delivered_frames {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "guest boot-info frame count exceeds IPC delivered frames",
+        ));
+    }
+    if extension_frames != ipc_delivered_frames.min(expected_frames) {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "relay measurement authoritative frame count mismatch with IPC tail",
+        ));
+    }
     Ok(InVmRelayMeasurement {
         frames,
         elapsed_tsc,
         ipc_delivered_frames,
         extension_frames,
+        guest_boot_info_frames,
     })
 }
 
@@ -302,7 +333,7 @@ fn write_host_measurement_extension(
     host_phys: u64,
     extension: &GuestBootInfoRelayMeasurement,
 ) -> Result<(), CpuSeamError> {
-    let mut bytes = read_host_bytes(host_phys, GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES)?;
+    let mut bytes = [0u8; GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES];
     bytes[0..4].copy_from_slice(&extension.magic.to_le_bytes());
     bytes[4..8].copy_from_slice(&extension.version.to_le_bytes());
     bytes[8..16].copy_from_slice(&extension.frames_completed.to_le_bytes());
@@ -313,6 +344,42 @@ fn write_host_measurement_extension(
     unsafe {
         let dest = core::slice::from_raw_parts_mut(host_phys as *mut u8, bytes.len());
         dest.copy_from_slice(&bytes);
+    }
+    Ok(())
+}
+
+fn read_host_measurement_extension(
+    host_phys: u64,
+) -> Result<GuestBootInfoRelayMeasurement, CpuSeamError> {
+    let bytes = read_host_bytes(host_phys, GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES)?;
+    parse_relay_measurement_page_header(&bytes).ok_or_else(|| {
+        CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "relay measurement page header invalid",
+        )
+    })
+}
+
+fn validate_boot_relay_measurement_extension(
+    extension: &GuestBootInfoRelayMeasurement,
+) -> Result<(), CpuSeamError> {
+    if extension.magic != GUEST_RELAY_MEASUREMENT_MAGIC {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "guest boot info relay measurement magic invalid",
+        ));
+    }
+    if extension.version == 0 || extension.version > GUEST_RELAY_MEASUREMENT_EXTENSION_VERSION {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "guest boot info relay measurement version invalid",
+        ));
+    }
+    if extension.measurement_page_gpa == 0 {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "guest boot info relay measurement page GPA missing",
+        ));
     }
     Ok(())
 }
@@ -391,6 +458,19 @@ mod tests {
     fn end_to_end_relay_frames_uses_ipc_cross_check() {
         assert_eq!(end_to_end_relay_frames(64, 40, 64), 40);
         assert_eq!(end_to_end_relay_frames(32, 48, 64), 32);
+    }
+
+    #[test]
+    fn validate_boot_relay_measurement_extension_requires_page_gpa() {
+        let extension = GuestBootInfoRelayMeasurement {
+            magic: GUEST_RELAY_MEASUREMENT_MAGIC,
+            version: GUEST_RELAY_MEASUREMENT_EXTENSION_VERSION,
+            frames_completed: 0,
+            tsc_start: 0,
+            tsc_end: 0,
+            measurement_page_gpa: 0,
+        };
+        assert!(validate_boot_relay_measurement_extension(&extension).is_err());
     }
 
     #[test]
