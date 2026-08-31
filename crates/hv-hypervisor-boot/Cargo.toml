@@ -23,6 +23,7 @@ datapath-guests = ["datapath-malicious", "hv-x86-cpu/datapath-guests"]
 datapath-benchmark = ["datapath-guests"]
 datapath-runtime = ["datapath-benchmark", "hv-x86-cpu/datapath-runtime"]
 datapath-guest-sources = ["datapath-runtime"]
+datapath-guest-live = ["datapath-guest-sources", "hv-x86-cpu/datapath-guest-live"]
 
 [dependencies]
 hv-boot-abi = { path = "../hv-boot-abi" }
@@ -96,6 +97,11 @@ required-features = ["datapath-benchmark"]
 name = "datapath_guest_sources"
 path = "tests/datapath_guest_sources.rs"
 required-features = ["datapath-guest-sources"]
+
+[[test]]
+name = "datapath_guest_live"
+path = "tests/datapath_guest_live.rs"
+required-features = ["datapath-guest-live"]
 
 [[test]]
 name = "datapath_runtime"

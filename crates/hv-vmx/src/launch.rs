@@ -10,7 +10,7 @@ use crate::constants::VMXON_REGION_MIN_BYTES;
 use crate::error::{VmxError, VmxErrorKind};
 use crate::launch_constants::{
     CPU_BASED_ACTIVATE_SECONDARY_CONTROLS, SECONDARY_ENABLE_EPT, VMCS_CPU_BASED_VM_EXEC_CONTROL,
-    VMCS_GUEST_CR3, VMCS_GUEST_RIP, VMCS_GUEST_RSP, VMCS_HOST_CR3, VMCS_HOST_RIP,
+    VMCS_GUEST_CR3, VMCS_GUEST_RDI, VMCS_GUEST_RIP, VMCS_GUEST_RSP, VMCS_HOST_CR3, VMCS_HOST_RIP,
     VMCS_HOST_RSP, VMCS_PIN_BASED_VM_EXEC_CONTROL, VMCS_SECONDARY_VM_EXEC_CONTROL,
     VMCS_VM_ENTRY_CONTROLS, VMCS_VM_EXIT_CONTROLS, VM_ENTRY_IA32E_MODE,
     VM_EXIT_HOST_ADDR_SPACE_SIZE, VMX_HOST_EXIT_STUB_OFFSET,
@@ -190,6 +190,20 @@ pub fn patch_guest_entry_in_fields(
             _ => {}
         }
     }
+}
+
+/// Updates guest RDI with the boot-info pointer passed to `_start(boot_info)`.
+pub fn patch_guest_boot_info_rdi(fields: &mut VmcsProgrammedFields, boot_info_guest_phys: u64) {
+    for field in &mut fields.fields {
+        if field.field == VMCS_GUEST_RDI {
+            field.value = boot_info_guest_phys;
+            return;
+        }
+    }
+    fields.fields.push(VmcsProgrammedField {
+        field: VMCS_GUEST_RDI,
+        value: boot_info_guest_phys,
+    });
 }
 
 fn find_guest_region<'a>(

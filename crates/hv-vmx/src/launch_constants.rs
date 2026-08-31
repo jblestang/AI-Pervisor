@@ -13,6 +13,8 @@ pub const VMCS_SECONDARY_VM_EXEC_CONTROL: u32 = 0x0000_401E;
 
 /// Guest CR3.
 pub const VMCS_GUEST_CR3: u32 = 0x0000_6802;
+/// Guest RDI (first argument register at VM entry).
+pub const VMCS_GUEST_RDI: u32 = 0x0000_6810;
 /// Guest RSP.
 pub const VMCS_GUEST_RSP: u32 = 0x0000_681C;
 /// Guest RIP.

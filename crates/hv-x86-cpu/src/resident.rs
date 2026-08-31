@@ -135,6 +135,67 @@ pub fn install_guest_elf<A: PageAllocator>(
         .ok_or_else(|| CpuSeamError::new(CpuSeamErrorKind::InvalidInput, "elf entry overflow"))
 }
 
+/// Installs a guest boot-info blob immediately after the ELF image in the same allocation.
+#[cfg(feature = "datapath-guest-live")]
+pub fn install_guest_boot_info_colocated<A: PageAllocator>(
+    allocator: &mut A,
+    elf_bytes: &[u8],
+    elf_entry_phys: u64,
+    boot_info_blob: &[u8],
+) -> Result<u64, CpuSeamError> {
+    use hv_guest_boot::parse_elf64;
+
+    if boot_info_blob.is_empty() {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "guest boot info blob must not be empty",
+        ));
+    }
+    let image = parse_elf64(elf_bytes).map_err(|err| {
+        CpuSeamError::new(CpuSeamErrorKind::InvalidInput, err.message)
+    })?;
+    let image_base = elf_entry_phys.checked_sub(image.entry_vaddr).ok_or_else(|| {
+        CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "elf entry address precedes image base",
+        )
+    })?;
+    let mut image_end = 0u64;
+    for segment in &image.load_segments {
+        let end = segment
+            .vaddr
+            .checked_add(segment.bytes.len() as u64)
+            .ok_or_else(|| {
+                CpuSeamError::new(CpuSeamErrorKind::InvalidInput, "elf segment overflow")
+            })?;
+        image_end = image_end.max(end);
+    }
+    let boot_offset = align_up_usize(image_end as usize, VMXON_REGION_ALIGNMENT_BYTES as usize)? as u64;
+    let boot_info_phys = image_base.checked_add(boot_offset).ok_or_else(|| {
+        CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "guest boot info address overflow",
+        )
+    })?;
+    allocator.copy_to_pages(boot_info_phys, boot_info_blob)?;
+    Ok(boot_info_phys)
+}
+
+fn align_up_usize(value: usize, alignment: usize) -> Result<usize, CpuSeamError> {
+    if alignment == 0 || alignment & (alignment - 1) != 0 {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "alignment must be a power of two",
+        ));
+    }
+    value
+        .checked_add(alignment - 1)
+        .map(|v| v & !(alignment - 1))
+        .ok_or_else(|| {
+            CpuSeamError::new(CpuSeamErrorKind::InvalidInput, "alignment overflow")
+        })
+}
+
 /// Mock page allocator for host tests: records installs without real mapping.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct MockPageAllocator {

@@ -40,6 +40,8 @@ use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_benchmark_fr
 use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_runtime_from_snapshots;
 #[cfg(feature = "datapath-guest-sources")]
 use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_guest_sources_from_snapshots;
+#[cfg(feature = "datapath-guest-live")]
+use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_guest_live_from_snapshots;
 
 pub use error::{HypervisorEfiError, HypervisorEfiErrorKind};
 pub use hv_hypervisor_boot::{
@@ -47,7 +49,8 @@ pub use hv_hypervisor_boot::{
     GATE_D_DATAPATH_MALICIOUS_MARKER, GATE_D_DATAPATH_GUESTS_MARKER, GATE_D_DATAPATH_BENCHMARK_MARKER,
     GATE_D_BENCHMARK_TARGET_MET_MARKER, GATE_D_DATAPATH_RUNTIME_MARKER, GATE_D_GUEST_DATAPATH_FRAME_MARKER,
     GATE_D_E1000_MMIO_MARKER,
-    GATE_D_GUEST_ELF_INSTALLED_MARKER, GATE_D_GUEST_SOURCE_ELF_MARKER, GATE_D_IPC_FORWARD_MARKER,
+    GATE_D_GUEST_ELF_INSTALLED_MARKER, GATE_D_GUEST_SOURCE_ELF_MARKER,
+    GATE_D_GUEST_BOOT_INFO_INSTALLED_MARKER, GATE_D_IPC_FORWARD_MARKER,
     GATE_D_IPC_INTEGRITY_MARKER,
     GATE_D_MULTI_VMLAUNCH_MARKER, REAL_HW_BOOT_SUCCESS_MARKER, REAL_HW_EPT_EXECUTED_MARKER,
     REAL_HW_VMLAUNCH_EXECUTED_MARKER, REAL_HW_VMXON_EXECUTED_MARKER,
@@ -157,6 +160,16 @@ pub struct DatapathGuestSourcesBootMarkers {
     pub runtime: DatapathRuntimeBootMarkers,
     /// Number of source-tree guest ELF images installed.
     pub guest_source_elfs_installed: u32,
+}
+
+/// Gate D datapath guest-live boot outcome markers for serial-log verification.
+#[cfg(feature = "datapath-guest-live")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DatapathGuestLiveBootMarkers {
+    /// Datapath guest-sources boot markers.
+    pub sources: DatapathGuestSourcesBootMarkers,
+    /// Number of guest boot-info blobs installed and wired to VMCS RDI.
+    pub guest_boot_infos_installed: u32,
 }
 
 /// Runs full Gate B validation and mock-backed Gate C init from a transfer blob.
@@ -564,6 +577,42 @@ pub fn boot_hypervisor_from_transfer_datapath_guest_sources<A: PageAllocator>(
         allocator,
     )
     .map_err(HypervisorEfiError::from)?;
+    boot_hypervisor_from_transfer_datapath_guest_sources_markers(&result)
+}
+
+/// Runs Gate B validation and Gate D datapath guest-live init with resident page installation.
+#[cfg(feature = "datapath-guest-live")]
+pub fn boot_hypervisor_from_transfer_datapath_guest_live<A: PageAllocator>(
+    transfer: &[u8],
+    expected_config_digest: &[u8; SHA256_DIGEST_BYTES],
+    requirements: &RequirementsSnapshot,
+    layout: &LayoutSnapshot,
+    allocator: &mut A,
+) -> Result<DatapathGuestLiveBootMarkers, HypervisorEfiError> {
+    if requirements.config_digest != *expected_config_digest {
+        return Err(HypervisorEfiError::new(
+            HypervisorEfiErrorKind::Requirements,
+            "requirements snapshot digest mismatch",
+        ));
+    }
+    let result = boot_from_transfer_and_init_gate_d_datapath_guest_live_from_snapshots(
+        transfer,
+        requirements,
+        layout,
+        allocator,
+    )
+    .map_err(HypervisorEfiError::from)?;
+    let sources_markers = boot_hypervisor_from_transfer_datapath_guest_sources_markers(&result.sources)?;
+    Ok(DatapathGuestLiveBootMarkers {
+        sources: sources_markers,
+        guest_boot_infos_installed: result.boot_infos_installed,
+    })
+}
+
+#[cfg(feature = "datapath-guest-sources")]
+fn boot_hypervisor_from_transfer_datapath_guest_sources_markers(
+    result: &hv_hypervisor_boot::GateDDatapathGuestSourcesResult,
+) -> Result<DatapathGuestSourcesBootMarkers, HypervisorEfiError> {
     use hv_guest_boot::REFERENCE_GUEST_PARTITION_IDS;
     let runtime = &result.runtime;
     Ok(DatapathGuestSourcesBootMarkers {

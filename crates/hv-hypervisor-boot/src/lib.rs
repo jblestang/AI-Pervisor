@@ -18,7 +18,8 @@ pub use hv_boot_abi::{
     GATE_D_DATAPATH_MALICIOUS_MARKER, GATE_D_DATAPATH_GUESTS_MARKER, GATE_D_DATAPATH_BENCHMARK_MARKER,
     GATE_D_BENCHMARK_TARGET_MET_MARKER, GATE_D_DATAPATH_RUNTIME_MARKER, GATE_D_GUEST_DATAPATH_FRAME_MARKER,
     GATE_D_E1000_MMIO_MARKER,
-    GATE_D_GUEST_ELF_INSTALLED_MARKER, GATE_D_GUEST_SOURCE_ELF_MARKER, GATE_D_IPC_FORWARD_MARKER,
+    GATE_D_GUEST_ELF_INSTALLED_MARKER, GATE_D_GUEST_SOURCE_ELF_MARKER,
+    GATE_D_GUEST_BOOT_INFO_INSTALLED_MARKER, GATE_D_IPC_FORWARD_MARKER,
     GATE_D_IPC_INTEGRITY_MARKER, GATE_D_MULTI_VMLAUNCH_MARKER, REAL_HW_BOOT_SUCCESS_MARKER,
     REAL_HW_EPT_EXECUTED_MARKER,
     REAL_HW_VMLAUNCH_EXECUTED_MARKER, REAL_HW_VMXON_EXECUTED_MARKER,
@@ -99,6 +100,12 @@ pub use gate_d::{
     boot_from_transfer_and_init_gate_d_datapath_guest_sources,
     boot_from_transfer_and_init_gate_d_datapath_guest_sources_from_snapshots,
     GateDDatapathGuestSourcesResult,
+};
+#[cfg(feature = "datapath-guest-live")]
+pub use gate_d::{
+    boot_from_transfer_and_init_gate_d_datapath_guest_live,
+    boot_from_transfer_and_init_gate_d_datapath_guest_live_from_snapshots,
+    GateDDatapathGuestLiveResult,
 };
 pub use snapshot::{
     layout_snapshot_from_platform_ir, platform_requirements_from_snapshot,

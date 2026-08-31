@@ -25,12 +25,12 @@ pub use constants::{VMXON_REGION_ALIGNMENT_BYTES, VMXON_REGION_MIN_BYTES};
 pub use error::{VmxError, VmxErrorKind};
 pub use init::{init_vmx, vmx_init_required};
 pub use launch::{
-    patch_guest_entry_in_fields, plan_vmx_launch, plan_vmx_launch_all_partitions,
-    program_vmcs_fields, VmcsProgrammedField, VmcsProgrammedFields, VmxLaunchPlan,
-    DEFAULT_SMOKE_GUEST_PARTITION_ID,
+    patch_guest_boot_info_rdi, patch_guest_entry_in_fields, plan_vmx_launch,
+    plan_vmx_launch_all_partitions, program_vmcs_fields, VmcsProgrammedField, VmcsProgrammedFields,
+    VmxLaunchPlan, DEFAULT_SMOKE_GUEST_PARTITION_ID,
 };
 pub use launch_constants::{
-    VMCS_CPU_BASED_VM_EXEC_CONTROL, VMCS_GUEST_CR3, VMCS_GUEST_RIP, VMCS_GUEST_RSP,
+    VMCS_CPU_BASED_VM_EXEC_CONTROL, VMCS_GUEST_CR3, VMCS_GUEST_RDI, VMCS_GUEST_RIP, VMCS_GUEST_RSP,
     VMCS_HOST_CR3, VMCS_HOST_RIP, VMCS_HOST_RSP, VMCS_PIN_BASED_VM_EXEC_CONTROL,
     VMCS_SECONDARY_VM_EXEC_CONTROL, VMCS_VM_ENTRY_CONTROLS, VMCS_VM_EXIT_CONTROLS,
 };

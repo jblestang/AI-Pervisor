@@ -407,6 +407,8 @@ pub struct PartitionGuestLaunchRecord {
     pub vmcs_phys: u64,
     /// VMX launch CPU seam outcome for this partition.
     pub launch_seam: hv_x86_cpu::VmxLaunchCpuSeamOutcome,
+    /// Guest physical address of installed boot-info blob when `datapath-guest-live` is enabled.
+    pub boot_info_guest_phys: Option<u64>,
 }
 
 /// Result of Gate D datapath guests init atop datapath malicious.
@@ -504,6 +506,10 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
     use hv_guest_boot::{reference_guest_elf_for_kind, REFERENCE_GUEST_PARTITION_IDS};
     use hv_vmx::{patch_guest_entry_in_fields, plan_vmx_launch_all_partitions, program_vmcs_fields};
     use hv_x86_cpu::{install_guest_elf, install_vmcs_region, run_multi_vmx_launch_cpu_seam};
+    #[cfg(feature = "datapath-guest-live")]
+    use hv_vmx::patch_guest_boot_info_rdi;
+    #[cfg(feature = "datapath-guest-live")]
+    use hv_x86_cpu::install_guest_boot_info_colocated;
 
     let malicious = init_gate_d_datapath_malicious_from_validated(
         requirements,
@@ -525,6 +531,11 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
         .vmx_plan;
     let launch_plans = plan_vmx_launch_all_partitions(layout, vmx_plan)
         .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
+
+    #[cfg(feature = "datapath-guest-live")]
+    let partition_boot_infos = build_guest_boot_infos_all_partitions(layout).map_err(|err| {
+        BootCheckError::new(BootCheckErrorKind::Platform, err.message)
+    })?;
 
     let mut partition_launches = alloc::vec::Vec::with_capacity(launch_plans.len());
     let mut seam_inputs = alloc::vec::Vec::with_capacity(launch_plans.len());
@@ -550,6 +561,33 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
             guest_entry_phys,
             launch_plan.guest_stack_phys.raw(),
         );
+        #[cfg(feature = "datapath-guest-live")]
+        let boot_info_guest_phys = {
+            let boot_info_blob = partition_boot_infos
+                .iter()
+                .find(|(vm_id, _)| *vm_id == launch_plan.vm_id)
+                .map(|(_, blob)| blob.as_slice())
+                .ok_or_else(|| {
+                    BootCheckError::new(
+                        BootCheckErrorKind::Platform,
+                        "missing guest boot info blob for partition",
+                    )
+                })?;
+            GuestBootInfoView::parse(boot_info_blob).map_err(|err| {
+                BootCheckError::new(BootCheckErrorKind::Platform, err.message)
+            })?;
+            let boot_info_phys = install_guest_boot_info_colocated(
+                allocator,
+                elf_bytes,
+                guest_entry_phys,
+                boot_info_blob,
+            )
+            .map_err(map_cpu_seam_error)?;
+            patch_guest_boot_info_rdi(&mut vmcs_fields, boot_info_phys);
+            Some(boot_info_phys)
+        };
+        #[cfg(not(feature = "datapath-guest-live"))]
+        let boot_info_guest_phys = None;
         seam_inputs.push((vmcs_phys, vmcs_fields, launch_plan.vm_id));
         partition_launches.push(PartitionGuestLaunchRecord {
             partition_id: launch_plan.partition_id.clone(),
@@ -560,6 +598,7 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
                 disposition: hv_x86_cpu::CpuInstructionDisposition::SeamValidated,
                 guest_vm_id: launch_plan.vm_id,
             },
+            boot_info_guest_phys,
         });
     }
 
@@ -940,4 +979,91 @@ pub(crate) fn init_gate_d_datapath_guest_sources_from_validated<A: PageAllocator
         hv_guest_boot::GuestElfKind::Source,
     )?;
     Ok(GateDDatapathGuestSourcesResult { runtime })
+}
+
+/// Result of Gate D datapath guest-live init with boot-info install and RDI patching.
+#[cfg(feature = "datapath-guest-live")]
+pub struct GateDDatapathGuestLiveResult {
+    /// Datapath guest-sources output using built `guests/` ELFs.
+    pub sources: GateDDatapathGuestSourcesResult,
+    /// Number of guest boot-info blobs installed and wired to VMCS RDI.
+    pub boot_infos_installed: u32,
+}
+
+/// Runs transfer boot checks and Gate D guest-live init using embedded snapshots.
+#[cfg(feature = "datapath-guest-live")]
+pub fn boot_from_transfer_and_init_gate_d_datapath_guest_live_from_snapshots<A: PageAllocator>(
+    transfer: &[u8],
+    requirements: &RequirementsSnapshot,
+    layout: &LayoutSnapshot,
+    allocator: &mut A,
+) -> Result<GateDDatapathGuestLiveResult, BootCheckError> {
+    let platform_requirements = platform_requirements_from_snapshot(requirements)?;
+    let static_layout = static_platform_ir_from_layout_snapshot(layout, requirements)?;
+    let (validated, warnings) =
+        boot_from_transfer(transfer, &requirements.config_digest, &platform_requirements)?;
+    init_gate_d_datapath_guest_live_from_validated(
+        &platform_requirements,
+        &static_layout,
+        &validated,
+        warnings,
+        allocator,
+    )
+}
+
+/// Runs transfer boot checks and Gate D guest-live init.
+#[cfg(feature = "datapath-guest-live")]
+pub fn boot_from_transfer_and_init_gate_d_datapath_guest_live<A: PageAllocator>(
+    transfer: &[u8],
+    snapshot: &RequirementsSnapshot,
+    layout: &StaticPlatformIR,
+    allocator: &mut A,
+) -> Result<GateDDatapathGuestLiveResult, BootCheckError> {
+    let requirements = platform_requirements_from_snapshot(snapshot)?;
+    let (validated, warnings) =
+        boot_from_transfer(transfer, &snapshot.config_digest, &requirements)?;
+    init_gate_d_datapath_guest_live_from_validated(
+        &requirements,
+        layout,
+        &validated,
+        warnings,
+        allocator,
+    )
+}
+
+#[cfg(feature = "datapath-guest-live")]
+pub(crate) fn init_gate_d_datapath_guest_live_from_validated<A: PageAllocator>(
+    requirements: &PlatformRequirements,
+    layout: &StaticPlatformIR,
+    validated: &ValidatedPlatform,
+    warnings: alloc::vec::Vec<PlatformWarning>,
+    allocator: &mut A,
+) -> Result<GateDDatapathGuestLiveResult, BootCheckError> {
+    use hv_guest_boot::REFERENCE_GUEST_PARTITION_IDS;
+
+    let sources = init_gate_d_datapath_guest_sources_from_validated(
+        requirements,
+        layout,
+        validated,
+        warnings,
+        allocator,
+    )?;
+    let boot_infos_installed = sources
+        .runtime
+        .benchmark
+        .guests
+        .partition_launches
+        .iter()
+        .filter(|record| record.boot_info_guest_phys.is_some())
+        .count() as u32;
+    if boot_infos_installed != REFERENCE_GUEST_PARTITION_IDS.len() as u32 {
+        return Err(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "guest boot info install count mismatch with reference partitions",
+        ));
+    }
+    Ok(GateDDatapathGuestLiveResult {
+        sources,
+        boot_infos_installed,
+    })
 }
