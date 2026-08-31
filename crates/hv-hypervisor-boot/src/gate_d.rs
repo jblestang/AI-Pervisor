@@ -1441,18 +1441,24 @@ pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAlloca
     #[cfg(feature = "datapath-guest-relay-live")]
     let sustained_relay_frames = {
         use hv_datapath::{
-            guest_throughput_result_with_live_relay, run_sustained_guest_relay_benchmark,
+            guest_throughput_result_with_live_relay, validate_sustained_host_relay_benchmark,
             GUEST_RELAY_BENCHMARK_FRAMES,
         };
 
-        let relay_frames = run_sustained_guest_relay_benchmark(layout, GUEST_RELAY_BENCHMARK_FRAMES)
-            .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
+        let relay_frames = validate_sustained_host_relay_benchmark(
+            layout,
+            GUEST_RELAY_BENCHMARK_FRAMES,
+            &benchmark_config,
+        )
+        .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
         let guest_execution_executed =
             execution.execution_seam.disposition == CpuInstructionDisposition::Executed;
+        // In-VM relay frame counts are reported by the execution seam once live measurement exists.
+        let in_vm_relay_frames = 0u64;
         throughput = guest_throughput_result_with_live_relay(
             throughput,
             guest_execution_executed,
-            relay_frames,
+            in_vm_relay_frames,
             u64::from(GUEST_RELAY_BENCHMARK_FRAMES),
             &benchmark_config,
             skipped_no_hardware,
@@ -1462,6 +1468,14 @@ pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAlloca
             return Err(BootCheckError::new(
                 BootCheckErrorKind::Platform,
                 "guest relay live seam mismatch with execution outcome",
+            ));
+        }
+        if throughput.disposition == GuestThroughputDisposition::Executed
+            && in_vm_relay_frames < u64::from(GUEST_RELAY_BENCHMARK_FRAMES)
+        {
+            return Err(BootCheckError::new(
+                BootCheckErrorKind::Platform,
+                "guest relay live Executed requires in-VM relay measurement stats",
             ));
         }
         relay_frames

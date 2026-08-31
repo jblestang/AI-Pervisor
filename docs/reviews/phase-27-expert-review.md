@@ -17,8 +17,19 @@ Multi-domain review of Gate D sustained guest relay live wiring: freestanding gu
 | Phase 26 item | Phase 27 disposition |
 |---------------|---------------------|
 | Sustained in-guest benchmark loops | **Closed** — `guest-common` runs 64-frame sustained relay per partition |
-| Live in-VM throughput with relay stats | **Closed (host wiring)** — `guest_throughput_result_with_live_relay` upgrades disposition when VMX execution + relay frames complete |
-| `GuestThroughputDisposition::Executed` without live stats | **Closed** — relay-live path applies live relay benchmark stats before disposition mapping |
+| Host sustained relay validation | **Closed** — `validate_sustained_host_relay_benchmark` enforces 200 Mbit/s on host runtime path |
+| Live in-VM throughput with relay stats | **Partial** — disposition wiring exists; `Executed` requires in-VM relay frame counts (fail-closed until execution seam reports them) |
+| `GuestThroughputDisposition::Executed` from host proxy | **Closed (fixed in review)** — host relay frames no longer upgrade disposition; `in_vm_relay_frames` required |
+
+## Issues found and fixed (Phase 27 review)
+
+| Issue | Fix |
+|-------|-----|
+| Host sustained relay frames used as in-VM live measurement proof | Split host validation (`validate_sustained_host_relay_benchmark`) from in-VM disposition (`in_vm_relay_frames` parameter); Gate D passes 0 until execution seam reports counts |
+| Host sustained relay target not enforced when live_completed false | `validate_sustained_host_relay_benchmark` always checks 200 Mbit/s target on host path |
+| False `Executed` on REAL_HW from VMLAUNCH + host relay | Fail-closed: `Executed` requires `in_vm_relay_frames >= GUEST_RELAY_BENCHMARK_FRAMES` |
+| Weak unit test implied host relay proved Executed | Tests now cover validate-only with execution=true/in_vm=0 and Executed only with in_vm frames |
+| `platform-contract.md` stale | Updated Phases 18–27 status |
 
 ## Feature matrix
 
@@ -45,4 +56,4 @@ Multi-domain review of Gate D sustained guest relay live wiring: freestanding gu
 
 ## Review status
 
-Phase 27 closes the Phase 26 deferrals for sustained guest relay loops and live throughput wiring. Freestanding guest firmware runs 64-frame in→mid→out relays; Gate D validates sustained relay frames on the host runtime path and maps live throughput disposition when VMX guest execution completes with sufficient relay frames. Host/CI tests remain validate-only; REAL_HW ring-0 firmware with live execution may reach `GuestThroughputDisposition::Executed`.
+Phase 27 closes the Phase 26 deferrals for sustained guest relay loops and host sustained relay validation. Freestanding guest firmware runs 64-frame in→mid→out relays; Gate D validates sustained relay frames and throughput target on the host runtime path. `GuestThroughputDisposition::Executed` remains fail-closed until the execution seam reports in-VM relay frame counts; REAL_HW ring-0 firmware may reach `Executed` once that measurement path lands.

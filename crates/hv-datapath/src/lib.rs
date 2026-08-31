@@ -20,7 +20,7 @@ mod topology;
 pub use guest_relay_live::{
     apply_live_guest_throughput_benchmark, guest_throughput_result_with_live_relay,
     live_measurement_completed_for_execution, run_sustained_guest_relay_benchmark,
-    GUEST_RELAY_BENCHMARK_FRAMES,
+    validate_sustained_host_relay_benchmark, GUEST_RELAY_BENCHMARK_FRAMES,
 };
 pub use guest_throughput::{
     apply_guest_throughput_disposition, guest_throughput_disposition_for_seam,
