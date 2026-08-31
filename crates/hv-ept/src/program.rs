@@ -31,6 +31,8 @@ pub struct EptProgrammedMapping {
     pub host_phys: u64,
     /// Mapping size in bytes.
     pub size_bytes: u64,
+    /// Whether the guest may write through this mapping.
+    pub guest_writable: bool,
     /// Encoded 64-bit EPT entry value.
     pub encoded_entry: u64,
 }
@@ -54,6 +56,26 @@ pub fn append_ept_guest_mapping(
     guest_phys: u64,
     host_phys: u64,
     size_bytes: u64,
+) -> Result<(), EptError> {
+    append_ept_guest_mapping_with_permissions(tables, guest_phys, host_phys, size_bytes, true)
+}
+
+/// Appends a guest read-only EPT mapping (hypervisor write via host physical access).
+pub fn append_ept_guest_read_only_mapping(
+    tables: &mut EptProgrammedTables,
+    guest_phys: u64,
+    host_phys: u64,
+    size_bytes: u64,
+) -> Result<(), EptError> {
+    append_ept_guest_mapping_with_permissions(tables, guest_phys, host_phys, size_bytes, false)
+}
+
+fn append_ept_guest_mapping_with_permissions(
+    tables: &mut EptProgrammedTables,
+    guest_phys: u64,
+    host_phys: u64,
+    size_bytes: u64,
+    guest_writable: bool,
 ) -> Result<(), EptError> {
     if size_bytes == 0 || size_bytes % EPT_PAGE_SIZE_BYTES != 0 {
         return Err(EptError::new(
@@ -86,7 +108,8 @@ pub fn append_ept_guest_mapping(
         guest_phys,
         host_phys,
         size_bytes,
-        encoded_entry: encode_identity_ept_entry(host_phys),
+        guest_writable,
+        encoded_entry: encode_ept_leaf_entry(host_phys, guest_writable),
     });
     materialize_ept_paging(tables)?;
     Ok(())
@@ -94,9 +117,22 @@ pub fn append_ept_guest_mapping(
 
 /// Encodes a leaf EPT entry for an identity mapping.
 pub fn encode_identity_ept_entry(host_phys: u64) -> u64 {
+    encode_ept_leaf_entry(host_phys, true)
+}
+
+/// Encodes a leaf EPT entry with optional guest write permission.
+pub fn encode_ept_leaf_entry(host_phys: u64, guest_writable: bool) -> u64 {
     let page_frame = host_phys >> 12;
-    EPT_ENTRY_READ | EPT_ENTRY_WRITE | EPT_ENTRY_EXECUTE | EPT_ENTRY_MEMORY_TYPE_WB
-        | (page_frame << 12)
+    let mut entry = EPT_ENTRY_READ | EPT_ENTRY_EXECUTE | EPT_ENTRY_MEMORY_TYPE_WB | (page_frame << 12);
+    if guest_writable {
+        entry |= EPT_ENTRY_WRITE;
+    }
+    entry
+}
+
+/// Returns whether an encoded leaf entry grants guest write permission.
+pub fn ept_leaf_entry_guest_writable(entry: u64) -> bool {
+    entry & EPT_ENTRY_WRITE != 0
 }
 
 /// Programs EPT root table bytes and mapping records from an init plan.
@@ -139,6 +175,7 @@ fn program_identity_mapping(mapping: &EptIdentityMapping) -> Result<EptProgramme
         guest_phys: mapping.guest_phys.raw(),
         host_phys: mapping.host_phys.raw(),
         size_bytes: mapping.size_bytes.bytes(),
+        guest_writable: true,
         encoded_entry: encode_identity_ept_entry(mapping.host_phys.raw()),
     })
 }
