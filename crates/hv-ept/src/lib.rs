@@ -25,4 +25,4 @@ pub use program::{
     ProgrammingEptBackend, EPT_ENTRY_EXECUTE, EPT_ENTRY_MEMORY_TYPE_WB, EPT_ENTRY_READ,
     EPT_ENTRY_WRITE,
 };
-pub use resolve::resolve_guest_phys_to_host;
+pub use resolve::{resolve_guest_phys_range_to_host, resolve_guest_phys_to_host};

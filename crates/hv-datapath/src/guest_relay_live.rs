@@ -96,20 +96,12 @@ pub fn apply_live_guest_throughput_benchmark(
             "live guest throughput requires in-VM relay frames",
         ));
     }
-    let elapsed_nanos = elapsed_nanos_from_tsc(in_vm_elapsed_tsc, config.tsc_hz)
-        .or_else(|| {
-            if config.mock_nanos_per_frame == 0 {
-                None
-            } else {
-                Some(in_vm_relay_frames.saturating_mul(config.mock_nanos_per_frame))
-            }
-        })
-        .ok_or_else(|| {
-            DatapathError::new(
-                DatapathErrorKind::InvalidInput,
-                "live guest throughput requires TSC or mock timing budget",
-            )
-        })?;
+    let elapsed_nanos = elapsed_nanos_from_tsc(in_vm_elapsed_tsc, config.tsc_hz).ok_or_else(|| {
+        DatapathError::new(
+            DatapathErrorKind::InvalidInput,
+            "live guest throughput requires in-VM TSC elapsed time",
+        )
+    })?;
     let payload_bytes = SYNTHETIC_FRAME_PAYLOAD.len() as u32;
     let mbit = throughput_mbit_from_frames(payload_bytes, in_vm_relay_frames, elapsed_nanos)?;
     let stats = compute_benchmark_run_stats(&[mbit]);

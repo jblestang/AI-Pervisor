@@ -1497,6 +1497,16 @@ pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAlloca
             expected_relay_frames,
         )
         .map_err(map_cpu_seam_error)?;
+        #[cfg(feature = "datapath-guest-relay-measurement")]
+        if execution.execution_seam.disposition == CpuInstructionDisposition::Executed
+            && measurement.frames >= expected_relay_frames
+            && measurement.elapsed_tsc == 0
+        {
+            return Err(BootCheckError::new(
+                BootCheckErrorKind::Platform,
+                "relay measurement requires non-zero in-VM TSC elapsed time",
+            ));
+        }
         (measurement.frames, measurement.elapsed_tsc)
     };
     #[cfg(all(feature = "datapath-guest-relay-live", not(feature = "datapath-guest-relay-measurement")))]

@@ -65,8 +65,9 @@ fn run_mid_sustained(boot_info: *const u8, layout: &layout::ResolvedLayout, fram
 fn run_out_sustained(boot_info: *const u8, layout: &layout::ResolvedLayout, frames: u32) {
     relay::set_relay_measurement_tsc_start(boot_info);
     for _ in 0..frames {
-        run_out(layout);
-        relay::record_relay_frame_completed(boot_info);
+        if run_out(layout) {
+            relay::record_relay_frame_completed(boot_info);
+        }
     }
     relay::set_relay_measurement_tsc_end(boot_info);
 }
@@ -91,7 +92,7 @@ fn run_mid(layout: &layout::ResolvedLayout) {
     }
 }
 
-fn run_out(layout: &layout::ResolvedLayout) {
+fn run_out(layout: &layout::ResolvedLayout) -> bool {
     if let Some(queue) = layout.ipc_consumer {
         let mut buffer = [0u8; layout::REFERENCE_SLOT_SIZE as usize];
         if let Some(len) = ipc::dequeue(queue, &mut buffer) {
@@ -103,10 +104,12 @@ fn run_out(layout: &layout::ResolvedLayout) {
                     if let Some(mmio) = layout.e1000_mmio {
                         e1000::rx_advance(mmio);
                     }
+                    return true;
                 }
             }
         }
     }
+    false
 }
 
 fn halt() -> ! {
