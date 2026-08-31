@@ -10,11 +10,17 @@ mod e1000;
 mod error;
 mod forward;
 mod guest_runtime;
+mod guest_throughput;
 mod ipc;
 mod plan;
 mod runtime;
 mod topology;
 
+pub use guest_throughput::{
+    apply_guest_throughput_disposition, guest_throughput_disposition_for_seam,
+    run_mock_guest_throughput_benchmark, GuestThroughputBenchmarkResult,
+    GuestThroughputDisposition,
+};
 pub use guest_runtime::{
     apply_runtime_disposition, runtime_disposition_for_guest_execution_seam,
     run_guest_datapath_runtime, DatapathRuntimeDisposition, DatapathRuntimeOutcome,

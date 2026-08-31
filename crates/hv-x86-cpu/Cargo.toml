@@ -20,6 +20,7 @@ datapath-guests = ["vmx-launch", "dep:hv-guest-boot"]
 datapath-runtime = ["datapath-guests", "datapath-live"]
 datapath-guest-live = ["datapath-guests"]
 datapath-guest-execution = ["datapath-guest-live", "datapath-live", "execute-instructions"]
+datapath-guest-throughput = ["datapath-guest-execution", "execute-instructions"]
 
 [dependencies]
 hv-ept = { path = "../hv-ept" }

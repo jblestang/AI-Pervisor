@@ -34,7 +34,7 @@ pub fn enqueue(mapping: IpcQueueMapping, payload: &[u8]) {
         return;
     };
     let next = header.head.saturating_add(1);
-    if next > header.queue_slots {
+    if header.head.wrapping_sub(header.tail) >= header.queue_slots {
         return;
     }
     let slot_index = header.head % header.queue_slots;

@@ -312,6 +312,61 @@ fn execute_datapath_guest_vmlaunch_fields_if_enabled(
     Ok((CpuInstructionDisposition::SeamValidated, 0))
 }
 
+/// Outcome of a Gate D datapath guest throughput CPU seam batch.
+#[cfg(feature = "datapath-guest-throughput")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DatapathGuestThroughputCpuSeamOutcome {
+    /// How the seam batch completed.
+    pub disposition: CpuInstructionDisposition,
+    /// Whether VM-exit stub addresses were validated for all partitions.
+    pub vmexit_stub_validated: bool,
+    /// Number of partition launch contexts validated.
+    pub partitions_validated: u32,
+    /// Number of completed measurement runs validated.
+    pub measurement_runs_validated: u32,
+}
+
+/// Validates (and optionally executes) live in-VM guest throughput measurement.
+#[cfg(feature = "datapath-guest-throughput")]
+pub fn run_datapath_guest_throughput_cpu_seam(
+    execution_seam: &DatapathGuestExecutionCpuSeamOutcome,
+    measurement_runs: u32,
+) -> Result<DatapathGuestThroughputCpuSeamOutcome, CpuSeamError> {
+    if execution_seam.partitions_validated == 0 {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "datapath guest throughput seam requires guest execution context",
+        ));
+    }
+    if measurement_runs == 0 {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "datapath guest throughput seam requires at least one measurement run",
+        ));
+    }
+    if !execution_seam.vmexit_stub_validated {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "datapath guest throughput seam requires validated VM-exit stubs",
+        ));
+    }
+    let disposition = if !cpuid_vmx_available()
+        || !cpuid_ept_available()
+        || execution_seam.disposition == CpuInstructionDisposition::SkippedNoHardware
+    {
+        CpuInstructionDisposition::SkippedNoHardware
+    } else {
+        // Live in-VM relay measurement is deferred; validate measurement plan only.
+        CpuInstructionDisposition::SeamValidated
+    };
+    Ok(DatapathGuestThroughputCpuSeamOutcome {
+        disposition,
+        vmexit_stub_validated: execution_seam.vmexit_stub_validated,
+        partitions_validated: execution_seam.partitions_validated,
+        measurement_runs_validated: measurement_runs,
+    })
+}
+
 /// Validates (and optionally executes) a Gate D datapath live seam.
 #[cfg(feature = "datapath-live")]
 pub fn run_datapath_live_cpu_seam(
@@ -770,6 +825,47 @@ mod tests {
         let outcome = run_datapath_guest_execution_cpu_seam(&launches).expect("guest execution");
         test_force_live_environment_ready(false);
         assert_eq!(outcome.partitions_validated, 1);
+        assert_ne!(outcome.disposition, CpuInstructionDisposition::Executed);
+    }
+
+    #[cfg(feature = "datapath-guest-throughput")]
+    #[test]
+    fn run_datapath_guest_throughput_cpu_seam_rejects_missing_execution_context() {
+        let execution = DatapathGuestExecutionCpuSeamOutcome {
+            disposition: CpuInstructionDisposition::SeamValidated,
+            vmexit_stub_validated: true,
+            partitions_validated: 0,
+            vmlaunch_attempts: 0,
+        };
+        assert!(run_datapath_guest_throughput_cpu_seam(&execution, 1).is_err());
+    }
+
+    #[cfg(feature = "datapath-guest-throughput")]
+    #[test]
+    fn run_datapath_guest_throughput_cpu_seam_rejects_zero_measurement_runs() {
+        let execution = DatapathGuestExecutionCpuSeamOutcome {
+            disposition: CpuInstructionDisposition::SeamValidated,
+            vmexit_stub_validated: true,
+            partitions_validated: 1,
+            vmlaunch_attempts: 0,
+        };
+        assert!(run_datapath_guest_throughput_cpu_seam(&execution, 0).is_err());
+    }
+
+    #[cfg(feature = "datapath-guest-throughput")]
+    #[test]
+    fn run_datapath_guest_throughput_cpu_seam_validates_measurement_plan() {
+        let execution = DatapathGuestExecutionCpuSeamOutcome {
+            disposition: CpuInstructionDisposition::SeamValidated,
+            vmexit_stub_validated: true,
+            partitions_validated: 3,
+            vmlaunch_attempts: 0,
+        };
+        let outcome =
+            run_datapath_guest_throughput_cpu_seam(&execution, 5).expect("guest throughput");
+        assert_eq!(outcome.partitions_validated, 3);
+        assert_eq!(outcome.measurement_runs_validated, 5);
+        assert!(outcome.vmexit_stub_validated);
         assert_ne!(outcome.disposition, CpuInstructionDisposition::Executed);
     }
 }

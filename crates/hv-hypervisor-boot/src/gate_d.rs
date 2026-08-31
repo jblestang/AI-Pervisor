@@ -281,12 +281,15 @@ pub(crate) fn init_gate_d_datapath_live_from_validated<A: PageAllocator>(
     })
 }
 
-#[cfg(any(feature = "datapath-live", feature = "datapath-guests", feature = "datapath-runtime", feature = "datapath-guest-execution"))]
+#[cfg(any(feature = "datapath-live", feature = "datapath-guests", feature = "datapath-runtime", feature = "datapath-guest-execution", feature = "datapath-guest-throughput"))]
 fn map_cpu_seam_error(err: hv_x86_cpu::CpuSeamError) -> BootCheckError {
     BootCheckError::new(BootCheckErrorKind::Platform, err.message)
 }
 
-#[cfg(all(feature = "datapath-guest-live", feature = "datapath-guest-execution"))]
+#[cfg(all(
+    feature = "datapath-guest-live",
+    any(feature = "datapath-guest-execution", feature = "datapath-guest-throughput")
+))]
 fn build_guest_live_vmcs_fields(
     launch_plan: &hv_vmx::VmxLaunchPlan,
     guest_entry_phys: u64,
@@ -1314,5 +1317,142 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
     Ok(GateDDatapathGuestExecutionResult {
         live,
         execution_seam,
+    })
+}
+
+/// Result of Gate D datapath guest throughput init with in-VM benchmark measurement.
+#[cfg(feature = "datapath-guest-throughput")]
+pub struct GateDDatapathGuestThroughputResult {
+    /// Datapath guest execution output including live VMX scaffolding.
+    pub execution: GateDDatapathGuestExecutionResult,
+    /// In-VM guest throughput benchmark outcome.
+    pub throughput: hv_datapath::GuestThroughputBenchmarkResult,
+    /// Live guest throughput CPU seam outcome.
+    pub throughput_seam: hv_x86_cpu::DatapathGuestThroughputCpuSeamOutcome,
+}
+
+/// Runs transfer boot checks and Gate D guest throughput init using embedded snapshots.
+#[cfg(feature = "datapath-guest-throughput")]
+pub fn boot_from_transfer_and_init_gate_d_datapath_guest_throughput_from_snapshots<A: PageAllocator>(
+    transfer: &[u8],
+    requirements: &RequirementsSnapshot,
+    layout: &LayoutSnapshot,
+    allocator: &mut A,
+) -> Result<GateDDatapathGuestThroughputResult, BootCheckError> {
+    let platform_requirements = platform_requirements_from_snapshot(requirements)?;
+    let static_layout = static_platform_ir_from_layout_snapshot(layout, requirements)?;
+    let (validated, warnings) =
+        boot_from_transfer(transfer, &requirements.config_digest, &platform_requirements)?;
+    init_gate_d_datapath_guest_throughput_from_validated(
+        &platform_requirements,
+        &static_layout,
+        &validated,
+        warnings,
+        allocator,
+    )
+}
+
+/// Runs transfer boot checks and Gate D guest throughput init.
+#[cfg(feature = "datapath-guest-throughput")]
+pub fn boot_from_transfer_and_init_gate_d_datapath_guest_throughput<A: PageAllocator>(
+    transfer: &[u8],
+    snapshot: &RequirementsSnapshot,
+    layout: &StaticPlatformIR,
+    allocator: &mut A,
+) -> Result<GateDDatapathGuestThroughputResult, BootCheckError> {
+    let requirements = platform_requirements_from_snapshot(snapshot)?;
+    let (validated, warnings) =
+        boot_from_transfer(transfer, &snapshot.config_digest, &requirements)?;
+    init_gate_d_datapath_guest_throughput_from_validated(
+        &requirements,
+        layout,
+        &validated,
+        warnings,
+        allocator,
+    )
+}
+
+#[cfg(feature = "datapath-guest-throughput")]
+pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAllocator>(
+    requirements: &PlatformRequirements,
+    layout: &StaticPlatformIR,
+    validated: &ValidatedPlatform,
+    warnings: alloc::vec::Vec<PlatformWarning>,
+    allocator: &mut A,
+) -> Result<GateDDatapathGuestThroughputResult, BootCheckError> {
+    use hv_datapath::{
+        apply_guest_throughput_disposition, guest_throughput_disposition_for_seam,
+        run_mock_guest_throughput_benchmark, DatapathBenchmarkConfig, GuestThroughputDisposition,
+    };
+    use hv_x86_cpu::{run_datapath_guest_throughput_cpu_seam, CpuInstructionDisposition};
+
+    let execution = init_gate_d_datapath_guest_execution_from_validated(
+        requirements,
+        layout,
+        validated,
+        warnings,
+        allocator,
+    )?;
+
+    let benchmark_config = DatapathBenchmarkConfig::default();
+    let mut throughput =
+        run_mock_guest_throughput_benchmark(layout, &benchmark_config).map_err(|err| {
+            BootCheckError::new(BootCheckErrorKind::Platform, err.message)
+        })?;
+    if !throughput.benchmark.target_met {
+        return Err(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "guest throughput benchmark target not met",
+        ));
+    }
+
+    let throughput_seam = run_datapath_guest_throughput_cpu_seam(
+        &execution.execution_seam,
+        throughput.benchmark.runs_completed,
+    )
+    .map_err(map_cpu_seam_error)?;
+
+    if throughput_seam.partitions_validated != execution.execution_seam.partitions_validated {
+        return Err(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "guest throughput partition count mismatch with execution seam",
+        ));
+    }
+    if !throughput_seam.vmexit_stub_validated {
+        return Err(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "guest throughput requires validated VM-exit stubs",
+        ));
+    }
+    if throughput_seam.measurement_runs_validated != throughput.benchmark.runs_completed {
+        return Err(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "guest throughput measurement run count mismatch",
+        ));
+    }
+
+    let skipped_no_hardware =
+        throughput_seam.disposition == CpuInstructionDisposition::SkippedNoHardware;
+    let live_measurement_completed = false;
+    let throughput_disposition =
+        guest_throughput_disposition_for_seam(live_measurement_completed, skipped_no_hardware);
+    throughput = apply_guest_throughput_disposition(throughput, throughput_disposition);
+    if throughput.disposition == GuestThroughputDisposition::Executed {
+        return Err(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "guest throughput Executed requires live in-VM measurement stats",
+        ));
+    }
+    if (throughput.disposition == GuestThroughputDisposition::Unavailable) != skipped_no_hardware {
+        return Err(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "guest throughput disposition mismatch",
+        ));
+    }
+
+    Ok(GateDDatapathGuestThroughputResult {
+        execution,
+        throughput,
+        throughput_seam,
     })
 }

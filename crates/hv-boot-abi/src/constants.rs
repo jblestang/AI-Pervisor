@@ -80,3 +80,12 @@ pub const GATE_D_GUEST_BOOT_INFO_INSTALLED_MARKER: &str =
 /// Gate D live VMX guest code execution attempted for all source-tree partitions.
 pub const GATE_D_GUEST_EXECUTION_MARKER: &str =
     "Gate D: guest source-tree code executed under VMX for all partitions";
+/// Gate D in-VM guest throughput benchmark orchestration succeeded.
+pub const GATE_D_GUEST_THROUGHPUT_MARKER: &str =
+    "hypervisor Gate D datapath guest throughput succeeded";
+/// Gate D in-VM guest throughput met the 200 Mbit/s target.
+pub const GATE_D_GUEST_THROUGHPUT_TARGET_MET_MARKER: &str =
+    "Gate D: guest throughput target 200 Mbit/s met";
+/// Gate D in-VM guest throughput measured under live VMX.
+pub const GATE_D_GUEST_THROUGHPUT_EXECUTED_MARKER: &str =
+    "Gate D: guest throughput measured under live VMX";
