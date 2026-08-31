@@ -16,8 +16,8 @@ mod runtime;
 mod topology;
 
 pub use guest_runtime::{
-    run_guest_datapath_runtime, DatapathRuntimeDisposition, DatapathRuntimeOutcome,
-    GuestDatapathRuntime, GUEST_DATAPATH_IPC_HOPS,
+    apply_runtime_disposition, run_guest_datapath_runtime, DatapathRuntimeDisposition,
+    DatapathRuntimeOutcome, GuestDatapathRuntime, GUEST_DATAPATH_IPC_HOPS,
 };
 pub use benchmark::{
     compute_benchmark_run_stats, mock_throughput_mbit, run_mock_datapath_benchmark,

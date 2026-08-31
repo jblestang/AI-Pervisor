@@ -102,6 +102,15 @@ impl GuestDatapathRuntime {
     }
 }
 
+/// Updates a guest datapath runtime outcome with the live execution disposition.
+pub fn apply_runtime_disposition(
+    mut outcome: DatapathRuntimeOutcome,
+    disposition: DatapathRuntimeDisposition,
+) -> DatapathRuntimeOutcome {
+    outcome.disposition = disposition;
+    outcome
+}
+
 /// Plans a forward path and runs one guest datapath traversal.
 pub fn run_guest_datapath_runtime(
     layout: &StaticPlatformIR,

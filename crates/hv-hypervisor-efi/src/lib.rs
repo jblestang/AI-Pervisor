@@ -42,6 +42,8 @@ use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_runtime_from
 use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_guest_sources_from_snapshots;
 #[cfg(feature = "datapath-guest-live")]
 use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_guest_live_from_snapshots;
+#[cfg(feature = "datapath-guest-execution")]
+use hv_hypervisor_boot::boot_from_transfer_and_init_gate_d_datapath_guest_execution_from_snapshots;
 
 pub use error::{HypervisorEfiError, HypervisorEfiErrorKind};
 pub use hv_hypervisor_boot::{
@@ -50,7 +52,7 @@ pub use hv_hypervisor_boot::{
     GATE_D_BENCHMARK_TARGET_MET_MARKER, GATE_D_DATAPATH_RUNTIME_MARKER, GATE_D_GUEST_DATAPATH_FRAME_MARKER,
     GATE_D_E1000_MMIO_MARKER,
     GATE_D_GUEST_ELF_INSTALLED_MARKER, GATE_D_GUEST_SOURCE_ELF_MARKER,
-    GATE_D_GUEST_BOOT_INFO_INSTALLED_MARKER, GATE_D_IPC_FORWARD_MARKER,
+    GATE_D_GUEST_BOOT_INFO_INSTALLED_MARKER, GATE_D_GUEST_EXECUTION_MARKER, GATE_D_IPC_FORWARD_MARKER,
     GATE_D_IPC_INTEGRITY_MARKER,
     GATE_D_MULTI_VMLAUNCH_MARKER, REAL_HW_BOOT_SUCCESS_MARKER, REAL_HW_EPT_EXECUTED_MARKER,
     REAL_HW_VMLAUNCH_EXECUTED_MARKER, REAL_HW_VMXON_EXECUTED_MARKER,
@@ -170,6 +172,18 @@ pub struct DatapathGuestLiveBootMarkers {
     pub sources: DatapathGuestSourcesBootMarkers,
     /// Number of guest boot-info blobs installed and wired to VMCS RDI.
     pub guest_boot_infos_installed: u32,
+}
+
+/// Gate D datapath guest execution boot outcome markers for serial-log verification.
+#[cfg(feature = "datapath-guest-execution")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DatapathGuestExecutionBootMarkers {
+    /// Datapath guest-live boot markers.
+    pub live: DatapathGuestLiveBootMarkers,
+    /// Whether live VMX guest code execution completed for all partitions.
+    pub guest_code_executed: bool,
+    /// Whether guest datapath runtime disposition reflects live execution.
+    pub runtime_disposition_executed: bool,
 }
 
 /// Runs full Gate B validation and mock-backed Gate C init from a transfer blob.
@@ -606,6 +620,49 @@ pub fn boot_hypervisor_from_transfer_datapath_guest_live<A: PageAllocator>(
         sources: boot_hypervisor_from_transfer_datapath_guest_sources_markers(&result.sources),
         guest_boot_infos_installed: result.boot_infos_installed,
     })
+}
+
+/// Runs Gate B validation and Gate D datapath guest execution init with resident page installation.
+#[cfg(feature = "datapath-guest-execution")]
+pub fn boot_hypervisor_from_transfer_datapath_guest_execution<A: PageAllocator>(
+    transfer: &[u8],
+    expected_config_digest: &[u8; SHA256_DIGEST_BYTES],
+    requirements: &RequirementsSnapshot,
+    layout: &LayoutSnapshot,
+    allocator: &mut A,
+) -> Result<DatapathGuestExecutionBootMarkers, HypervisorEfiError> {
+    if requirements.config_digest != *expected_config_digest {
+        return Err(HypervisorEfiError::new(
+            HypervisorEfiErrorKind::Requirements,
+            "requirements snapshot digest mismatch",
+        ));
+    }
+    let result = boot_from_transfer_and_init_gate_d_datapath_guest_execution_from_snapshots(
+        transfer,
+        requirements,
+        layout,
+        allocator,
+    )
+    .map_err(HypervisorEfiError::from)?;
+    Ok(boot_hypervisor_from_transfer_datapath_guest_execution_markers(&result))
+}
+
+#[cfg(feature = "datapath-guest-execution")]
+fn boot_hypervisor_from_transfer_datapath_guest_execution_markers(
+    result: &hv_hypervisor_boot::GateDDatapathGuestExecutionResult,
+) -> DatapathGuestExecutionBootMarkers {
+    use hv_datapath::DatapathRuntimeDisposition;
+    DatapathGuestExecutionBootMarkers {
+        live: DatapathGuestLiveBootMarkers {
+            sources: boot_hypervisor_from_transfer_datapath_guest_sources_markers(
+                &result.live.sources,
+            ),
+            guest_boot_infos_installed: result.live.boot_infos_installed,
+        },
+        guest_code_executed: result.execution_seam.disposition == CpuInstructionDisposition::Executed,
+        runtime_disposition_executed: result.live.sources.runtime.runtime.disposition
+            == DatapathRuntimeDisposition::Executed,
+    }
 }
 
 #[cfg(feature = "datapath-guest-sources")]

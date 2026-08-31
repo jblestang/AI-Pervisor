@@ -1078,3 +1078,181 @@ pub(crate) fn init_gate_d_datapath_guest_live_from_validated<A: PageAllocator>(
         boot_infos_installed,
     })
 }
+
+/// Result of Gate D datapath guest execution init with live VMX source-tree guest code.
+#[cfg(feature = "datapath-guest-execution")]
+pub struct GateDDatapathGuestExecutionResult {
+    /// Datapath guest-live output including boot-info install and RDI patching.
+    pub live: GateDDatapathGuestLiveResult,
+    /// Live VMX guest execution seam outcome for all source-tree partitions.
+    pub execution_seam: hv_x86_cpu::DatapathGuestExecutionCpuSeamOutcome,
+}
+
+/// Runs transfer boot checks and Gate D guest execution init using embedded snapshots.
+#[cfg(feature = "datapath-guest-execution")]
+pub fn boot_from_transfer_and_init_gate_d_datapath_guest_execution_from_snapshots<A: PageAllocator>(
+    transfer: &[u8],
+    requirements: &RequirementsSnapshot,
+    layout: &LayoutSnapshot,
+    allocator: &mut A,
+) -> Result<GateDDatapathGuestExecutionResult, BootCheckError> {
+    let platform_requirements = platform_requirements_from_snapshot(requirements)?;
+    let static_layout = static_platform_ir_from_layout_snapshot(layout, requirements)?;
+    let (validated, warnings) =
+        boot_from_transfer(transfer, &requirements.config_digest, &platform_requirements)?;
+    init_gate_d_datapath_guest_execution_from_validated(
+        &platform_requirements,
+        &static_layout,
+        &validated,
+        warnings,
+        allocator,
+    )
+}
+
+/// Runs transfer boot checks and Gate D guest execution init.
+#[cfg(feature = "datapath-guest-execution")]
+pub fn boot_from_transfer_and_init_gate_d_datapath_guest_execution<A: PageAllocator>(
+    transfer: &[u8],
+    snapshot: &RequirementsSnapshot,
+    layout: &StaticPlatformIR,
+    allocator: &mut A,
+) -> Result<GateDDatapathGuestExecutionResult, BootCheckError> {
+    let requirements = platform_requirements_from_snapshot(snapshot)?;
+    let (validated, warnings) =
+        boot_from_transfer(transfer, &snapshot.config_digest, &requirements)?;
+    init_gate_d_datapath_guest_execution_from_validated(
+        &requirements,
+        layout,
+        &validated,
+        warnings,
+        allocator,
+    )
+}
+
+#[cfg(feature = "datapath-guest-execution")]
+pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocator>(
+    requirements: &PlatformRequirements,
+    layout: &StaticPlatformIR,
+    validated: &ValidatedPlatform,
+    warnings: alloc::vec::Vec<PlatformWarning>,
+    allocator: &mut A,
+) -> Result<GateDDatapathGuestExecutionResult, BootCheckError> {
+    use hv_datapath::{apply_runtime_disposition, DatapathRuntimeDisposition};
+    use hv_guest_boot::REFERENCE_GUEST_PARTITION_IDS;
+    use hv_vmx::{
+        guest_boot_info_rdi_programmed, patch_guest_boot_info_rdi, patch_guest_entry_in_fields,
+        plan_vmx_launch_all_partitions, program_vmcs_fields,
+    };
+    use hv_x86_cpu::{run_datapath_guest_execution_cpu_seam, CpuInstructionDisposition};
+
+    let mut live = init_gate_d_datapath_guest_live_from_validated(
+        requirements,
+        layout,
+        validated,
+        warnings,
+        allocator,
+    )?;
+
+    let guests = &live.sources.runtime.benchmark.guests;
+    let vmx_plan = &guests
+        .malicious
+        .live
+        .foundation
+        .vmx_launch
+        .real_hw
+        .live
+        .cpu_seam
+        .programming
+        .init
+        .vmx_plan;
+    let launch_plans = plan_vmx_launch_all_partitions(layout, vmx_plan)
+        .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
+
+    let mut vmcs_fields_store = alloc::vec::Vec::with_capacity(guests.partition_launches.len());
+    let mut execution_launches = alloc::vec::Vec::with_capacity(guests.partition_launches.len());
+    for record in &guests.partition_launches {
+        let launch_plan = launch_plans
+            .iter()
+            .find(|plan| plan.vm_id == record.vm_id)
+            .ok_or_else(|| {
+                BootCheckError::new(
+                    BootCheckErrorKind::Platform,
+                    "missing launch plan for guest execution seam",
+                )
+            })?;
+        let boot_info_phys = record.boot_info_guest_phys.ok_or_else(|| {
+            BootCheckError::new(
+                BootCheckErrorKind::Platform,
+                "guest execution requires installed boot info for partition",
+            )
+        })?;
+        let mut vmcs_fields = program_vmcs_fields(launch_plan);
+        patch_guest_entry_in_fields(
+            &mut vmcs_fields,
+            record.guest_entry_phys,
+            launch_plan.guest_stack_phys.raw(),
+        );
+        patch_guest_boot_info_rdi(&mut vmcs_fields, boot_info_phys);
+        if !guest_boot_info_rdi_programmed(&vmcs_fields, boot_info_phys) {
+            return Err(BootCheckError::new(
+                BootCheckErrorKind::Platform,
+                "guest execution VMCS RDI was not programmed",
+            ));
+        }
+        execution_launches.push((
+            record.vmcs_phys,
+            vmcs_fields_store.len(),
+            launch_plan.host_exit_phys.raw(),
+            launch_plan.vm_id,
+        ));
+        vmcs_fields_store.push(vmcs_fields);
+    }
+
+    if execution_launches.len() != REFERENCE_GUEST_PARTITION_IDS.len() {
+        return Err(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "guest execution launch count mismatch with reference partitions",
+        ));
+    }
+
+    let seam_inputs = execution_launches
+        .iter()
+        .map(|(vmcs_phys, field_index, host_exit_phys, vm_id)| {
+            let fields = vmcs_fields_store.get(*field_index).ok_or_else(|| {
+                BootCheckError::new(
+                    BootCheckErrorKind::Platform,
+                    "guest execution VMCS field index out of range",
+                )
+            })?;
+            Ok((
+                *vmcs_phys,
+                fields,
+                *host_exit_phys,
+                *vm_id,
+            ))
+        })
+        .collect::<Result<alloc::vec::Vec<_>, BootCheckError>>()?;
+    let execution_seam =
+        run_datapath_guest_execution_cpu_seam(&seam_inputs).map_err(map_cpu_seam_error)?;
+
+    let runtime_disposition = match execution_seam.disposition {
+        CpuInstructionDisposition::Executed => DatapathRuntimeDisposition::Executed,
+        CpuInstructionDisposition::SkippedNoHardware => DatapathRuntimeDisposition::Unavailable,
+        CpuInstructionDisposition::SeamValidated => DatapathRuntimeDisposition::ValidatedOnly,
+    };
+    if !live.sources.runtime.runtime.guest_frame_forwarded {
+        return Err(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "guest execution requires a forwarded datapath frame",
+        ));
+    }
+    live.sources.runtime.runtime = apply_runtime_disposition(
+        live.sources.runtime.runtime.clone(),
+        runtime_disposition,
+    );
+
+    Ok(GateDDatapathGuestExecutionResult {
+        live,
+        execution_seam,
+    })
+}
