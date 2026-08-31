@@ -10,6 +10,7 @@ publish = false
 
 [dependencies]
 hv-boot-abi = { path = "../hv-boot-abi" }
+hv-guest-boot = { path = "../hv-guest-boot", optional = true }
 hv-hypervisor-efi = { path = "../hv-hypervisor-efi", default-features = false }
 hv-types = { path = "../hv-types" }
 log = { version = "0.4", default-features = false }
@@ -24,12 +25,12 @@ datapath-live = ["hv-hypervisor-efi/datapath-live"]
 datapath-malicious = ["hv-hypervisor-efi/datapath-malicious"]
 datapath-guests = ["hv-hypervisor-efi/datapath-guests"]
 datapath-benchmark = ["hv-hypervisor-efi/datapath-benchmark"]
-datapath-runtime = ["hv-hypervisor-efi/datapath-runtime"]
-datapath-guest-sources = ["hv-hypervisor-efi/datapath-guest-sources"]
-datapath-guest-live = ["hv-hypervisor-efi/datapath-guest-live"]
-datapath-guest-execution = ["hv-hypervisor-efi/datapath-guest-execution"]
-datapath-guest-throughput = ["hv-hypervisor-efi/datapath-guest-throughput"]
-datapath-guest-relay-live = ["hv-hypervisor-efi/datapath-guest-relay-live"]
+datapath-runtime = ["dep:hv-guest-boot", "hv-hypervisor-efi/datapath-runtime"]
+datapath-guest-sources = ["dep:hv-guest-boot", "hv-hypervisor-efi/datapath-guest-sources"]
+datapath-guest-live = ["dep:hv-guest-boot", "hv-hypervisor-efi/datapath-guest-live"]
+datapath-guest-execution = ["dep:hv-guest-boot", "hv-hypervisor-efi/datapath-guest-execution"]
+datapath-guest-throughput = ["dep:hv-guest-boot", "hv-hypervisor-efi/datapath-guest-throughput"]
+datapath-guest-relay-live = ["dep:hv-guest-boot", "hv-hypervisor-efi/datapath-guest-relay-live"]
 
 [profile.dev]
 panic = "abort"
