@@ -614,6 +614,14 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
         }
         *ept_tables = hv_x86_cpu::install_ept_tables(allocator, ept_tables)
             .map_err(map_cpu_seam_error)?;
+        let installed_host = hv_ept::resolve_guest_phys_to_host(ept_tables, measurement_page_gpa)
+            .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
+        if installed_host != page.host_phys {
+            return Err(BootCheckError::new(
+                BootCheckErrorKind::Platform,
+                "relay measurement page host physical mismatch after EPT install",
+            ));
+        }
         Some((page.host_phys, measurement_page_gpa))
     };
     #[cfg(not(feature = "datapath-guest-relay-measurement"))]
@@ -774,7 +782,7 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
     }
 
     #[cfg(feature = "datapath-guest-relay-measurement")]
-    if relay_measurement_install.is_some() {
+    if relay_measurement_install.is_some() && !seam_inputs.is_empty() {
         use hv_x86_cpu::run_ept_pointer_cpu_seam;
         let ept_tables = malicious
             .live

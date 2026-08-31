@@ -1,7 +1,6 @@
 //! Four-level EPT paging materialization for programmed guest mappings.
 
 use alloc::vec;
-use alloc::vec::Vec;
 
 use crate::constants::EPT_PAGE_SIZE_BYTES;
 use crate::error::{EptError, EptErrorKind};
@@ -70,11 +69,30 @@ pub fn ept_resolve_guest_page(tables: &EptProgrammedTables, guest_phys: u64) -> 
 }
 
 /// Patches synthetic child-table pointers with installed host physical addresses.
-pub fn patch_ept_table_host_phys(tables: &mut EptProgrammedTables, nested_phys: &[u64]) {
-    patch_table_entries(&mut tables.root_table, nested_phys);
+pub fn patch_ept_table_host_phys(
+    tables: &mut EptProgrammedTables,
+    nested_phys: &[u64],
+) -> Result<(), EptError> {
+    patch_table_entries(&mut tables.root_table, nested_phys)?;
     for table in &mut tables.paging_tables {
-        patch_table_entries(table, nested_phys);
+        patch_table_entries(table, nested_phys)?;
     }
+    if count_synthetic_entries(tables) != 0 {
+        return Err(EptError::new(
+            EptErrorKind::Planning,
+            "EPT paging tables still contain synthetic child pointers after install patch",
+        ));
+    }
+    Ok(())
+}
+
+/// Returns the number of synthetic child-table pointers remaining in the hierarchy.
+pub fn count_synthetic_entries(tables: &EptProgrammedTables) -> usize {
+    let mut count = count_table_synthetic_entries(&tables.root_table);
+    for table in &tables.paging_tables {
+        count += count_table_synthetic_entries(table);
+    }
+    count
 }
 
 fn map_guest_page(
@@ -95,8 +113,19 @@ fn map_guest_page(
     let pt = child_table_index(tables, TableRef::Nested(pd), indices.pd).ok_or_else(|| {
         EptError::new(EptErrorKind::Planning, "EPT PT child table unavailable")
     })?;
+    if let Some(existing_host) = ept_resolve_guest_page(tables, guest_phys) {
+        if existing_host != host_phys {
+            return Err(EptError::new(
+                EptErrorKind::Planning,
+                "conflicting EPT guest physical mapping",
+            ));
+        }
+        return Ok(());
+    }
     write_entry(
-        table_bytes_mut(tables, TableRef::Nested(pt)),
+        table_bytes_mut(tables, TableRef::Nested(pt)).ok_or_else(|| {
+            EptError::new(EptErrorKind::Planning, "EPT PT table bytes unavailable")
+        })?,
         indices.pt,
         encode_identity_ept_entry(host_phys),
     );
@@ -131,7 +160,9 @@ fn ensure_child_table(
     }
     let child = alloc_child_table(tables);
     write_entry(
-        table_bytes_mut(tables, parent),
+        table_bytes_mut(tables, parent).ok_or_else(|| {
+            EptError::new(EptErrorKind::Planning, "EPT parent table bytes unavailable")
+        })?,
         index,
         encode_synthetic_table_pointer(child),
     );
@@ -155,14 +186,13 @@ fn table_bytes<'a>(tables: &'a EptProgrammedTables, table_ref: TableRef) -> &'a 
     }
 }
 
-fn table_bytes_mut<'a>(tables: &'a mut EptProgrammedTables, table_ref: TableRef) -> &'a mut [u8] {
+fn table_bytes_mut<'a>(tables: &'a mut EptProgrammedTables, table_ref: TableRef) -> Option<&'a mut [u8]> {
     match table_ref {
-        TableRef::Root => tables.root_table.as_mut_slice(),
+        TableRef::Root => Some(tables.root_table.as_mut_slice()),
         TableRef::Nested(index) => tables
             .paging_tables
             .get_mut(index)
-            .map(|table| table.as_mut_slice())
-            .unwrap_or(&mut []),
+            .map(|table| table.as_mut_slice()),
     }
 }
 
@@ -201,20 +231,30 @@ fn encode_table_pointer(host_phys: u64) -> u64 {
         | (host_phys & 0x000F_FFFF_FFFF_F000)
 }
 
-fn patch_table_entries(table: &mut [u8], nested_phys: &[u64]) {
+fn patch_table_entries(table: &mut [u8], nested_phys: &[u64]) -> Result<(), EptError> {
     for slot in 0..EPT_ENTRIES_PER_TABLE {
         let entry = read_entry(table, slot);
         if entry & EPT_SYNTHETIC_TABLE_FLAG == 0 {
             continue;
         }
-        let Some(index) = synthetic_table_index(entry) else {
-            continue;
-        };
-        let Some(host_phys) = nested_phys.get(index).copied() else {
-            continue;
-        };
+        let index = synthetic_table_index(entry).ok_or_else(|| {
+            EptError::new(EptErrorKind::Planning, "EPT synthetic child pointer invalid")
+        })?;
+        let host_phys = nested_phys.get(index).copied().ok_or_else(|| {
+            EptError::new(
+                EptErrorKind::Planning,
+                "EPT nested table install missing host physical address",
+            )
+        })?;
         write_entry(table, slot, encode_table_pointer(host_phys));
     }
+    Ok(())
+}
+
+fn count_table_synthetic_entries(table: &[u8]) -> usize {
+    (0..EPT_ENTRIES_PER_TABLE)
+        .filter(|slot| read_entry(table, *slot) & EPT_SYNTHETIC_TABLE_FLAG != 0)
+        .count()
 }
 
 fn read_entry(table: &[u8], index: usize) -> u64 {
@@ -300,10 +340,31 @@ mod tests {
         let nested_phys: Vec<u64> = (0..nested_count)
             .map(|index| 0x10_0000 + index as u64 * 4096)
             .collect();
-        patch_ept_table_host_phys(&mut tables, &nested_phys);
+        patch_ept_table_host_phys(&mut tables, &nested_phys).expect("patch");
+        assert_eq!(count_synthetic_entries(&tables), 0);
         assert!(tables.root_table.iter().any(|&byte| byte != 0));
         assert!(tables.root_table.chunks(8).any(|chunk| {
             u64::from_le_bytes(chunk.try_into().expect("entry")) & EPT_SYNTHETIC_TABLE_FLAG == 0
         }));
+    }
+
+    #[test]
+    fn patch_ept_table_host_phys_rejects_short_nested_phys_list() {
+        let mut tables = empty_tables();
+        append_ept_guest_mapping(
+            &mut tables,
+            RELAY_MEASUREMENT_PAGE_GUEST_PHYS,
+            0x6000,
+            EPT_PAGE_SIZE_BYTES,
+        )
+        .expect("append");
+        assert!(patch_ept_table_host_phys(&mut tables, &[]).is_err());
+    }
+
+    #[test]
+    fn append_ept_guest_mapping_rejects_overlapping_guest_ranges() {
+        let mut tables = empty_tables();
+        append_ept_guest_mapping(&mut tables, 0x1000, 0x2000, EPT_PAGE_SIZE_BYTES).expect("first");
+        assert!(append_ept_guest_mapping(&mut tables, 0x1000, 0x3000, EPT_PAGE_SIZE_BYTES).is_err());
     }
 }

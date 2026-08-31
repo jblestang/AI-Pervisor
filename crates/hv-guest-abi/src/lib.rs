@@ -339,9 +339,9 @@ mod tests {
         header[0..4].copy_from_slice(&GUEST_RELAY_MEASUREMENT_MAGIC.to_le_bytes());
         header[4..8].copy_from_slice(&2u32.to_le_bytes());
         header[8..16].copy_from_slice(&8u64.to_le_bytes());
-        header[32..40].copy_from_slice(&0xFEB2_0000u64.to_le_bytes());
+        header[32..40].copy_from_slice(&0xFEB4_0000u64.to_le_bytes());
         let extension = parse_relay_measurement_page_header(&header).expect("parse");
-        assert_eq!(extension.measurement_page_gpa, 0xFEB2_0000);
+        assert_eq!(extension.measurement_page_gpa, 0xFEB4_0000);
         assert_eq!(extension.frames_completed, 8);
 
         header[32..40].copy_from_slice(&0u64.to_le_bytes());

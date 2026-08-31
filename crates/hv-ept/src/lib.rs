@@ -12,7 +12,10 @@ mod plan;
 mod program;
 mod resolve;
 
-pub use paging::{ept_maps_guest_page, ept_resolve_guest_page, materialize_ept_paging, patch_ept_table_host_phys};
+pub use paging::{
+    count_synthetic_entries, ept_maps_guest_page, ept_resolve_guest_page, materialize_ept_paging,
+    patch_ept_table_host_phys,
+};
 
 pub use backend::{FailingEptBackend, MockEptBackend, EptBackend};
 pub use constants::{
