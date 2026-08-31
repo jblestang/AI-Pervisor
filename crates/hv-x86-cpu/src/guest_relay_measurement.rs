@@ -1,6 +1,6 @@
 //! In-VM guest relay frame measurement via boot-info extension and EPT reads (Phase 29–31).
 
-use hv_ept::{resolve_guest_phys_to_host, EptProgrammedTables};
+use hv_ept::{resolve_guest_phys_range_to_host, EptProgrammedTables};
 use hv_guest_abi::{
     guest_relay_measurement_elapsed_tsc, parse_guest_boot_info_relay_measurement,
     GuestBootInfoRelayMeasurement, GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES,
@@ -139,7 +139,13 @@ pub fn measure_in_vm_relay_from_context(
     let extension = read_relay_measurement_extension_from_guest(context)?;
     let extension_frames = extension.frames_completed;
     let elapsed_tsc = guest_relay_measurement_elapsed_tsc(&extension);
-    let ipc_delivered_frames = read_ipc_delivered_frames_from_guest(context).unwrap_or(0);
+    let ipc_delivered_frames = read_ipc_delivered_frames_from_guest(context)?;
+    if ipc_delivered_frames == 0 {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "relay measurement requires non-zero IPC delivered frame count",
+        ));
+    }
     let frames = end_to_end_relay_frames(extension_frames, ipc_delivered_frames, expected_frames);
     Ok(InVmRelayMeasurement {
         frames,
@@ -191,11 +197,9 @@ fn end_to_end_relay_frames(
     ipc_delivered_frames: u64,
     expected_frames: u64,
 ) -> u64 {
-    let mut frames = extension_frames;
-    if ipc_delivered_frames > 0 {
-        frames = frames.min(ipc_delivered_frames);
-    }
-    frames.min(expected_frames)
+    extension_frames
+        .min(ipc_delivered_frames)
+        .min(expected_frames)
 }
 
 fn read_guest_bytes_via_ept(
@@ -203,7 +207,7 @@ fn read_guest_bytes_via_ept(
     guest_phys: u64,
     len: usize,
 ) -> Result<alloc::vec::Vec<u8>, CpuSeamError> {
-    let host_phys = resolve_guest_phys_to_host(tables, guest_phys).map_err(map_ept_error)?;
+    let host_phys = resolve_guest_phys_range_to_host(tables, guest_phys, len).map_err(map_ept_error)?;
     let mut bytes = alloc::vec![0u8; len];
     // SAFETY: resolved host physical range is readable under Gate D EPT mappings.
     unsafe {
@@ -283,7 +287,7 @@ mod tests {
     #[test]
     fn end_to_end_relay_frames_uses_ipc_cross_check() {
         assert_eq!(end_to_end_relay_frames(64, 40, 64), 40);
-        assert_eq!(end_to_end_relay_frames(32, 0, 64), 32);
+        assert_eq!(end_to_end_relay_frames(32, 48, 64), 32);
     }
 
     #[test]

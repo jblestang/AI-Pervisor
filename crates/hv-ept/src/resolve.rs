@@ -8,12 +8,30 @@ pub fn resolve_guest_phys_to_host(
     tables: &EptProgrammedTables,
     guest_phys: u64,
 ) -> Result<u64, EptError> {
+    resolve_guest_phys_range_to_host(tables, guest_phys, 1)
+}
+
+/// Resolves the host physical base for a guest physical byte range.
+pub fn resolve_guest_phys_range_to_host(
+    tables: &EptProgrammedTables,
+    guest_phys: u64,
+    len: usize,
+) -> Result<u64, EptError> {
+    if len == 0 {
+        return Err(EptError::new(
+            EptErrorKind::Planning,
+            "guest physical read length must be non-zero",
+        ));
+    }
+    let guest_end = guest_phys.checked_add(len as u64).ok_or_else(|| {
+        EptError::new(EptErrorKind::Planning, "guest physical read end overflow")
+    })?;
     for mapping in &tables.mappings {
         let start = mapping.guest_phys;
         let end = start.checked_add(mapping.size_bytes).ok_or_else(|| {
             EptError::new(EptErrorKind::Planning, "EPT mapping end overflow")
         })?;
-        if guest_phys >= start && guest_phys < end {
+        if guest_phys >= start && guest_end <= end {
             let offset = guest_phys - start;
             return mapping
                 .host_phys
@@ -23,7 +41,7 @@ pub fn resolve_guest_phys_to_host(
     }
     Err(EptError::new(
         EptErrorKind::Planning,
-        "guest physical address not covered by programmed EPT mappings",
+        "guest physical range not fully covered by programmed EPT mappings",
     ))
 }
 
@@ -55,8 +73,15 @@ mod tests {
     }
 
     #[test]
-    fn resolve_guest_phys_to_host_rejects_unmapped_address() {
+    fn resolve_guest_phys_range_to_host_rejects_partially_mapped_range() {
         let tables = sample_tables();
-        assert!(resolve_guest_phys_to_host(&tables, 0x50_0000).is_err());
+        assert!(resolve_guest_phys_range_to_host(&tables, 0x1_0000, 0x20_0001).is_err());
+    }
+
+    #[test]
+    fn resolve_guest_phys_range_to_host_accepts_in_range_read() {
+        let tables = sample_tables();
+        let host = resolve_guest_phys_range_to_host(&tables, 0x1_2000, 80).expect("resolve");
+        assert_eq!(host, 0x10_2000);
     }
 }

@@ -4,7 +4,7 @@ use core::mem::size_of;
 
 use hv_guest_abi::{
     guest_abi_is_compatible, guest_boot_info_has_relay_measurement_tail,
-    guest_boot_info_relay_frames_offset, parse_guest_boot_info_relay_measurement,
+    guest_boot_info_relay_measurement_offset, parse_guest_boot_info_relay_measurement,
     GuestBootInfoHeader, GuestDeviceKind, GuestDeviceRegion, GuestIpcRegion, GuestIpcRole,
     GuestMemoryKind, GuestMemoryRegion,
 };
@@ -205,7 +205,7 @@ impl<'a> GuestBootInfoView<'a> {
             ));
         }
         if self.header.version >= 2
-            && guest_boot_info_relay_frames_offset(self.header.size).is_none()
+            && hv_guest_abi::guest_boot_info_relay_measurement_offset(self.header.size).is_none()
         {
             return Err(GuestBootInfoParseError::new(
                 GuestBootInfoParseErrorKind::Bounds,
