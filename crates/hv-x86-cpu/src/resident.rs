@@ -135,6 +135,83 @@ pub fn install_guest_elf<A: PageAllocator>(
         .ok_or_else(|| CpuSeamError::new(CpuSeamErrorKind::InvalidInput, "elf entry overflow"))
 }
 
+/// Installed guest ELF entry and colocated boot-info addresses.
+#[cfg(feature = "datapath-guest-live")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GuestElfWithBootInfoInstall {
+    /// Guest physical entry address for the ELF image.
+    pub entry_phys: u64,
+    /// Guest physical address of the installed boot-info blob.
+    pub boot_info_phys: u64,
+}
+
+/// Installs a guest ELF and colocated boot-info blob in one resident allocation.
+#[cfg(feature = "datapath-guest-live")]
+pub fn install_guest_elf_with_boot_info<A: PageAllocator>(
+    allocator: &mut A,
+    elf_bytes: &[u8],
+    boot_info_blob: &[u8],
+) -> Result<GuestElfWithBootInfoInstall, CpuSeamError> {
+    use hv_guest_boot::parse_elf64;
+
+    if boot_info_blob.is_empty() {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "guest boot info blob must not be empty",
+        ));
+    }
+    let image = parse_elf64(elf_bytes).map_err(|err| {
+        CpuSeamError::new(CpuSeamErrorKind::InvalidInput, err.message)
+    })?;
+    let mut image_end = 0u64;
+    for segment in &image.load_segments {
+        let end = segment
+            .vaddr
+            .checked_add(segment.bytes.len() as u64)
+            .ok_or_else(|| CpuSeamError::new(CpuSeamErrorKind::InvalidInput, "elf segment overflow"))?;
+        image_end = image_end.max(end);
+    }
+    let boot_offset = align_up_usize(image_end as usize, VMXON_REGION_ALIGNMENT_BYTES as usize)? as u64;
+    let boot_end = boot_offset.checked_add(boot_info_blob.len() as u64).ok_or_else(|| {
+        CpuSeamError::new(CpuSeamErrorKind::InvalidInput, "guest boot info size overflow")
+    })?;
+    let mut alloc_size = align_up_usize(boot_end as usize, VMXON_REGION_ALIGNMENT_BYTES as usize)?;
+    alloc_size = core::cmp::max(alloc_size, VMXON_REGION_MIN_BYTES as usize);
+    let host_phys = allocator.allocate_pages(alloc_size, VMXON_REGION_ALIGNMENT_BYTES)?;
+    for segment in &image.load_segments {
+        let dest = host_phys
+            .checked_add(segment.vaddr)
+            .ok_or_else(|| CpuSeamError::new(CpuSeamErrorKind::InvalidInput, "elf segment address overflow"))?;
+        allocator.copy_to_pages(dest, &segment.bytes)?;
+    }
+    let boot_info_phys = host_phys.checked_add(boot_offset).ok_or_else(|| {
+        CpuSeamError::new(CpuSeamErrorKind::InvalidInput, "guest boot info address overflow")
+    })?;
+    allocator.copy_to_pages(boot_info_phys, boot_info_blob)?;
+    let entry_phys = host_phys
+        .checked_add(image.entry_vaddr)
+        .ok_or_else(|| CpuSeamError::new(CpuSeamErrorKind::InvalidInput, "elf entry overflow"))?;
+    Ok(GuestElfWithBootInfoInstall {
+        entry_phys,
+        boot_info_phys,
+    })
+}
+
+fn align_up_usize(value: usize, alignment: usize) -> Result<usize, CpuSeamError> {
+    if alignment == 0 || alignment & (alignment - 1) != 0 {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "alignment must be a power of two",
+        ));
+    }
+    value
+        .checked_add(alignment - 1)
+        .map(|v| v & !(alignment - 1))
+        .ok_or_else(|| {
+            CpuSeamError::new(CpuSeamErrorKind::InvalidInput, "alignment overflow")
+        })
+}
+
 /// Mock page allocator for host tests: records installs without real mapping.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct MockPageAllocator {
@@ -284,5 +361,38 @@ mod tests {
         };
         let mut allocator = MockPageAllocator::new(0x1000);
         assert!(install_vmxon_region(&mut allocator, &region).is_err());
+    }
+
+    #[cfg(feature = "datapath-guest-live")]
+    #[test]
+    fn install_guest_elf_with_boot_info_keeps_boot_info_in_elf_allocation() {
+        use hv_config_model::compile_config_from_str;
+        use hv_guest_boot::{
+            build_guest_boot_info_for_partition, reference_guest_elf_for_kind, GuestElfKind,
+        };
+        use hv_platform_model::plan_static_platform_ir;
+
+        let yaml = include_str!("../../../configs/qemu.yaml");
+        let compiled = compile_config_from_str(yaml).expect("compile");
+        let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
+        let boot_info = build_guest_boot_info_for_partition(&layout, "in").expect("boot info");
+        let mut allocator = MockPageAllocator::new(0x0000_0000_0500_0000);
+        let elf_bytes = reference_guest_elf_for_kind("in", GuestElfKind::Datapath).expect("elf");
+        let install =
+            install_guest_elf_with_boot_info(&mut allocator, elf_bytes, &boot_info).expect("install");
+        assert!(install.boot_info_phys > install.entry_phys);
+        assert!(allocator.copies.iter().any(|(phys, len)| {
+            *phys == install.boot_info_phys && *len == boot_info.len()
+        }));
+        let elf_allocation = allocator
+            .allocations
+            .iter()
+            .find(|(base, size)| {
+                install.entry_phys >= *base
+                    && install.boot_info_phys.saturating_add(boot_info.len() as u64)
+                        <= base.saturating_add(*size as u64)
+            })
+            .expect("single allocation covers elf and boot info");
+        assert!(elf_allocation.1 >= boot_info.len());
     }
 }

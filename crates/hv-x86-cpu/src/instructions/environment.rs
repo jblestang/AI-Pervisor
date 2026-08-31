@@ -108,6 +108,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(all(feature = "execute-instructions", feature = "std"))]
     fn live_execution_runtime_rejects_zero_env_var() {
         if cfg!(feature = "firmware-live-execution") {
             return;
@@ -127,6 +128,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(all(feature = "execute-instructions", feature = "std"))]
     fn live_execution_runtime_honors_env_var_when_set() {
         if cfg!(feature = "firmware-live-execution") {
             return;

@@ -47,6 +47,8 @@ pub use resident::{
 };
 #[cfg(feature = "datapath-guests")]
 pub use resident::install_guest_elf;
+#[cfg(feature = "datapath-guest-live")]
+pub use resident::{install_guest_elf_with_boot_info, GuestElfWithBootInfoInstall};
 pub use resident_backends::{
     ResidentCpuSeamEptBackend, ResidentCpuSeamVmxBackend, ResidentCpuSeamVtdBackend,
 };

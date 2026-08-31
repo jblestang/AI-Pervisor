@@ -2,6 +2,9 @@
 
 #![allow(clippy::expect_used, clippy::indexing_slicing)]
 
+mod common;
+
+use common::assert_datapath_live_markers_validate_only;
 use hv_config_model::compile_config_from_str;
 use hv_hypervisor_efi::boot_hypervisor_from_transfer_datapath_live;
 use hv_hypervisor_boot::{
@@ -85,7 +88,5 @@ fn boot_hypervisor_from_transfer_datapath_live_accepts_reference_handoff() {
         &mut allocator,
     )
     .expect("datapath live boot");
-    assert!(markers.ipc_forward_executed);
-    assert!(markers.e1000_mmio_handled);
-    assert!(!markers.foundation.vmx_launch.vmlaunch_executed);
+    assert_datapath_live_markers_validate_only(&markers);
 }

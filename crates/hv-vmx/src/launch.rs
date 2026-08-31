@@ -10,7 +10,7 @@ use crate::constants::VMXON_REGION_MIN_BYTES;
 use crate::error::{VmxError, VmxErrorKind};
 use crate::launch_constants::{
     CPU_BASED_ACTIVATE_SECONDARY_CONTROLS, SECONDARY_ENABLE_EPT, VMCS_CPU_BASED_VM_EXEC_CONTROL,
-    VMCS_GUEST_CR3, VMCS_GUEST_RIP, VMCS_GUEST_RSP, VMCS_HOST_CR3, VMCS_HOST_RIP,
+    VMCS_GUEST_CR3, VMCS_GUEST_RDI, VMCS_GUEST_RIP, VMCS_GUEST_RSP, VMCS_HOST_CR3, VMCS_HOST_RIP,
     VMCS_HOST_RSP, VMCS_PIN_BASED_VM_EXEC_CONTROL, VMCS_SECONDARY_VM_EXEC_CONTROL,
     VMCS_VM_ENTRY_CONTROLS, VMCS_VM_EXIT_CONTROLS, VM_ENTRY_IA32E_MODE,
     VM_EXIT_HOST_ADDR_SPACE_SIZE, VMX_HOST_EXIT_STUB_OFFSET,
@@ -192,6 +192,34 @@ pub fn patch_guest_entry_in_fields(
     }
 }
 
+/// Updates guest RDI with the boot-info pointer passed to `_start(boot_info)`.
+pub fn patch_guest_boot_info_rdi(fields: &mut VmcsProgrammedFields, boot_info_guest_phys: u64) {
+    for field in &mut fields.fields {
+        if field.field == VMCS_GUEST_RDI {
+            field.value = boot_info_guest_phys;
+            return;
+        }
+    }
+    fields.fields.push(VmcsProgrammedField {
+        field: VMCS_GUEST_RDI,
+        value: boot_info_guest_phys,
+    });
+}
+
+/// Returns the programmed guest RDI value when present.
+pub fn vmcs_guest_rdi(fields: &VmcsProgrammedFields) -> Option<u64> {
+    fields
+        .fields
+        .iter()
+        .find(|field| field.field == VMCS_GUEST_RDI)
+        .map(|field| field.value)
+}
+
+/// Returns whether VMCS guest RDI matches the installed boot-info address.
+pub fn guest_boot_info_rdi_programmed(fields: &VmcsProgrammedFields, boot_info_phys: u64) -> bool {
+    boot_info_phys != 0 && vmcs_guest_rdi(fields) == Some(boot_info_phys)
+}
+
 fn find_guest_region<'a>(
     layout: &'a StaticPlatformIR,
     partition_id: &str,
@@ -307,6 +335,19 @@ mod tests {
         let vmx_plan = plan_vmx_init(&layout.hypervisor_reserve).expect("vmx");
         let launches = plan_vmx_launch_all_partitions(&layout, &vmx_plan).expect("all");
         assert_eq!(launches.len(), 3);
+    }
+
+    #[test]
+    fn patch_guest_boot_info_rdi_programs_guest_rdi_field() {
+        let yaml = include_str!("../../../configs/qemu.yaml");
+        let compiled = compile_config_from_str(yaml).expect("compile");
+        let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
+        let vmx_plan = plan_vmx_init(&layout.hypervisor_reserve).expect("vmx");
+        let launch = plan_vmx_launch(&layout, &vmx_plan, DEFAULT_SMOKE_GUEST_PARTITION_ID)
+            .expect("launch plan");
+        let mut fields = program_vmcs_fields(&launch);
+        patch_guest_boot_info_rdi(&mut fields, 0x0000_0000_1234_5000);
+        assert!(guest_boot_info_rdi_programmed(&fields, 0x0000_0000_1234_5000));
     }
 
     #[test]

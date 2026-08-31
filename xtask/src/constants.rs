@@ -27,6 +27,9 @@ pub const HYPERVISOR_EFI_DATAPATH_RUNTIME_FEATURE: &str = "datapath-runtime";
 /// Cargo feature enabling Gate D datapath guest sources on the REAL_HW hypervisor EFI path.
 pub const HYPERVISOR_EFI_DATAPATH_GUEST_SOURCES_FEATURE: &str = "datapath-guest-sources";
 
+/// Cargo feature enabling Gate D datapath guest live on the REAL_HW hypervisor EFI path.
+pub const HYPERVISOR_EFI_DATAPATH_GUEST_LIVE_FEATURE: &str = "datapath-guest-live";
+
 /// OVMF serial marker emitted when BDS attempts to boot an application.
 pub const OVMF_BOOT_ATTEMPT_MARKER: &str = "BdsDxe: starting Boot";
 

@@ -1,13 +1,10 @@
-//! Gate D datapath malicious hypervisor EFI entry tests.
+//! Gate D datapath guest-live hypervisor EFI entry tests.
 
 #![allow(clippy::expect_used, clippy::indexing_slicing)]
 
-mod common;
-
-use common::assert_datapath_live_markers_validate_only;
 use hv_config_model::compile_config_from_str;
-use hv_datapath::REFERENCE_COMPROMISED_SCENARIOS;
-use hv_hypervisor_efi::boot_hypervisor_from_transfer_datapath_malicious;
+use hv_guest_boot::{GUEST_SOURCE_ELFS_AVAILABLE, REFERENCE_GUEST_PARTITION_IDS};
+use hv_hypervisor_efi::boot_hypervisor_from_transfer_datapath_guest_live;
 use hv_hypervisor_boot::{
     layout_snapshot_from_platform_ir, requirements_snapshot_from_platform,
 };
@@ -25,7 +22,12 @@ use hv_types::{PciBdf, PciBus, PciDevice, PciFunction, PciSegment};
 use hv_x86_cpu::MockPageAllocator;
 
 #[test]
-fn boot_hypervisor_from_transfer_datapath_malicious_accepts_reference_handoff() {
+fn boot_hypervisor_from_transfer_datapath_guest_live_accepts_reference_handoff() {
+    if !GUEST_SOURCE_ELFS_AVAILABLE {
+        eprintln!("skipping: run cargo xtask build-guests to embed source ELFs");
+        return;
+    }
+
     let yaml = include_str!("../../../configs/qemu.yaml");
     let compiled = compile_config_from_str(yaml).expect("compile");
     let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
@@ -80,19 +82,18 @@ fn boot_hypervisor_from_transfer_datapath_malicious_accepts_reference_handoff() 
     )
     .expect("handoff");
     let transfer = build_hypervisor_transfer(&handoff).expect("transfer");
-    let mut allocator = MockPageAllocator::new(0x0000_0000_1300_0000);
-    let markers = boot_hypervisor_from_transfer_datapath_malicious(
+    let mut allocator = MockPageAllocator::new(0x0000_0000_2100_0000);
+    let markers = boot_hypervisor_from_transfer_datapath_guest_live(
         &transfer,
         &compiled.digest.bytes,
         &requirements,
         &layout_snapshot,
         &mut allocator,
     )
-    .expect("datapath malicious boot");
-    assert_datapath_live_markers_validate_only(&markers.live);
-    assert!(markers.integrity_checks_passed);
+    .expect("datapath guest-live boot");
     assert_eq!(
-        markers.compromised_scenarios_blocked,
-        REFERENCE_COMPROMISED_SCENARIOS.len() as u32
+        markers.guest_boot_infos_installed,
+        REFERENCE_GUEST_PARTITION_IDS.len() as u32
     );
+    assert!(markers.sources.runtime.guest_datapath_frame_forwarded);
 }

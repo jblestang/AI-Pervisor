@@ -74,3 +74,6 @@ pub const GATE_D_DATAPATH_RUNTIME_MARKER: &str = "hypervisor Gate D datapath run
 pub const GATE_D_GUEST_DATAPATH_FRAME_MARKER: &str = "Gate D: guest datapath frame forwarded in→mid→out";
 /// Gate D guest source-tree ELF install succeeded for all partitions.
 pub const GATE_D_GUEST_SOURCE_ELF_MARKER: &str = "Gate D: guest source ELF installed for all partitions";
+/// Gate D guest boot info installed and RDI patched for all partitions.
+pub const GATE_D_GUEST_BOOT_INFO_INSTALLED_MARKER: &str =
+    "Gate D: guest boot info installed for all partitions";
