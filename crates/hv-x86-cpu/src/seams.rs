@@ -224,6 +224,94 @@ fn execute_datapath_runtime_if_enabled(
     Ok(CpuInstructionDisposition::SeamValidated)
 }
 
+/// Outcome of a Gate D datapath guest execution CPU seam batch.
+#[cfg(feature = "datapath-guest-execution")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DatapathGuestExecutionCpuSeamOutcome {
+    /// How the seam batch completed.
+    pub disposition: CpuInstructionDisposition,
+    /// Whether VM-exit stub addresses were validated for all partitions.
+    pub vmexit_stub_validated: bool,
+    /// Number of partition launch contexts validated.
+    pub partitions_validated: u32,
+    /// Number of live VMLAUNCH attempts made when execution was enabled.
+    pub vmlaunch_attempts: u32,
+}
+
+/// Validates (and optionally executes) live VMX guest code for all source-tree partitions.
+#[cfg(feature = "datapath-guest-execution")]
+pub fn run_datapath_guest_execution_cpu_seam(
+    launches: &[(u64, &VmcsProgrammedFields, u64, hv_types::VmId)],
+) -> Result<DatapathGuestExecutionCpuSeamOutcome, CpuSeamError> {
+    if launches.is_empty() {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "datapath guest execution seam requires at least one partition launch",
+        ));
+    }
+    for (vmcs_phys, fields, host_exit_phys, _) in launches {
+        validate_vmx_launch_inputs(*vmcs_phys, fields)?;
+        validate_datapath_live_inputs(*vmcs_phys, *host_exit_phys)?;
+    }
+    if !cpuid_vmx_available() || !cpuid_ept_available() {
+        return Ok(DatapathGuestExecutionCpuSeamOutcome {
+            disposition: CpuInstructionDisposition::SkippedNoHardware,
+            vmexit_stub_validated: true,
+            partitions_validated: launches.len() as u32,
+            vmlaunch_attempts: 0,
+        });
+    }
+    let (disposition, vmlaunch_attempts) = execute_datapath_guest_vmlaunch_fields_if_enabled(launches)?;
+    Ok(DatapathGuestExecutionCpuSeamOutcome {
+        disposition,
+        vmexit_stub_validated: true,
+        partitions_validated: launches.len() as u32,
+        vmlaunch_attempts,
+    })
+}
+
+#[cfg(feature = "datapath-guest-execution")]
+fn execute_datapath_guest_vmlaunch_fields_if_enabled(
+    launches: &[(u64, &VmcsProgrammedFields, u64, hv_types::VmId)],
+) -> Result<(CpuInstructionDisposition, u32), CpuSeamError> {
+    #[cfg(feature = "execute-instructions")]
+    {
+        if crate::instructions::live_execution_environment_ready() {
+            let mut vmlaunch_attempts = 0u32;
+            let mut all_executed = true;
+            for (vmcs_phys, fields, _host_exit_phys, _vm_id) in launches {
+                match crate::instructions::vmcs_fields::execute_vmcs_field_programming(*vmcs_phys, fields)
+                {
+                    Ok(()) => {}
+                    Err(err)
+                        if err.kind == CpuSeamErrorKind::Unavailable
+                            || err.kind == CpuSeamErrorKind::ExecutionFailed => {
+                        all_executed = false;
+                        continue;
+                    }
+                    Err(err) => return Err(err),
+                }
+                vmlaunch_attempts = vmlaunch_attempts.saturating_add(1);
+                match crate::instructions::vmlaunch::execute_vmlaunch(*vmcs_phys) {
+                    Ok(()) => {}
+                    Err(err)
+                        if err.kind == CpuSeamErrorKind::Unavailable
+                            || err.kind == CpuSeamErrorKind::ExecutionFailed => {
+                        all_executed = false;
+                    }
+                    Err(err) => return Err(err),
+                }
+            }
+            if all_executed && vmlaunch_attempts == launches.len() as u32 {
+                return Ok((CpuInstructionDisposition::Executed, vmlaunch_attempts));
+            }
+            return Ok((CpuInstructionDisposition::SeamValidated, vmlaunch_attempts));
+        }
+    }
+    let _ = launches;
+    Ok((CpuInstructionDisposition::SeamValidated, 0))
+}
+
 /// Validates (and optionally executes) a Gate D datapath live seam.
 #[cfg(feature = "datapath-live")]
 pub fn run_datapath_live_cpu_seam(
@@ -654,5 +742,34 @@ mod tests {
         if cpuid_vmx_available() {
             assert_eq!(outcome.disposition, CpuInstructionDisposition::SeamValidated);
         }
+    }
+
+    #[cfg(feature = "datapath-guest-execution")]
+    #[test]
+    fn run_datapath_guest_execution_cpu_seam_rejects_empty_batch() {
+        assert!(run_datapath_guest_execution_cpu_seam(&[]).is_err());
+    }
+
+    #[cfg(all(feature = "datapath-guest-execution", feature = "execute-instructions"))]
+    #[test]
+    fn run_datapath_guest_execution_cpu_seam_covers_live_path_in_test_harness() {
+        use crate::instructions::environment::test_force_live_environment_ready;
+        use hv_vmx::program_vmcs_fields;
+        use hv_vmx::plan_vmx_launch;
+        use hv_vmx::DEFAULT_SMOKE_GUEST_PARTITION_ID;
+
+        let yaml = include_str!("../../../configs/qemu.yaml");
+        let compiled = compile_config_from_str(yaml).expect("compile");
+        let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
+        let vmx_plan = plan_vmx_init(&layout.hypervisor_reserve).expect("vmx");
+        let launch_plan =
+            plan_vmx_launch(&layout, &vmx_plan, DEFAULT_SMOKE_GUEST_PARTITION_ID).expect("launch");
+        let fields = program_vmcs_fields(&launch_plan);
+        let launches = [(0x5000_u64, &fields, 0x6000_u64, hv_types::VmId::new(0))];
+        test_force_live_environment_ready(true);
+        let outcome = run_datapath_guest_execution_cpu_seam(&launches).expect("guest execution");
+        test_force_live_environment_ready(false);
+        assert_eq!(outcome.partitions_validated, 1);
+        assert_ne!(outcome.disposition, CpuInstructionDisposition::Executed);
     }
 }

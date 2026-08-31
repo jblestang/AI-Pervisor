@@ -25,7 +25,8 @@
 | 21 | D | Performance benchmark (200 Mbit/s target), `datapath-benchmark` orchestration |
 | 22 | D | Live guest datapath runtime under VMX, `datapath-runtime` orchestration |
 | 23 | D | Real `guests/` source trees (`datapath-guest-sources`), host live wall-clock benchmark (`cargo xtask datapath-live-benchmark`) |
-| 24 | D | Guest boot-info install + VMCS RDI handoff (`datapath-guest-live`); live VMX guest execution + in-VM throughput deferred to 25+ |
+| 24 | D | Guest boot-info install + VMCS RDI handoff (`datapath-guest-live`) |
+| 25 | D | Live VMX guest execution seam for source-tree guests (`datapath-guest-execution`); in-VM throughput deferred to 26+ |
 
 Phases 0–3 complete Gate A. Phase 4 begins Gate B with host-side platform validation and deterministic layout planning.
 

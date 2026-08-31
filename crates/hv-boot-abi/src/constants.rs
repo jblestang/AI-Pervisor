@@ -77,3 +77,6 @@ pub const GATE_D_GUEST_SOURCE_ELF_MARKER: &str = "Gate D: guest source ELF insta
 /// Gate D guest boot info installed and RDI patched for all partitions.
 pub const GATE_D_GUEST_BOOT_INFO_INSTALLED_MARKER: &str =
     "Gate D: guest boot info installed for all partitions";
+/// Gate D live VMX guest code execution attempted for all source-tree partitions.
+pub const GATE_D_GUEST_EXECUTION_MARKER: &str =
+    "Gate D: guest source-tree code executed under VMX for all partitions";

@@ -22,11 +22,13 @@ datapath-benchmark = ["datapath-guests", "hv-hypervisor-boot/datapath-benchmark"
 datapath-runtime = ["datapath-benchmark", "hv-hypervisor-boot/datapath-runtime"]
 datapath-guest-sources = ["datapath-runtime", "hv-hypervisor-boot/datapath-guest-sources"]
 datapath-guest-live = ["datapath-guest-sources", "hv-hypervisor-boot/datapath-guest-live"]
+datapath-guest-execution = ["datapath-guest-live", "hv-hypervisor-boot/datapath-guest-execution", "dep:hv-datapath"]
 
 [dependencies]
 hv-boot-abi = { path = "../hv-boot-abi" }
 hv-guest-boot = { path = "../hv-guest-boot" }
 hv-hypervisor-boot = { path = "../hv-hypervisor-boot", default-features = false, features = [] }
+hv-datapath = { path = "../hv-datapath", optional = true }
 hv-types = { path = "../hv-types" }
 hv-x86-cpu = { path = "../hv-x86-cpu", optional = true }
 uefi = { version = "0.31", optional = true }
@@ -85,6 +87,11 @@ required-features = ["datapath-guest-sources"]
 name = "datapath_guest_live"
 path = "tests/datapath_guest_live.rs"
 required-features = ["datapath-guest-live"]
+
+[[test]]
+name = "datapath_guest_execution"
+path = "tests/datapath_guest_execution.rs"
+required-features = ["datapath-guest-execution"]
 
 [[test]]
 name = "real_hw"

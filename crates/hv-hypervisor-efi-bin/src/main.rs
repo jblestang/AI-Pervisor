@@ -7,9 +7,24 @@
 extern crate alloc;
 
 use hv_boot_abi::HypervisorTransferHeader;
-#[cfg(any(feature = "datapath-runtime", feature = "datapath-guest-sources", feature = "datapath-guest-live"))]
+#[cfg(any(feature = "datapath-runtime", feature = "datapath-guest-sources", feature = "datapath-guest-live", feature = "datapath-guest-execution"))]
 use hv_guest_boot::GUEST_DATAPATH_CAPABLE_MARKER;
-#[cfg(feature = "datapath-guest-live")]
+#[cfg(feature = "datapath-guest-execution")]
+use hv_hypervisor_efi::{
+    boot_hypervisor_from_transfer_datapath_guest_execution, DatapathBenchmarkBootMarkers,
+    DatapathFoundationBootMarkers, DatapathGuestExecutionBootMarkers, DatapathGuestLiveBootMarkers,
+    DatapathGuestSourcesBootMarkers, DatapathGuestsBootMarkers, DatapathLiveBootMarkers,
+    DatapathMaliciousBootMarkers, DatapathRuntimeBootMarkers, GATE_D_BENCHMARK_TARGET_MET_MARKER,
+    GATE_D_BOOT_INFO_BUILT_MARKER, GATE_D_DATAPATH_BENCHMARK_MARKER, GATE_D_DATAPATH_GUESTS_MARKER,
+    GATE_D_DATAPATH_LIVE_MARKER, GATE_D_DATAPATH_MALICIOUS_MARKER, GATE_D_DATAPATH_RUNTIME_MARKER,
+    GATE_D_E1000_MMIO_MARKER, GATE_D_GUEST_BOOT_INFO_INSTALLED_MARKER,
+    GATE_D_GUEST_DATAPATH_FRAME_MARKER, GATE_D_GUEST_ELF_INSTALLED_MARKER,
+    GATE_D_GUEST_EXECUTION_MARKER, GATE_D_GUEST_SOURCE_ELF_MARKER, GATE_D_IPC_FORWARD_MARKER,
+    GATE_D_IPC_INTEGRITY_MARKER, GATE_D_MULTI_VMLAUNCH_MARKER, RealHwBootMarkers,
+    VmxLaunchBootMarkers, REAL_HW_BOOT_SUCCESS_MARKER, REAL_HW_EPT_EXECUTED_MARKER,
+    REAL_HW_VMLAUNCH_EXECUTED_MARKER, REAL_HW_VMXON_EXECUTED_MARKER, UefiPageAllocator,
+};
+#[cfg(all(feature = "datapath-guest-live", not(feature = "datapath-guest-execution")))]
 use hv_hypervisor_efi::{
     boot_hypervisor_from_transfer_datapath_guest_live, DatapathBenchmarkBootMarkers,
     DatapathFoundationBootMarkers, DatapathGuestLiveBootMarkers, DatapathGuestSourcesBootMarkers,
@@ -23,7 +38,7 @@ use hv_hypervisor_efi::{
     VmxLaunchBootMarkers, REAL_HW_BOOT_SUCCESS_MARKER, REAL_HW_EPT_EXECUTED_MARKER,
     REAL_HW_VMLAUNCH_EXECUTED_MARKER, REAL_HW_VMXON_EXECUTED_MARKER, UefiPageAllocator,
 };
-#[cfg(all(feature = "datapath-guest-sources", not(feature = "datapath-guest-live")))]
+#[cfg(all(feature = "datapath-guest-sources", not(any(feature = "datapath-guest-live", feature = "datapath-guest-execution"))))]
 use hv_hypervisor_efi::{
     boot_hypervisor_from_transfer_datapath_guest_sources, DatapathBenchmarkBootMarkers,
     DatapathFoundationBootMarkers, DatapathGuestSourcesBootMarkers, DatapathGuestsBootMarkers,
@@ -36,7 +51,7 @@ use hv_hypervisor_efi::{
     VmxLaunchBootMarkers, REAL_HW_BOOT_SUCCESS_MARKER, REAL_HW_EPT_EXECUTED_MARKER,
     REAL_HW_VMLAUNCH_EXECUTED_MARKER, REAL_HW_VMXON_EXECUTED_MARKER, UefiPageAllocator,
 };
-#[cfg(all(feature = "datapath-runtime", not(any(feature = "datapath-guest-sources", feature = "datapath-guest-live"))))]
+#[cfg(all(feature = "datapath-runtime", not(any(feature = "datapath-guest-sources", feature = "datapath-guest-live", feature = "datapath-guest-execution"))))]
 use hv_hypervisor_efi::{
     boot_hypervisor_from_transfer_datapath_runtime, DatapathBenchmarkBootMarkers,
     DatapathFoundationBootMarkers, DatapathGuestsBootMarkers, DatapathLiveBootMarkers,
@@ -130,7 +145,23 @@ fn efi_main() -> Status {
 
 fn run_hypervisor() -> Result<(), &'static str> {
     let transfer = locate_transfer_blob()?;
-    #[cfg(feature = "datapath-guest-live")]
+    #[cfg(feature = "datapath-guest-execution")]
+    {
+        let mut allocator = UefiPageAllocator::new();
+        let markers = boot_hypervisor_from_transfer_datapath_guest_execution(
+            transfer,
+            &CONFIG_DIGEST,
+            &REQUIREMENTS_SNAPSHOT,
+            &LAYOUT_SNAPSHOT,
+            &mut allocator,
+        )
+        .map_err(|err| {
+            log::error!("hypervisor Gate D datapath guest-execution boot failed: {err}");
+            "hypervisor Gate D datapath guest-execution boot failed"
+        })?;
+        log_datapath_guest_execution_markers(&markers);
+    }
+    #[cfg(all(feature = "datapath-guest-live", not(feature = "datapath-guest-execution")))]
     {
         let mut allocator = UefiPageAllocator::new();
         let markers = boot_hypervisor_from_transfer_datapath_guest_live(
@@ -146,7 +177,7 @@ fn run_hypervisor() -> Result<(), &'static str> {
         })?;
         log_datapath_guest_live_markers(&markers);
     }
-    #[cfg(all(feature = "datapath-guest-sources", not(feature = "datapath-guest-live")))]
+    #[cfg(all(feature = "datapath-guest-sources", not(any(feature = "datapath-guest-live", feature = "datapath-guest-execution"))))]
     {
         let mut allocator = UefiPageAllocator::new();
         let markers = boot_hypervisor_from_transfer_datapath_guest_sources(
@@ -163,7 +194,7 @@ fn run_hypervisor() -> Result<(), &'static str> {
         log_datapath_guest_sources_markers(&markers);
         log::info!("{GATE_D_GUEST_SOURCE_ELF_MARKER}");
     }
-    #[cfg(all(feature = "datapath-runtime", not(any(feature = "datapath-guest-sources", feature = "datapath-guest-live"))))]
+    #[cfg(all(feature = "datapath-runtime", not(any(feature = "datapath-guest-sources", feature = "datapath-guest-live", feature = "datapath-guest-execution"))))]
     {
         let mut allocator = UefiPageAllocator::new();
         let markers = boot_hypervisor_from_transfer_datapath_runtime(
@@ -326,7 +357,7 @@ fn log_real_hw_markers(markers: &RealHwBootMarkers) {
     }
 }
 
-#[cfg(any(feature = "datapath-foundation", feature = "datapath-live", feature = "datapath-malicious", feature = "datapath-guests", feature = "datapath-benchmark", feature = "datapath-runtime", feature = "datapath-guest-sources", feature = "datapath-guest-live"))]
+#[cfg(any(feature = "datapath-foundation", feature = "datapath-live", feature = "datapath-malicious", feature = "datapath-guests", feature = "datapath-benchmark", feature = "datapath-runtime", feature = "datapath-guest-sources", feature = "datapath-guest-live", feature = "datapath-guest-execution"))]
 fn log_datapath_foundation_markers(markers: &DatapathFoundationBootMarkers) {
     log_vmx_launch_markers(&markers.vmx_launch);
     if markers.datapath_boot_infos_built {
@@ -334,7 +365,7 @@ fn log_datapath_foundation_markers(markers: &DatapathFoundationBootMarkers) {
     }
 }
 
-#[cfg(any(feature = "datapath-live", feature = "datapath-malicious", feature = "datapath-guests", feature = "datapath-benchmark", feature = "datapath-runtime", feature = "datapath-guest-sources", feature = "datapath-guest-live"))]
+#[cfg(any(feature = "datapath-live", feature = "datapath-malicious", feature = "datapath-guests", feature = "datapath-benchmark", feature = "datapath-runtime", feature = "datapath-guest-sources", feature = "datapath-guest-live", feature = "datapath-guest-execution"))]
 fn log_datapath_live_markers(markers: &DatapathLiveBootMarkers) {
     log_datapath_foundation_markers(&markers.foundation);
     if markers.ipc_forward_executed {
@@ -345,7 +376,7 @@ fn log_datapath_live_markers(markers: &DatapathLiveBootMarkers) {
     }
 }
 
-#[cfg(any(feature = "datapath-malicious", feature = "datapath-guests", feature = "datapath-benchmark", feature = "datapath-runtime", feature = "datapath-guest-sources", feature = "datapath-guest-live"))]
+#[cfg(any(feature = "datapath-malicious", feature = "datapath-guests", feature = "datapath-benchmark", feature = "datapath-runtime", feature = "datapath-guest-sources", feature = "datapath-guest-live", feature = "datapath-guest-execution"))]
 fn log_datapath_malicious_markers(markers: &DatapathMaliciousBootMarkers) {
     log_datapath_live_markers(&markers.live);
     if markers.integrity_checks_passed {
@@ -353,7 +384,7 @@ fn log_datapath_malicious_markers(markers: &DatapathMaliciousBootMarkers) {
     }
 }
 
-#[cfg(any(feature = "datapath-guests", feature = "datapath-benchmark", feature = "datapath-runtime", feature = "datapath-guest-sources", feature = "datapath-guest-live"))]
+#[cfg(any(feature = "datapath-guests", feature = "datapath-benchmark", feature = "datapath-runtime", feature = "datapath-guest-sources", feature = "datapath-guest-live", feature = "datapath-guest-execution"))]
 fn log_datapath_guests_markers(markers: &DatapathGuestsBootMarkers) {
     log_datapath_malicious_markers(&markers.malicious);
     if markers.elf_images_installed == 3 {
@@ -364,7 +395,7 @@ fn log_datapath_guests_markers(markers: &DatapathGuestsBootMarkers) {
     }
 }
 
-#[cfg(any(feature = "datapath-benchmark", feature = "datapath-runtime", feature = "datapath-guest-sources", feature = "datapath-guest-live"))]
+#[cfg(any(feature = "datapath-benchmark", feature = "datapath-runtime", feature = "datapath-guest-sources", feature = "datapath-guest-live", feature = "datapath-guest-execution"))]
 fn log_datapath_benchmark_markers(markers: &DatapathBenchmarkBootMarkers) {
     log_datapath_guests_markers(&markers.guests);
     if markers.benchmark_target_met {
@@ -372,7 +403,7 @@ fn log_datapath_benchmark_markers(markers: &DatapathBenchmarkBootMarkers) {
     }
 }
 
-#[cfg(any(feature = "datapath-runtime", feature = "datapath-guest-sources", feature = "datapath-guest-live"))]
+#[cfg(any(feature = "datapath-runtime", feature = "datapath-guest-sources", feature = "datapath-guest-live", feature = "datapath-guest-execution"))]
 fn log_datapath_runtime_markers(markers: &DatapathRuntimeBootMarkers) {
     log_datapath_benchmark_markers(&markers.benchmark);
     if markers.datapath_elf_images_installed == 3 {
@@ -383,7 +414,7 @@ fn log_datapath_runtime_markers(markers: &DatapathRuntimeBootMarkers) {
     }
 }
 
-#[cfg(any(feature = "datapath-guest-sources", feature = "datapath-guest-live"))]
+#[cfg(any(feature = "datapath-guest-sources", feature = "datapath-guest-live", feature = "datapath-guest-execution"))]
 fn log_datapath_guest_sources_markers(markers: &DatapathGuestSourcesBootMarkers) {
     log_datapath_runtime_markers(&markers.runtime);
     if markers.guest_source_elfs_installed == 3 {
@@ -391,7 +422,7 @@ fn log_datapath_guest_sources_markers(markers: &DatapathGuestSourcesBootMarkers)
     }
 }
 
-#[cfg(feature = "datapath-guest-live")]
+#[cfg(any(feature = "datapath-guest-live", feature = "datapath-guest-execution"))]
 fn log_datapath_guest_live_markers(markers: &DatapathGuestLiveBootMarkers) {
     log_datapath_guest_sources_markers(&markers.sources);
     if markers.guest_boot_infos_installed == 3 {
@@ -399,7 +430,15 @@ fn log_datapath_guest_live_markers(markers: &DatapathGuestLiveBootMarkers) {
     }
 }
 
-#[cfg(any(feature = "vmx-launch", feature = "datapath-foundation", feature = "datapath-live", feature = "datapath-malicious", feature = "datapath-guests", feature = "datapath-benchmark", feature = "datapath-runtime", feature = "datapath-guest-sources", feature = "datapath-guest-live"))]
+#[cfg(feature = "datapath-guest-execution")]
+fn log_datapath_guest_execution_markers(markers: &DatapathGuestExecutionBootMarkers) {
+    log_datapath_guest_live_markers(&markers.live);
+    if markers.guest_code_executed {
+        log::info!("{GATE_D_GUEST_EXECUTION_MARKER}");
+    }
+}
+
+#[cfg(any(feature = "vmx-launch", feature = "datapath-foundation", feature = "datapath-live", feature = "datapath-malicious", feature = "datapath-guests", feature = "datapath-benchmark", feature = "datapath-runtime", feature = "datapath-guest-sources", feature = "datapath-guest-live", feature = "datapath-guest-execution"))]
 fn log_vmx_launch_markers(markers: &VmxLaunchBootMarkers) {
     if markers.real_hw.vmxon_executed {
         log::info!("{REAL_HW_VMXON_EXECUTED_MARKER}");
