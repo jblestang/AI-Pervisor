@@ -575,7 +575,8 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
     #[cfg(feature = "datapath-guest-relay-measurement")]
     let relay_measurement_install = {
         use hv_datapath::{plan_relay_measurement_page_gpa, RELAY_MEASUREMENT_PAGE_BYTES};
-        use hv_ept::{append_ept_guest_mapping, ept_maps_guest_page};
+        use hv_ept::{append_ept_guest_read_only_mapping, ept_guest_leaf_entry, ept_maps_guest_page};
+        use hv_ept::ept_leaf_entry_guest_writable;
         use hv_x86_cpu::install_relay_measurement_page;
 
         let measurement_page_gpa = plan_relay_measurement_page_gpa(layout).map_err(|err| {
@@ -599,7 +600,7 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
                     "relay measurement requires programmed EPT tables",
                 )
             })?;
-        append_ept_guest_mapping(
+        append_ept_guest_read_only_mapping(
             ept_tables,
             page.guest_phys,
             page.host_phys,
@@ -610,6 +611,18 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
             return Err(BootCheckError::new(
                 BootCheckErrorKind::Platform,
                 "relay measurement page GPA not mapped in EPT hierarchy",
+            ));
+        }
+        let leaf_entry = ept_guest_leaf_entry(ept_tables, measurement_page_gpa).ok_or_else(|| {
+            BootCheckError::new(
+                BootCheckErrorKind::Platform,
+                "relay measurement page EPT leaf entry missing",
+            )
+        })?;
+        if ept_leaf_entry_guest_writable(leaf_entry) {
+            return Err(BootCheckError::new(
+                BootCheckErrorKind::Platform,
+                "relay measurement page must be mapped read-only for guests",
             ));
         }
         *ept_tables = hv_x86_cpu::install_ept_tables(allocator, ept_tables)

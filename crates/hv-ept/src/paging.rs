@@ -5,7 +5,7 @@ use alloc::vec;
 use crate::constants::EPT_PAGE_SIZE_BYTES;
 use crate::error::{EptError, EptErrorKind};
 use crate::program::{
-    encode_identity_ept_entry, EptProgrammedTables, EPT_ENTRY_EXECUTE, EPT_ENTRY_MEMORY_TYPE_WB,
+    encode_ept_leaf_entry, EptProgrammedTables, EPT_ENTRY_EXECUTE, EPT_ENTRY_MEMORY_TYPE_WB,
     EPT_ENTRY_READ, EPT_ENTRY_WRITE,
 };
 
@@ -53,6 +53,21 @@ pub fn materialize_ept_paging(tables: &mut EptProgrammedTables) -> Result<(), Ep
 /// Returns whether the in-memory EPT hierarchy maps a guest physical page.
 pub fn ept_maps_guest_page(tables: &EptProgrammedTables, guest_phys: u64) -> bool {
     ept_resolve_guest_page(tables, guest_phys).is_some()
+}
+
+/// Returns the encoded EPT leaf entry for a guest physical page when materialized.
+pub fn ept_guest_leaf_entry(tables: &EptProgrammedTables, guest_phys: u64) -> Option<u64> {
+    if guest_phys % EPT_PAGE_SIZE_BYTES != 0 {
+        return None;
+    }
+    let indices = ept_indices(guest_phys);
+    let pdpt = child_table(tables, TableRef::Root, indices.pml4)?;
+    let pd = child_table(tables, TableRef::Nested(pdpt), indices.pdpt)?;
+    let pt = child_table(tables, TableRef::Nested(pd), indices.pd)?;
+    Some(read_entry(
+        table_bytes(tables, TableRef::Nested(pt)),
+        indices.pt,
+    ))
 }
 
 /// Resolves a guest physical page to its host physical base via the in-memory hierarchy.
@@ -122,12 +137,13 @@ fn map_guest_page(
         }
         return Ok(());
     }
+    let guest_writable = mapping_guest_writable(tables, guest_phys);
     write_entry(
         table_bytes_mut(tables, TableRef::Nested(pt)).ok_or_else(|| {
             EptError::new(EptErrorKind::Planning, "EPT PT table bytes unavailable")
         })?,
         indices.pt,
-        encode_identity_ept_entry(host_phys),
+        encode_ept_leaf_entry(host_phys, guest_writable),
     );
     Ok(())
 }
@@ -138,6 +154,19 @@ struct EptIndices {
     pdpt: usize,
     pd: usize,
     pt: usize,
+}
+
+fn mapping_guest_writable(tables: &EptProgrammedTables, guest_phys: u64) -> bool {
+    for mapping in &tables.mappings {
+        let end = match mapping.guest_phys.checked_add(mapping.size_bytes) {
+            Some(end) => end,
+            None => continue,
+        };
+        if guest_phys >= mapping.guest_phys && guest_phys < end {
+            return mapping.guest_writable;
+        }
+    }
+    true
 }
 
 fn ept_indices(guest_phys: u64) -> EptIndices {
@@ -281,7 +310,7 @@ fn write_entry(table: &mut [u8], index: usize, value: u64) {
 #[allow(clippy::expect_used)]
 mod tests {
     use super::*;
-    use crate::program::append_ept_guest_mapping;
+    use crate::program::{append_ept_guest_mapping, append_ept_guest_read_only_mapping};
     use hv_datapath::RELAY_MEASUREMENT_PAGE_GUEST_PHYS;
 
     fn empty_tables() -> EptProgrammedTables {
@@ -291,6 +320,27 @@ mod tests {
             mappings: Vec::new(),
             paging_tables: Vec::new(),
         }
+    }
+
+    #[test]
+    fn materialize_maps_read_only_measurement_page_without_guest_write() {
+        use crate::program::ept_leaf_entry_guest_writable;
+        use crate::EPT_PAGE_SIZE_BYTES;
+
+        let mut tables = empty_tables();
+        append_ept_guest_read_only_mapping(
+            &mut tables,
+            RELAY_MEASUREMENT_PAGE_GUEST_PHYS,
+            0x8000,
+            EPT_PAGE_SIZE_BYTES,
+        )
+        .expect("append");
+        assert_eq!(
+            ept_resolve_guest_page(&tables, RELAY_MEASUREMENT_PAGE_GUEST_PHYS),
+            Some(0x8000)
+        );
+        let entry = ept_guest_leaf_entry(&tables, RELAY_MEASUREMENT_PAGE_GUEST_PHYS).expect("leaf");
+        assert!(!ept_leaf_entry_guest_writable(entry));
     }
 
     #[test]

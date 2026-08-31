@@ -60,6 +60,7 @@ mod tests {
                 guest_phys: 0x1_0000,
                 host_phys: 0x10_0000,
                 size_bytes: 0x20_0000,
+                guest_writable: true,
                 encoded_entry: encode_identity_ept_entry(0x10_0000),
             }],
             paging_tables: vec![],

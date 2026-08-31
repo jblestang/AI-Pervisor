@@ -148,6 +148,36 @@ pub fn read_ipc_delivered_frames_from_guest(
     Ok(u64::from(tail))
 }
 
+/// Publishes authoritative relay measurement counters to the hypervisor-owned page.
+pub fn publish_relay_measurement_page_authoritative(
+    context: &GuestRelayMeasurementContext,
+    expected_frames: u64,
+) -> Result<(), CpuSeamError> {
+    let host_phys = context.measurement_page_host_phys.ok_or_else(|| {
+        CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "relay measurement requires hypervisor-owned measurement page",
+        )
+    })?;
+    let boot_extension =
+        read_relay_measurement_extension_from_installed_boot_info(
+            &context.ept_tables,
+            context.out_boot_info_guest_phys,
+            context.boot_info_size,
+        )?;
+    let ipc_delivered_frames = read_ipc_delivered_frames_from_guest(context)?;
+    let frames_completed = ipc_delivered_frames.min(expected_frames);
+    let published = GuestBootInfoRelayMeasurement {
+        magic: boot_extension.magic,
+        version: boot_extension.version,
+        frames_completed,
+        tsc_start: boot_extension.tsc_start,
+        tsc_end: boot_extension.tsc_end,
+        measurement_page_gpa: boot_extension.measurement_page_gpa,
+    };
+    write_host_measurement_extension(host_phys, &published)
+}
+
 /// Measures in-VM relay frames using EPT-aware boot-info and IPC cross-checks.
 pub fn measure_in_vm_relay_from_context(
     execution_seam: &DatapathGuestExecutionCpuSeamOutcome,
@@ -180,6 +210,7 @@ pub fn measure_in_vm_relay_from_context(
             "relay measurement requires out-partition boot info guest address",
         ));
     }
+    publish_relay_measurement_page_authoritative(context, expected_frames)?;
     let extension = read_relay_measurement_extension_from_guest(context)?;
     let extension_frames = extension.frames_completed;
     let elapsed_tsc = guest_relay_measurement_elapsed_tsc(&extension);
@@ -267,6 +298,25 @@ fn read_host_bytes(host_phys: u64, len: usize) -> Result<alloc::vec::Vec<u8>, Cp
     Ok(bytes)
 }
 
+fn write_host_measurement_extension(
+    host_phys: u64,
+    extension: &GuestBootInfoRelayMeasurement,
+) -> Result<(), CpuSeamError> {
+    let mut bytes = read_host_bytes(host_phys, GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES)?;
+    bytes[0..4].copy_from_slice(&extension.magic.to_le_bytes());
+    bytes[4..8].copy_from_slice(&extension.version.to_le_bytes());
+    bytes[8..16].copy_from_slice(&extension.frames_completed.to_le_bytes());
+    bytes[16..24].copy_from_slice(&extension.tsc_start.to_le_bytes());
+    bytes[24..32].copy_from_slice(&extension.tsc_end.to_le_bytes());
+    bytes[32..40].copy_from_slice(&extension.measurement_page_gpa.to_le_bytes());
+    // SAFETY: host physical measurement page is writable by the hypervisor.
+    unsafe {
+        let dest = core::slice::from_raw_parts_mut(host_phys as *mut u8, bytes.len());
+        dest.copy_from_slice(&bytes);
+    }
+    Ok(())
+}
+
 fn map_ept_error(err: hv_ept::EptError) -> CpuSeamError {
     CpuSeamError::new(CpuSeamErrorKind::InvalidInput, err.message)
 }
@@ -290,6 +340,7 @@ mod tests {
                 guest_phys: 0,
                 host_phys: 0,
                 size_bytes: 0x10_0000,
+                guest_writable: true,
                 encoded_entry: encode_identity_ept_entry(0),
             }],
             paging_tables: alloc::vec::Vec::new(),

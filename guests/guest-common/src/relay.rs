@@ -1,4 +1,8 @@
-//! Relay measurement extension in guest boot info and hypervisor-owned page (ABI v2).
+//! Relay measurement extension in guest boot info (ABI v2).
+//!
+//! When the hypervisor publishes a read-only measurement page GPA, guests record
+//! counters and TSC in the boot-info tail; the hypervisor publishes authoritative
+//! frame counts to the host page after execution.
 
 use core::mem::{offset_of, size_of};
 
@@ -8,29 +12,9 @@ use hv_guest_abi::{
     GUEST_RELAY_MEASUREMENT_MAGIC,
 };
 
-/// Initializes relay measurement state in boot info and the hypervisor-owned page when mapped.
+/// Initializes relay measurement state in the guest boot-info tail.
 pub fn init_relay_measurement(boot_info: *const u8) {
-    if boot_info.is_null() {
-        return;
-    }
-    let Some(page) = measurement_page_ptr(boot_info) else {
-        init_extension_tail(boot_info);
-        return;
-    };
-    // SAFETY: measurement page pointer validated via boot-info extension GPA.
-    unsafe {
-        write_extension(
-            page,
-            GuestBootInfoRelayMeasurement {
-                magic: GUEST_RELAY_MEASUREMENT_MAGIC,
-                version: GUEST_RELAY_MEASUREMENT_EXTENSION_VERSION,
-                frames_completed: 0,
-                tsc_start: 0,
-                tsc_end: 0,
-                measurement_page_gpa: page as u64,
-            },
-        );
-    }
+    init_extension_tail(boot_info);
 }
 
 /// Records TSC at the start of the sustained relay benchmark.
@@ -43,38 +27,19 @@ pub fn set_relay_measurement_tsc_end(boot_info: *const u8) {
     write_tsc_field(boot_info, offset_of!(GuestBootInfoRelayMeasurement, tsc_end));
 }
 
-/// Increments the out-partition end-to-end relay frame counter.
+/// Increments the out-partition end-to-end relay frame counter in boot info.
 pub fn record_relay_frame_completed(boot_info: *const u8) {
-    if boot_info.is_null() {
-        return;
-    }
-    let Some(page) = measurement_page_ptr(boot_info) else {
-        record_relay_frame_in_boot_info_tail(boot_info);
-        return;
-    };
-    // SAFETY: measurement page pointer validated via boot-info extension GPA.
-    unsafe {
-        let frames_ptr = page.add(offset_of!(GuestBootInfoRelayMeasurement, frames_completed)) as *mut u64;
-        let current = core::ptr::read_unaligned(frames_ptr);
-        core::ptr::write_unaligned(frames_ptr, current.saturating_add(1));
-    }
+    record_relay_frame_in_boot_info_tail(boot_info);
 }
 
 fn write_tsc_field(boot_info: *const u8, field_offset: usize) {
     if boot_info.is_null() {
         return;
     }
-    let tsc = read_tsc();
-    if let Some(page) = measurement_page_ptr(boot_info) {
-        // SAFETY: field offset lies inside the validated measurement page header.
-        unsafe {
-            core::ptr::write_unaligned(page.add(field_offset) as *mut u64, tsc);
-        }
-        return;
-    }
     let Some(offset) = extension_offset(boot_info) else {
         return;
     };
+    let tsc = read_tsc();
     // SAFETY: field offset lies inside the validated extension tail.
     unsafe {
         core::ptr::write_unaligned(boot_info.add(offset + field_offset) as *mut u64, tsc);
@@ -82,16 +47,20 @@ fn write_tsc_field(boot_info: *const u8, field_offset: usize) {
 }
 
 fn init_extension_tail(boot_info: *const u8) {
-    let Some(offset) = extension_offset(boot_info) else {
+    if boot_info.is_null() {
         return;
-    };
+    }
+    let measurement_page_gpa = read_measurement_page_gpa(boot_info).unwrap_or(0);
     let extension = GuestBootInfoRelayMeasurement {
         magic: GUEST_RELAY_MEASUREMENT_MAGIC,
         version: GUEST_RELAY_MEASUREMENT_EXTENSION_VERSION,
         frames_completed: 0,
         tsc_start: 0,
         tsc_end: 0,
-        measurement_page_gpa: 0,
+        measurement_page_gpa,
+    };
+    let Some(offset) = extension_offset(boot_info) else {
+        return;
     };
     // SAFETY: offset validated against boot info size and extension length.
     unsafe {
@@ -100,6 +69,9 @@ fn init_extension_tail(boot_info: *const u8) {
 }
 
 fn record_relay_frame_in_boot_info_tail(boot_info: *const u8) {
+    if boot_info.is_null() {
+        return;
+    }
     let Some(offset) = extension_offset(boot_info) else {
         return;
     };
@@ -110,14 +82,6 @@ fn record_relay_frame_in_boot_info_tail(boot_info: *const u8) {
         let current = core::ptr::read_unaligned(frames_ptr);
         core::ptr::write_unaligned(frames_ptr, current.saturating_add(1));
     }
-}
-
-fn measurement_page_ptr(boot_info: *const u8) -> Option<*mut u8> {
-    let gpa = read_measurement_page_gpa(boot_info)?;
-    if gpa == 0 {
-        return None;
-    }
-    Some(gpa as *mut u8)
 }
 
 fn read_measurement_page_gpa(boot_info: *const u8) -> Option<u64> {

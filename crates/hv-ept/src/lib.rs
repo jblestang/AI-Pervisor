@@ -13,8 +13,8 @@ mod program;
 mod resolve;
 
 pub use paging::{
-    count_synthetic_entries, ept_maps_guest_page, ept_resolve_guest_page, materialize_ept_paging,
-    patch_ept_table_host_phys,
+    count_synthetic_entries, ept_guest_leaf_entry, ept_maps_guest_page, ept_resolve_guest_page,
+    materialize_ept_paging, patch_ept_table_host_phys,
 };
 
 pub use backend::{FailingEptBackend, MockEptBackend, EptBackend};
@@ -27,8 +27,9 @@ pub use error::{EptError, EptErrorKind};
 pub use init::{ept_init_required, init_ept};
 pub use plan::{plan_ept_init, EptIdentityMapping, EptInitPlan};
 pub use program::{
-    append_ept_guest_mapping, encode_identity_ept_entry, program_ept_tables, EptProgrammedMapping,
-    EptProgrammedTables, ProgrammingEptBackend, EPT_ENTRY_EXECUTE, EPT_ENTRY_MEMORY_TYPE_WB,
-    EPT_ENTRY_READ, EPT_ENTRY_WRITE,
+    append_ept_guest_mapping, append_ept_guest_read_only_mapping, encode_ept_leaf_entry,
+    encode_identity_ept_entry, ept_leaf_entry_guest_writable, program_ept_tables,
+    EptProgrammedMapping, EptProgrammedTables, ProgrammingEptBackend, EPT_ENTRY_EXECUTE,
+    EPT_ENTRY_MEMORY_TYPE_WB, EPT_ENTRY_READ, EPT_ENTRY_WRITE,
 };
 pub use resolve::{resolve_guest_phys_range_to_host, resolve_guest_phys_to_host};

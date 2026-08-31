@@ -780,6 +780,7 @@ mod tests {
                 guest_phys: 0,
                 host_phys: 0,
                 size_bytes: EPT_PAGE_SIZE_BYTES,
+                guest_writable: true,
                 encoded_entry: 1,
             }],
             paging_tables: alloc::vec::Vec::new(),
