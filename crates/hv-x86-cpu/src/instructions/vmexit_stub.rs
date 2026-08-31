@@ -32,8 +32,20 @@ pub const VMEXIT_STUB_BYTES: [u8; 27] = [
     0xC3, // done: ret
 ];
 
+/// Minimal stub that returns to the host on every VM-exit for Rust dispatch.
+pub const VMEXIT_STUB_RET_ONLY_BYTES: [u8; 1] = [0xC3];
+
 /// Installs the VM-exit stub at an identity-mapped host physical address.
 pub fn install_vmexit_stub(host_exit_phys: u64) -> Result<(), CpuSeamError> {
+    install_vmexit_stub_bytes(host_exit_phys, &VMEXIT_STUB_BYTES)
+}
+
+/// Installs the ret-only VM-exit stub used for host-side VM-exit dispatch.
+pub fn install_vmexit_stub_ret_only(host_exit_phys: u64) -> Result<(), CpuSeamError> {
+    install_vmexit_stub_bytes(host_exit_phys, &VMEXIT_STUB_RET_ONLY_BYTES)
+}
+
+fn install_vmexit_stub_bytes(host_exit_phys: u64, bytes: &[u8]) -> Result<(), CpuSeamError> {
     if host_exit_phys == 0 {
         return Err(CpuSeamError::new(
             CpuSeamErrorKind::InvalidInput,
@@ -42,11 +54,7 @@ pub fn install_vmexit_stub(host_exit_phys: u64) -> Result<(), CpuSeamError> {
     }
     // SAFETY: caller guarantees `host_exit_phys` is identity-mapped writable firmware memory.
     unsafe {
-        core::ptr::copy_nonoverlapping(
-            VMEXIT_STUB_BYTES.as_ptr(),
-            host_exit_phys as *mut u8,
-            VMEXIT_STUB_BYTES.len(),
-        );
+        core::ptr::copy_nonoverlapping(bytes.as_ptr(), host_exit_phys as *mut u8, bytes.len());
     }
     Ok(())
 }
@@ -54,6 +62,7 @@ pub fn install_vmexit_stub(host_exit_phys: u64) -> Result<(), CpuSeamError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::instructions::vmexit_stub::install_vmexit_stub_ret_only;
 
     #[test]
     fn vmexit_stub_bytes_end_with_ret() {
@@ -64,6 +73,14 @@ mod tests {
     #[test]
     fn install_vmexit_stub_rejects_zero_address() {
         assert!(install_vmexit_stub(0).is_err());
+    }
+
+    #[test]
+    fn install_vmexit_stub_ret_only_writes_ret_byte() {
+        let mut buffer = [0u8; 8];
+        let host_exit = buffer.as_mut_ptr() as u64;
+        install_vmexit_stub_ret_only(host_exit).expect("install");
+        assert_eq!(buffer.first().copied(), Some(0xC3));
     }
 
     #[test]

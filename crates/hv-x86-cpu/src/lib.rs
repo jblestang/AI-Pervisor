@@ -28,6 +28,8 @@ mod instructions;
 mod resident;
 mod resident_backends;
 mod seams;
+#[cfg(feature = "datapath-guest-relay-measurement")]
+mod vmexit_relay_counter;
 
 pub use backends::{CpuSeamEptBackend, CpuSeamVmxBackend, CpuSeamVtdBackend};
 pub use constants::{
@@ -80,3 +82,10 @@ pub use seams::{
 };
 #[cfg(feature = "datapath-guests")]
 pub use seams::{run_multi_vmx_launch_cpu_seam, MultiVmxLaunchCpuSeamOutcome};
+#[cfg(feature = "datapath-guest-relay-measurement")]
+pub use vmexit_relay_counter::{
+    handle_relay_frame_vmexit, increment_relay_measurement_page_frames,
+    is_measurement_page_write_violation, read_relay_measurement_page_frames,
+    reset_relay_measurement_page_frames, validate_vmexit_relay_frame_count,
+    VmexitRelayCounterConfig, VM_EXIT_REASON_EPT_VIOLATION, VM_EXIT_REASON_HLT,
+};

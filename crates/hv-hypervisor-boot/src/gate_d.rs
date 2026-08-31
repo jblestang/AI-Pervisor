@@ -1465,8 +1465,29 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
             Ok((*vmcs_phys, fields, *host_exit_phys, *vm_id))
         })
         .collect::<Result<alloc::vec::Vec<_>, BootCheckError>>()?;
-    let execution_seam =
-        run_datapath_guest_execution_cpu_seam(&seam_inputs).map_err(map_cpu_seam_error)?;
+    #[cfg(feature = "datapath-guest-relay-measurement")]
+    let relay_counter = {
+        use hv_datapath::plan_relay_measurement_page_gpa;
+        use hv_x86_cpu::{VmexitRelayCounterConfig, GUEST_RELAY_MEASUREMENT_VM_ID};
+
+        let measurement_page_host_phys = guests
+            .partition_launches
+            .iter()
+            .find(|record| record.vm_id == GUEST_RELAY_MEASUREMENT_VM_ID)
+            .and_then(|record| record.relay_measurement_page_host_phys);
+        let measurement_page_gpa = plan_relay_measurement_page_gpa(layout)
+            .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
+        measurement_page_host_phys.map(|host_phys| VmexitRelayCounterConfig {
+            measurement_page_host_phys: host_phys,
+            measurement_page_gpa,
+        })
+    };
+    let execution_seam = run_datapath_guest_execution_cpu_seam(
+        &seam_inputs,
+        #[cfg(feature = "datapath-guest-relay-measurement")]
+        relay_counter,
+    )
+    .map_err(map_cpu_seam_error)?;
 
     let executed = execution_seam.disposition == CpuInstructionDisposition::Executed;
     let skipped_no_hardware =
@@ -1722,6 +1743,24 @@ pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAlloca
                     "relay measurement installed boot info GPA mismatch",
                 ));
             }
+        }
+        #[cfg(feature = "datapath-guest-relay-measurement")]
+        if execution.execution_seam.disposition == CpuInstructionDisposition::Executed
+            && execution.execution_seam.vmexit_relay_frames < expected_relay_frames
+        {
+            return Err(BootCheckError::new(
+                BootCheckErrorKind::Platform,
+                "relay measurement VM-exit frame count below expected benchmark frames",
+            ));
+        }
+        #[cfg(feature = "datapath-guest-relay-measurement")]
+        if execution.execution_seam.disposition == CpuInstructionDisposition::Executed
+            && measurement.vmexit_relay_frames != execution.execution_seam.vmexit_relay_frames
+        {
+            return Err(BootCheckError::new(
+                BootCheckErrorKind::Platform,
+                "relay measurement VM-exit frame count mismatch with execution seam",
+            ));
         }
         #[cfg(feature = "datapath-guest-relay-measurement")]
         if execution.execution_seam.disposition == CpuInstructionDisposition::Executed

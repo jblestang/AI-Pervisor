@@ -118,6 +118,90 @@ pub fn vmwrite(field: u32, value: u64) -> Result<(), CpuSeamError> {
     Ok(())
 }
 
+pub fn vmread(field: u32) -> Result<u64, CpuSeamError> {
+    let mut value: u64;
+    let mut cf: u8;
+    let mut zf: u8;
+    // SAFETY: VMREAD is defined when executing in VMX root operation with a valid VMCS.
+    unsafe {
+        core::arch::asm!(
+            "vmread {value}, {field}",
+            "setc {cf}",
+            "setz {zf}",
+            field = in(reg) u64::from(field),
+            value = out(reg) value,
+            cf = out(reg_byte) cf,
+            zf = out(reg_byte) zf,
+            options(nostack),
+        );
+    }
+    if cf != 0 || zf != 0 {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::ExecutionFailed,
+            "VMREAD failed (CF/ZF set)",
+        ));
+    }
+    Ok(value)
+}
+
+/// VMLAUNCH that returns to the caller on VM-exit via the installed HOST_RIP stub.
+pub fn vmlaunch_to_host() -> Result<(), CpuSeamError> {
+    let mut cf: u8;
+    let mut zf: u8;
+    // SAFETY: HOST_RIP points at the installed exit stub; stub `ret` resumes at the host label.
+    unsafe {
+        core::arch::asm!(
+            "call 2f",
+            "2:",
+            "pop rax",
+            "push rax",
+            "vmlaunch",
+            "add rsp, 8",
+            "setc {cf}",
+            "setz {zf}",
+            cf = out(reg_byte) cf,
+            zf = out(reg_byte) zf,
+            options(nostack),
+        );
+    }
+    if cf != 0 || zf != 0 {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::ExecutionFailed,
+            "VMLAUNCH failed (CF/ZF set)",
+        ));
+    }
+    Ok(())
+}
+
+/// VMRESUME that returns to the caller on VM-exit via the installed HOST_RIP stub.
+pub fn vmresume_to_host() -> Result<(), CpuSeamError> {
+    let mut cf: u8;
+    let mut zf: u8;
+    // SAFETY: HOST_RIP points at the installed exit stub; stub `ret` resumes at the host label.
+    unsafe {
+        core::arch::asm!(
+            "call 2f",
+            "2:",
+            "pop rax",
+            "push rax",
+            "vmresume",
+            "add rsp, 8",
+            "setc {cf}",
+            "setz {zf}",
+            cf = out(reg_byte) cf,
+            zf = out(reg_byte) zf,
+            options(nostack),
+        );
+    }
+    if cf != 0 || zf != 0 {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::ExecutionFailed,
+            "VMRESUME failed (CF/ZF set)",
+        ));
+    }
+    Ok(())
+}
+
 pub fn vmwrite_ept_pointer(value: u64) -> Result<(), CpuSeamError> {
     vmwrite(VMCS_EPT_POINTER_FIELD, value)
 }

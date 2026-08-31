@@ -1,8 +1,7 @@
 //! Relay measurement extension in guest boot info (ABI v2).
 //!
-//! Guests record frame counters in the boot-info tail. The hypervisor publishes
-//! authoritative frame counts and host-derived TSC brackets to the read-only
-//! measurement page after execution.
+//! Guests signal completed frames via writes to the read-only measurement page GPA,
+//! which trap as EPT violations so the hypervisor increments authoritative counters.
 
 use core::mem::{offset_of, size_of};
 
@@ -17,9 +16,9 @@ pub fn init_relay_measurement(boot_info: *const u8) {
     init_extension_tail(boot_info);
 }
 
-/// Increments the out-partition end-to-end relay frame counter in boot info.
+/// Signals one completed relay frame; the hypervisor counts the EPT violation.
 pub fn record_relay_frame_completed(boot_info: *const u8) {
-    record_relay_frame_in_boot_info_tail(boot_info);
+    signal_relay_frame_via_measurement_page_write(boot_info);
 }
 
 fn init_extension_tail(boot_info: *const u8) {
@@ -44,19 +43,18 @@ fn init_extension_tail(boot_info: *const u8) {
     }
 }
 
-fn record_relay_frame_in_boot_info_tail(boot_info: *const u8) {
+fn signal_relay_frame_via_measurement_page_write(boot_info: *const u8) {
     if boot_info.is_null() {
         return;
     }
-    let Some(offset) = extension_offset(boot_info) else {
+    let Some(measurement_page_gpa) = read_measurement_page_gpa(boot_info) else {
         return;
     };
-    // SAFETY: offset validated against boot info size and extension length.
+    let frames_offset = offset_of!(GuestBootInfoRelayMeasurement, frames_completed) as u64;
+    let signal_address = measurement_page_gpa.saturating_add(frames_offset) as *mut u64;
+    // SAFETY: write to read-only measurement page GPA traps to the hypervisor VM-exit handler.
     unsafe {
-        let frames_ptr = boot_info.add(offset + offset_of!(GuestBootInfoRelayMeasurement, frames_completed))
-            as *mut u64;
-        let current = core::ptr::read_unaligned(frames_ptr);
-        core::ptr::write_unaligned(frames_ptr, current.saturating_add(1));
+        core::ptr::write_volatile(signal_address, 0);
     }
 }
 
