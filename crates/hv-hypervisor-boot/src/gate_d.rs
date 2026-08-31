@@ -1725,6 +1725,16 @@ pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAlloca
         }
         #[cfg(feature = "datapath-guest-relay-measurement")]
         if execution.execution_seam.disposition == CpuInstructionDisposition::Executed
+            && execution.execution_seam.hypervisor_tsc_end
+                < execution.execution_seam.hypervisor_tsc_start
+        {
+            return Err(BootCheckError::new(
+                BootCheckErrorKind::Platform,
+                "relay measurement hypervisor TSC bracket is inverted",
+            ));
+        }
+        #[cfg(feature = "datapath-guest-relay-measurement")]
+        if execution.execution_seam.disposition == CpuInstructionDisposition::Executed
             && measurement.frames >= expected_relay_frames
             && measurement.elapsed_tsc == 0
         {

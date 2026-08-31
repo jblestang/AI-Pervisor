@@ -337,12 +337,21 @@ fn execute_datapath_guest_vmlaunch_fields_if_enabled(
     launches: &[(u64, &VmcsProgrammedFields, u64, hv_types::VmId)],
 ) -> Result<(CpuInstructionDisposition, u32, u64, u64), CpuSeamError> {
     #[cfg(feature = "datapath-guest-relay-measurement")]
-    let hypervisor_tsc_start = crate::instructions::tsc::read_timestamp_counter().unwrap_or(0);
+    let mut hypervisor_tsc_start = 0u64;
+    #[cfg(feature = "datapath-guest-relay-measurement")]
+    let mut hypervisor_tsc_end = 0u64;
     #[cfg(not(feature = "datapath-guest-relay-measurement"))]
-    let hypervisor_tsc_start = 0;
+    let hypervisor_tsc_start = 0u64;
+    #[cfg(not(feature = "datapath-guest-relay-measurement"))]
+    let hypervisor_tsc_end = 0u64;
     #[cfg(feature = "execute-instructions")]
     {
         if crate::instructions::live_execution_environment_ready() {
+            #[cfg(feature = "datapath-guest-relay-measurement")]
+            {
+                hypervisor_tsc_start =
+                    crate::instructions::tsc::read_timestamp_counter().unwrap_or(0);
+            }
             let mut vmlaunch_attempts = 0u32;
             let mut all_executed = true;
             let mut stub_installed = false;
@@ -388,10 +397,10 @@ fn execute_datapath_guest_vmlaunch_fields_if_enabled(
                 }
             }
             #[cfg(feature = "datapath-guest-relay-measurement")]
-            let hypervisor_tsc_end =
-                crate::instructions::tsc::read_timestamp_counter().unwrap_or(0);
-            #[cfg(not(feature = "datapath-guest-relay-measurement"))]
-            let hypervisor_tsc_end = 0;
+            {
+                hypervisor_tsc_end =
+                    crate::instructions::tsc::read_timestamp_counter().unwrap_or(0);
+            }
             if all_executed && vmlaunch_attempts == launches.len() as u32 {
                 return Ok((
                     CpuInstructionDisposition::Executed,
@@ -413,7 +422,7 @@ fn execute_datapath_guest_vmlaunch_fields_if_enabled(
         CpuInstructionDisposition::SeamValidated,
         0,
         hypervisor_tsc_start,
-        0,
+        hypervisor_tsc_end,
     ))
 }
 

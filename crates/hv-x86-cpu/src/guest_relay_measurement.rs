@@ -9,7 +9,7 @@ use hv_guest_abi::{
 use hv_types::VmId;
 
 use crate::error::{CpuSeamError, CpuSeamErrorKind};
-use crate::instructions::hypervisor_elapsed_tsc;
+use crate::instructions::{hypervisor_elapsed_tsc, validate_hypervisor_tsc_bracket};
 use crate::seams::{CpuInstructionDisposition, DatapathGuestExecutionCpuSeamOutcome};
 
 /// VM id for the reference `out` partition whose counter reflects delivered frames.
@@ -38,7 +38,7 @@ pub struct GuestRelayMeasurementContext {
 pub struct InVmRelayMeasurement {
     /// End-to-end relay frames (conservative cross-check).
     pub frames: u64,
-    /// Elapsed TSC ticks from the guest measurement extension.
+    /// Elapsed TSC ticks from the hypervisor execution bracket.
     pub elapsed_tsc: u64,
     /// Frames derived from the out-partition IPC consumer tail.
     pub ipc_delivered_frames: u64,
@@ -173,6 +173,7 @@ pub fn publish_relay_measurement_page_authoritative(
         context.boot_info_size,
     )?;
     validate_boot_relay_measurement_extension(&boot_extension)?;
+    validate_hypervisor_tsc_bracket(hypervisor_tsc_start, hypervisor_tsc_end)?;
     let ipc_delivered_frames = read_ipc_delivered_frames_from_guest(context)?;
     let frames_completed = ipc_delivered_frames.min(expected_frames);
     let published = GuestBootInfoRelayMeasurement {
@@ -253,10 +254,18 @@ pub fn measure_in_vm_relay_from_context(
         execution_seam.hypervisor_tsc_start,
         execution_seam.hypervisor_tsc_end,
     );
-    if execution_seam.disposition == CpuInstructionDisposition::Executed && elapsed_tsc == 0 {
+    if elapsed_tsc == 0 {
         return Err(CpuSeamError::new(
             CpuSeamErrorKind::InvalidInput,
             "relay measurement requires non-zero hypervisor TSC elapsed time",
+        ));
+    }
+    if host_extension.tsc_start != execution_seam.hypervisor_tsc_start
+        || host_extension.tsc_end != execution_seam.hypervisor_tsc_end
+    {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "relay measurement page TSC bracket mismatch with execution seam",
         ));
     }
     let ipc_delivered_frames = read_ipc_delivered_frames_from_guest(context)?;
