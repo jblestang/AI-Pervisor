@@ -324,6 +324,9 @@ pub struct DatapathGuestThroughputCpuSeamOutcome {
     pub partitions_validated: u32,
     /// Number of completed measurement runs validated.
     pub measurement_runs_validated: u32,
+    /// Whether live sustained guest relay measurement validated under VMX execution.
+    #[cfg(feature = "datapath-guest-relay-live")]
+    pub live_relay_validated: bool,
 }
 
 /// Validates (and optionally executes) live in-VM guest throughput measurement.
@@ -364,6 +367,8 @@ pub fn run_datapath_guest_throughput_cpu_seam(
         vmexit_stub_validated: execution_seam.vmexit_stub_validated,
         partitions_validated: execution_seam.partitions_validated,
         measurement_runs_validated: measurement_runs,
+        #[cfg(feature = "datapath-guest-relay-live")]
+        live_relay_validated: execution_seam.disposition == CpuInstructionDisposition::Executed,
     })
 }
 

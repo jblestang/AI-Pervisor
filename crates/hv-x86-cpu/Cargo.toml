@@ -21,6 +21,7 @@ datapath-runtime = ["datapath-guests", "datapath-live"]
 datapath-guest-live = ["datapath-guests"]
 datapath-guest-execution = ["datapath-guest-live", "datapath-live", "execute-instructions"]
 datapath-guest-throughput = ["datapath-guest-execution", "execute-instructions"]
+datapath-guest-relay-live = ["datapath-guest-throughput"]
 
 [dependencies]
 hv-ept = { path = "../hv-ept" }

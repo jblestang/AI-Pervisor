@@ -29,6 +29,7 @@ datapath-guest-sources = ["hv-hypervisor-efi/datapath-guest-sources"]
 datapath-guest-live = ["hv-hypervisor-efi/datapath-guest-live"]
 datapath-guest-execution = ["hv-hypervisor-efi/datapath-guest-execution"]
 datapath-guest-throughput = ["hv-hypervisor-efi/datapath-guest-throughput"]
+datapath-guest-relay-live = ["hv-hypervisor-efi/datapath-guest-relay-live"]
 
 [profile.dev]
 panic = "abort"

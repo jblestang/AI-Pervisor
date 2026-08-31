@@ -47,6 +47,6 @@ Each critical requirement declares its validation level using these categories:
 | Guest boot-info install + VMCS RDI | UNIT + REVIEW (Phase 24: colocated boot-info install + `GUEST_RDI` patch) |
 | Host live datapath benchmark | PERFORMANCE (Phase 23: `cargo xtask datapath-live-benchmark` wall-clock after `build-guests`) |
 | Live VMX guest execution seam | UNIT + REVIEW (Phase 25: VMLAUNCH scaffolding for source-tree guests) |
-| In-VM guest throughput benchmark | UNIT + PERFORMANCE (Phase 26: guest runtime relay mock benchmark + throughput seam; REAL_HW opt-in) |
+| In-VM guest throughput benchmark | UNIT + PERFORMANCE (Phase 26–27: guest runtime relay mock + sustained live relay wiring; REAL_HW opt-in) |
 
 QEMU is not sufficient proof for silicon-specific properties.

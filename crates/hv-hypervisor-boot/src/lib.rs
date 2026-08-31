@@ -121,6 +121,14 @@ pub use gate_d::{
     boot_from_transfer_and_init_gate_d_datapath_guest_throughput_from_snapshots,
     GateDDatapathGuestThroughputResult,
 };
+#[cfg(feature = "datapath-guest-relay-live")]
+pub use gate_d::{
+    boot_from_transfer_and_init_gate_d_datapath_guest_relay_live,
+    boot_from_transfer_and_init_gate_d_datapath_guest_relay_live_from_snapshots,
+    GateDDatapathGuestRelayLiveResult,
+};
+#[cfg(feature = "vmx-launch")]
+pub use hv_guest_boot::GUEST_DATAPATH_RELAY_BENCHMARK_COMPLETE_MARKER;
 pub use snapshot::{
     layout_snapshot_from_platform_ir, platform_requirements_from_snapshot,
     requirements_snapshot_from_platform, static_platform_ir_from_layout_snapshot,

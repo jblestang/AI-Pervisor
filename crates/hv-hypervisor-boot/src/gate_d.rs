@@ -1329,6 +1329,9 @@ pub struct GateDDatapathGuestThroughputResult {
     pub throughput: hv_datapath::GuestThroughputBenchmarkResult,
     /// Live guest throughput CPU seam outcome.
     pub throughput_seam: hv_x86_cpu::DatapathGuestThroughputCpuSeamOutcome,
+    /// Sustained guest relay frames validated on the host runtime path.
+    #[cfg(feature = "datapath-guest-relay-live")]
+    pub sustained_relay_frames: u64,
 }
 
 /// Runs transfer boot checks and Gate D guest throughput init using embedded snapshots.
@@ -1381,9 +1384,10 @@ pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAlloca
     allocator: &mut A,
 ) -> Result<GateDDatapathGuestThroughputResult, BootCheckError> {
     use hv_datapath::{
-        apply_guest_throughput_disposition, guest_throughput_disposition_for_seam,
         run_mock_guest_throughput_benchmark, DatapathBenchmarkConfig, GuestThroughputDisposition,
     };
+    #[cfg(not(feature = "datapath-guest-relay-live"))]
+    use hv_datapath::{apply_guest_throughput_disposition, guest_throughput_disposition_for_seam};
     use hv_x86_cpu::{run_datapath_guest_throughput_cpu_seam, CpuInstructionDisposition};
 
     let execution = init_gate_d_datapath_guest_execution_from_validated(
@@ -1433,20 +1437,76 @@ pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAlloca
 
     let skipped_no_hardware =
         throughput_seam.disposition == CpuInstructionDisposition::SkippedNoHardware;
-    let live_measurement_completed = false;
-    let throughput_disposition =
-        guest_throughput_disposition_for_seam(live_measurement_completed, skipped_no_hardware);
-    throughput = apply_guest_throughput_disposition(throughput, throughput_disposition);
-    if throughput.disposition == GuestThroughputDisposition::Executed {
-        return Err(BootCheckError::new(
-            BootCheckErrorKind::Platform,
-            "guest throughput Executed requires live in-VM measurement stats",
-        ));
+
+    #[cfg(feature = "datapath-guest-relay-live")]
+    let sustained_relay_frames = {
+        use hv_datapath::{
+            guest_throughput_result_with_live_relay, validate_sustained_host_relay_benchmark,
+            GUEST_RELAY_BENCHMARK_FRAMES,
+        };
+
+        let relay_frames = validate_sustained_host_relay_benchmark(
+            layout,
+            GUEST_RELAY_BENCHMARK_FRAMES,
+            &benchmark_config,
+        )
+        .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
+        let guest_execution_executed =
+            execution.execution_seam.disposition == CpuInstructionDisposition::Executed;
+        // In-VM relay frame counts are reported by the execution seam once live measurement exists.
+        let in_vm_relay_frames = 0u64;
+        throughput = guest_throughput_result_with_live_relay(
+            throughput,
+            guest_execution_executed,
+            in_vm_relay_frames,
+            u64::from(GUEST_RELAY_BENCHMARK_FRAMES),
+            &benchmark_config,
+            skipped_no_hardware,
+        )
+        .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
+        if throughput_seam.live_relay_validated != guest_execution_executed {
+            return Err(BootCheckError::new(
+                BootCheckErrorKind::Platform,
+                "guest relay live seam mismatch with execution outcome",
+            ));
+        }
+        if throughput.disposition == GuestThroughputDisposition::Executed
+            && in_vm_relay_frames < u64::from(GUEST_RELAY_BENCHMARK_FRAMES)
+        {
+            return Err(BootCheckError::new(
+                BootCheckErrorKind::Platform,
+                "guest relay live Executed requires in-VM relay measurement stats",
+            ));
+        }
+        relay_frames
+    };
+
+    #[cfg(not(feature = "datapath-guest-relay-live"))]
+    {
+        let live_measurement_completed = false;
+        let throughput_disposition =
+            guest_throughput_disposition_for_seam(live_measurement_completed, skipped_no_hardware);
+        throughput = apply_guest_throughput_disposition(throughput, throughput_disposition);
+        if throughput.disposition == GuestThroughputDisposition::Executed {
+            return Err(BootCheckError::new(
+                BootCheckErrorKind::Platform,
+                "guest throughput Executed requires live in-VM measurement stats",
+            ));
+        }
+        if (throughput.disposition == GuestThroughputDisposition::Unavailable) != skipped_no_hardware
+        {
+            return Err(BootCheckError::new(
+                BootCheckErrorKind::Platform,
+                "guest throughput disposition mismatch",
+            ));
+        }
     }
+
+    #[cfg(feature = "datapath-guest-relay-live")]
     if (throughput.disposition == GuestThroughputDisposition::Unavailable) != skipped_no_hardware {
         return Err(BootCheckError::new(
             BootCheckErrorKind::Platform,
-            "guest throughput disposition mismatch",
+            "guest relay live disposition mismatch",
         ));
     }
 
@@ -1454,5 +1514,38 @@ pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAlloca
         execution,
         throughput,
         throughput_seam,
+        #[cfg(feature = "datapath-guest-relay-live")]
+        sustained_relay_frames,
     })
+}
+
+/// Result of Gate D datapath guest relay live init (extends guest throughput).
+#[cfg(feature = "datapath-guest-relay-live")]
+pub type GateDDatapathGuestRelayLiveResult = GateDDatapathGuestThroughputResult;
+
+/// Runs transfer boot checks and Gate D guest relay live init using embedded snapshots.
+#[cfg(feature = "datapath-guest-relay-live")]
+pub fn boot_from_transfer_and_init_gate_d_datapath_guest_relay_live_from_snapshots<A: PageAllocator>(
+    transfer: &[u8],
+    requirements: &RequirementsSnapshot,
+    layout: &LayoutSnapshot,
+    allocator: &mut A,
+) -> Result<GateDDatapathGuestRelayLiveResult, BootCheckError> {
+    boot_from_transfer_and_init_gate_d_datapath_guest_throughput_from_snapshots(
+        transfer,
+        requirements,
+        layout,
+        allocator,
+    )
+}
+
+/// Runs transfer boot checks and Gate D guest relay live init.
+#[cfg(feature = "datapath-guest-relay-live")]
+pub fn boot_from_transfer_and_init_gate_d_datapath_guest_relay_live<A: PageAllocator>(
+    transfer: &[u8],
+    snapshot: &RequirementsSnapshot,
+    layout: &StaticPlatformIR,
+    allocator: &mut A,
+) -> Result<GateDDatapathGuestRelayLiveResult, BootCheckError> {
+    boot_from_transfer_and_init_gate_d_datapath_guest_throughput(transfer, snapshot, layout, allocator)
 }

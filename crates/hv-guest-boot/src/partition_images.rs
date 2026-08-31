@@ -12,6 +12,9 @@ pub const GUEST_MID_RUNNING_MARKER: &str = "GUEST: mid partition running";
 pub const GUEST_OUT_RUNNING_MARKER: &str = "GUEST: out partition running";
 /// Serial marker emitted when a datapath-capable guest image runs.
 pub const GUEST_DATAPATH_CAPABLE_MARKER: &str = "GUEST: datapath capable";
+/// Serial marker after sustained in→mid→out relay benchmark completes in guest firmware.
+pub const GUEST_DATAPATH_RELAY_BENCHMARK_COMPLETE_MARKER: &str =
+    "GUEST: datapath relay benchmark complete";
 
 /// Which reference guest ELF image to install for a partition.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
