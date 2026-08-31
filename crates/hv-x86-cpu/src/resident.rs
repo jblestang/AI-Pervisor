@@ -185,11 +185,10 @@ impl PageAllocator for MockPageAllocator {
                 "copy target address must be non-zero",
             ));
         }
-        if !self
-            .allocations
-            .iter()
-            .any(|(phys, size)| *phys == host_phys && *size >= bytes.len())
-        {
+        if !self.allocations.iter().any(|(phys, size)| {
+            let end = phys.saturating_add(*size as u64);
+            host_phys >= *phys && host_phys.saturating_add(bytes.len() as u64) <= end
+        }) {
             return Err(CpuSeamError::new(
                 CpuSeamErrorKind::InvalidInput,
                 "copy target was not allocated by this allocator",

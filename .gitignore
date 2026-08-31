@@ -4,6 +4,8 @@
 /fuzz/target/
 /crates/hv-loader-efi-bin/target/
 /crates/hv-hypervisor-efi-bin/target/
+/guests/target/
+/guests/guest-*/build/
 /fuzz/corpus/
 /fuzz/artifacts/
 *.profraw

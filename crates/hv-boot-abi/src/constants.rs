@@ -72,3 +72,5 @@ pub const GATE_D_BENCHMARK_TARGET_MET_MARKER: &str = "Gate D: benchmark target 2
 pub const GATE_D_DATAPATH_RUNTIME_MARKER: &str = "hypervisor Gate D datapath runtime succeeded";
 /// Serial log marker emitted when a guest-driven frame traverses in→mid→out under VMX.
 pub const GATE_D_GUEST_DATAPATH_FRAME_MARKER: &str = "Gate D: guest datapath frame forwarded in→mid→out";
+/// Gate D guest source-tree ELF install succeeded for all partitions.
+pub const GATE_D_GUEST_SOURCE_ELF_MARKER: &str = "Gate D: guest source ELF installed for all partitions";

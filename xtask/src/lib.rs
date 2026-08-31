@@ -12,6 +12,7 @@ use std::ffi::OsString;
 use std::path::Path;
 use std::process::Command as ProcessCommand;
 
+mod build_guests;
 mod constants;
 mod datapath_benchmark;
 mod live_qemu_smoke;
@@ -27,6 +28,7 @@ use constants::{
     HYPERVISOR_EFI_DATAPATH_FOUNDATION_FEATURE, HYPERVISOR_EFI_DATAPATH_LIVE_FEATURE,
     HYPERVISOR_EFI_DATAPATH_MALICIOUS_FEATURE, HYPERVISOR_EFI_DATAPATH_GUESTS_FEATURE,
     HYPERVISOR_EFI_DATAPATH_BENCHMARK_FEATURE, HYPERVISOR_EFI_DATAPATH_RUNTIME_FEATURE,
+    HYPERVISOR_EFI_DATAPATH_GUEST_SOURCES_FEATURE,
 };
 use hv_config::constants::DEFAULT_CONFIG_OUTPUT_DIR;
 
@@ -334,7 +336,7 @@ fn build_hypervisor_efi_image_live(
         workspace,
         digest_path,
         config_path,
-        &[HYPERVISOR_EFI_REAL_HW_FEATURE, HYPERVISOR_EFI_VMX_LAUNCH_FEATURE, HYPERVISOR_EFI_DATAPATH_FOUNDATION_FEATURE, HYPERVISOR_EFI_DATAPATH_LIVE_FEATURE, HYPERVISOR_EFI_DATAPATH_MALICIOUS_FEATURE, HYPERVISOR_EFI_DATAPATH_GUESTS_FEATURE, HYPERVISOR_EFI_DATAPATH_BENCHMARK_FEATURE, HYPERVISOR_EFI_DATAPATH_RUNTIME_FEATURE],
+        &[HYPERVISOR_EFI_REAL_HW_FEATURE, HYPERVISOR_EFI_VMX_LAUNCH_FEATURE, HYPERVISOR_EFI_DATAPATH_FOUNDATION_FEATURE, HYPERVISOR_EFI_DATAPATH_LIVE_FEATURE, HYPERVISOR_EFI_DATAPATH_MALICIOUS_FEATURE, HYPERVISOR_EFI_DATAPATH_GUESTS_FEATURE, HYPERVISOR_EFI_DATAPATH_BENCHMARK_FEATURE, HYPERVISOR_EFI_DATAPATH_RUNTIME_FEATURE, HYPERVISOR_EFI_DATAPATH_GUEST_SOURCES_FEATURE],
         run_command,
     )
 }
@@ -686,6 +688,25 @@ fn spawn_llvm_cov_summary_with(
     ]) {
         return Ok((String::new(), String::new(), false));
     }
+    if build_guests::run_build_guests() != 0 {
+        return Ok((String::new(), String::new(), false));
+    }
+    if !pass_runner(&[
+        "-p",
+        "hv-hypervisor-boot",
+        "--features",
+        "datapath-guest-sources",
+    ]) {
+        return Ok((String::new(), String::new(), false));
+    }
+    if !pass_runner(&[
+        "-p",
+        "hv-hypervisor-efi",
+        "--features",
+        "datapath-guest-sources",
+    ]) {
+        return Ok((String::new(), String::new(), false));
+    }
     if !pass_runner(&[
         "-p",
         "hv-hypervisor-efi",
@@ -774,6 +795,13 @@ fn dispatch_task_with(task: TaskCommand, runner: fn(&str, &[&str]) -> i32) -> i3
             build,
         } => run_live_qemu_smoke(&config, &boot_chain_dir, timeout_secs, build),
         TaskCommand::DatapathBenchmark { config } => datapath_benchmark::run_datapath_benchmark(&config),
+        TaskCommand::BuildGuests => build_guests::run_build_guests(),
+        TaskCommand::DatapathLiveBenchmark { config } => {
+            if build_guests::run_build_guests() != 0 {
+                return 1;
+            }
+            datapath_benchmark::run_datapath_benchmark(&config)
+        }
         TaskCommand::ConfigValidate { path } => run_config_validate(&path),
         TaskCommand::ConfigGenerate { path, output } => run_config_generate(&path, &output),
     }
@@ -881,6 +909,14 @@ enum TaskCommandCli {
         #[arg(long, default_value = DEFAULT_EFI_CONFIG_PATH)]
         config: String,
     },
+    /// Build real datapath guest ELFs from `guests/` source trees.
+    BuildGuests,
+    /// Build guests then run the host wall-clock datapath benchmark.
+    DatapathLiveBenchmark {
+        /// Path to YAML configuration used to plan the reference datapath.
+        #[arg(long, default_value = DEFAULT_EFI_CONFIG_PATH)]
+        config: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -940,6 +976,10 @@ pub(crate) fn map_cli_command(command: TaskCommandCli) -> TaskCommand {
             build: !no_build,
         },
         TaskCommandCli::DatapathBenchmark { config } => TaskCommand::DatapathBenchmark { config },
+        TaskCommandCli::BuildGuests => TaskCommand::BuildGuests,
+        TaskCommandCli::DatapathLiveBenchmark { config } => {
+            TaskCommand::DatapathLiveBenchmark { config }
+        }
         TaskCommandCli::Config { action } => match action {
             ConfigActionCli::Validate { path } => TaskCommand::ConfigValidate { path },
             ConfigActionCli::Generate { path, output } => {
@@ -1028,6 +1068,13 @@ pub enum TaskCommand {
     },
     /// Run the host datapath throughput benchmark per docs/benchmark.md.
     DatapathBenchmark {
+        /// Path to YAML configuration used to plan the reference datapath.
+        config: String,
+    },
+    /// Build real datapath guest ELFs from `guests/` source trees.
+    BuildGuests,
+    /// Build guests then run the host wall-clock datapath benchmark.
+    DatapathLiveBenchmark {
         /// Path to YAML configuration used to plan the reference datapath.
         config: String,
     },

@@ -43,5 +43,7 @@ Each critical requirement declares its validation level using these categories:
 | Guest ELF install + multi-partition launch | UNIT + REVIEW (Phase 20: reference ELF64 stubs + validate-only VMLAUNCH seams) |
 | Datapath throughput benchmark | UNIT + PERFORMANCE (Phase 21: mock + host wall-clock benchmark per `docs/benchmark.md`) |
 | Guest datapath runtime under VMX | UNIT + REVIEW (Phase 22: guest-role IPC/e1000 hops + multi-partition VM-exit seam validation) |
+| Real guest source-tree ELFs | UNIT + REVIEW (Phase 23: `guests/` freestanding binaries + Gate D source ELF install) |
+| Host live datapath benchmark | PERFORMANCE (Phase 23: `cargo xtask datapath-live-benchmark` wall-clock after `build-guests`) |
 
 QEMU is not sufficient proof for silicon-specific properties.

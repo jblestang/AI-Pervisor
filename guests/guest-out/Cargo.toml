@@ -1,0 +1,19 @@
+[package]
+name = "guest-out"
+description = "OUT partition datapath guest"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "guest-out"
+path = "src/main.rs"
+
+[dependencies]
+guest-common = { workspace = true }
+
+[lints.rust]
+unsafe_code = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }

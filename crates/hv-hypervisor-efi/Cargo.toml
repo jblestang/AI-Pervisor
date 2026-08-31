@@ -20,6 +20,7 @@ datapath-malicious = ["datapath-live", "hv-hypervisor-boot/datapath-malicious"]
 datapath-guests = ["datapath-malicious", "hv-hypervisor-boot/datapath-guests"]
 datapath-benchmark = ["datapath-guests", "hv-hypervisor-boot/datapath-benchmark"]
 datapath-runtime = ["datapath-benchmark", "hv-hypervisor-boot/datapath-runtime"]
+datapath-guest-sources = ["datapath-runtime", "hv-hypervisor-boot/datapath-guest-sources"]
 
 [dependencies]
 hv-boot-abi = { path = "../hv-boot-abi" }
@@ -33,7 +34,7 @@ uefi = { version = "0.31", optional = true }
 hv-config-model = { workspace = true }
 hv-datapath = { workspace = true }
 hv-hypervisor = { workspace = true }
-hv-hypervisor-boot = { workspace = true, features = ["real-hw-execution", "vmx-launch", "datapath-foundation", "datapath-live", "datapath-malicious", "datapath-guests", "datapath-benchmark", "datapath-runtime"] }
+hv-hypervisor-boot = { workspace = true, features = ["real-hw-execution", "vmx-launch", "datapath-foundation", "datapath-live", "datapath-malicious", "datapath-guests", "datapath-benchmark", "datapath-runtime", "datapath-guest-sources"] }
 hv-loader = { workspace = true }
 hv-observation-types = { workspace = true }
 hv-platform-model = { workspace = true }
@@ -73,6 +74,11 @@ required-features = ["datapath-benchmark"]
 name = "datapath_runtime"
 path = "tests/datapath_runtime.rs"
 required-features = ["datapath-runtime"]
+
+[[test]]
+name = "datapath_guest_sources"
+path = "tests/datapath_guest_sources.rs"
+required-features = ["datapath-guest-sources"]
 
 [[test]]
 name = "real_hw"

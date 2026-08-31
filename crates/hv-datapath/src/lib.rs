@@ -31,6 +31,7 @@ pub use compromised::{
 };
 pub use constants::{
     E1000_MMIO_GUEST_PHYS_BASE, E1000_MMIO_GUEST_PHYS_STRIDE, E1000_MMIO_SIZE_BYTES,
+    REFERENCE_IPC_CHAN_A_GUEST_PHYS, REFERENCE_IPC_CHAN_B_GUEST_PHYS, REFERENCE_IPC_SHARED_BYTES,
 };
 pub use e1000::{
     handle_e1000_mmio_read, handle_e1000_mmio_write, E1000MmioState, E1000_REG_RDH, E1000_REG_RDT,

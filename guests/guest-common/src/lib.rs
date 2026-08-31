@@ -1,0 +1,86 @@
+//! Shared datapath guest runtime for reference in/mid/out partitions.
+
+#![no_std]
+#![allow(unsafe_code)]
+
+mod boot;
+mod e1000;
+mod ipc;
+mod layout;
+mod serial;
+
+pub use layout::Role;
+
+/// Official synthetic frame payload for reference datapath smoke.
+pub const SYNTHETIC_FRAME_PAYLOAD: &[u8] = b"HVDP18FR";
+
+/// Serial marker for IN partition guests.
+pub const GUEST_IN_RUNNING_MARKER: &str = "GUEST: in partition running";
+/// Serial marker for MID partition guests.
+pub const GUEST_MID_RUNNING_MARKER: &str = "GUEST: mid partition running";
+/// Serial marker for OUT partition guests.
+pub const GUEST_OUT_RUNNING_MARKER: &str = "GUEST: out partition running";
+/// Serial marker for datapath-capable guests.
+pub const GUEST_DATAPATH_CAPABLE_MARKER: &str = "GUEST: datapath capable";
+
+/// Runs one partition role using boot info when valid, otherwise reference layout.
+pub fn run(role: Role, boot_info: *const u8) -> ! {
+    let layout = boot::resolve_layout_for_role(role, boot_info);
+    serial::write_line(role.running_marker());
+    serial::write_line(GUEST_DATAPATH_CAPABLE_MARKER);
+
+    match role {
+        Role::In => run_in(&layout),
+        Role::Mid => run_mid(&layout),
+        Role::Out => run_out(&layout),
+    }
+
+    serial::write_byte(b'\n');
+    halt();
+}
+
+fn run_in(layout: &layout::ResolvedLayout) {
+    if let Some(mmio) = layout.e1000_mmio {
+        e1000::tx_doorbell(mmio);
+    }
+    if let Some(queue) = layout.ipc_producer {
+        ipc::enqueue(queue, SYNTHETIC_FRAME_PAYLOAD);
+    }
+}
+
+fn run_mid(layout: &layout::ResolvedLayout) {
+    if let (Some(consumer), Some(producer)) = (layout.ipc_consumer, layout.ipc_producer) {
+        let mut buffer = [0u8; layout::REFERENCE_SLOT_SIZE as usize];
+        if let Some(len) = ipc::dequeue(consumer, &mut buffer) {
+            if let Some(payload) = buffer.get(0..len) {
+                ipc::enqueue(producer, payload);
+            }
+        }
+    }
+}
+
+fn run_out(layout: &layout::ResolvedLayout) {
+    if let Some(queue) = layout.ipc_consumer {
+        let mut buffer = [0u8; layout::REFERENCE_SLOT_SIZE as usize];
+        if let Some(len) = ipc::dequeue(queue, &mut buffer) {
+            if len == SYNTHETIC_FRAME_PAYLOAD.len() {
+                let matched = buffer
+                    .get(0..len)
+                    .is_some_and(|payload| payload == SYNTHETIC_FRAME_PAYLOAD);
+                if matched {
+                    if let Some(mmio) = layout.e1000_mmio {
+                        e1000::rx_advance(mmio);
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn halt() -> ! {
+    loop {
+        unsafe {
+            core::arch::asm!("hlt", options(nomem, nostack));
+        }
+    }
+}
