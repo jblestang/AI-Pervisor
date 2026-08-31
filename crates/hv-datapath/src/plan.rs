@@ -266,4 +266,30 @@ mod tests {
             .expect("out consumer");
         assert_eq!(out_consumer.guest_phys.raw(), REFERENCE_IPC_CHAN_B_GUEST_PHYS);
     }
+
+    #[test]
+    fn relay_measurement_page_gpa_does_not_overlap_e1000_mmio() {
+        use crate::constants::{
+            E1000_MMIO_GUEST_PHYS_BASE, E1000_MMIO_GUEST_PHYS_STRIDE, E1000_MMIO_SIZE_BYTES,
+            RELAY_MEASUREMENT_PAGE_BYTES, RELAY_MEASUREMENT_PAGE_GUEST_PHYS,
+        };
+        use hv_types::VmId;
+
+        let measurement_end = RELAY_MEASUREMENT_PAGE_GUEST_PHYS
+            .checked_add(RELAY_MEASUREMENT_PAGE_BYTES)
+            .expect("measurement end");
+        for vm_id_raw in 0..3u32 {
+            let vm_id = VmId::new(vm_id_raw);
+            let mmio_base = E1000_MMIO_GUEST_PHYS_BASE
+                .checked_add(u64::from(vm_id.raw()) * E1000_MMIO_GUEST_PHYS_STRIDE)
+                .expect("mmio base");
+            let mmio_end = mmio_base
+                .checked_add(E1000_MMIO_SIZE_BYTES)
+                .expect("mmio end");
+            assert!(
+                measurement_end <= mmio_base || RELAY_MEASUREMENT_PAGE_GUEST_PHYS >= mmio_end,
+                "measurement page overlaps e1000 mmio for vm {vm_id:?}"
+            );
+        }
+    }
 }

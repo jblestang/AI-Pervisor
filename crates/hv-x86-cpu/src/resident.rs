@@ -72,7 +72,9 @@ pub fn install_ept_tables<A: PageAllocator>(
         allocator.copy_to_pages(phys, table)?;
         nested_phys.push(phys);
     }
-    patch_ept_table_host_phys(&mut prepared, &nested_phys);
+    patch_ept_table_host_phys(&mut prepared, &nested_phys).map_err(|err| {
+        CpuSeamError::new(CpuSeamErrorKind::InvalidInput, err.message)
+    })?;
     let root_table_phys =
         allocator.allocate_pages(prepared.root_table.len(), VMXON_REGION_ALIGNMENT_BYTES)?;
     allocator.copy_to_pages(root_table_phys, &prepared.root_table)?;
@@ -384,6 +386,32 @@ mod tests {
         let mut allocator = MockPageAllocator::new(0x0000_0000_0200_0000);
         let installed = install_ept_tables(&mut allocator, &tables).expect("install");
         assert_ne!(installed.root_table_phys, planner_phys);
+        assert_eq!(hv_ept::count_synthetic_entries(&installed), 0);
+    }
+
+    #[test]
+    fn install_ept_tables_resolves_measurement_page_mapping() {
+        use hv_datapath::RELAY_MEASUREMENT_PAGE_GUEST_PHYS;
+        use hv_ept::{append_ept_guest_mapping, resolve_guest_phys_to_host, EPT_PAGE_SIZE_BYTES};
+
+        let yaml = include_str!("../../../configs/qemu.yaml");
+        let compiled = compile_config_from_str(yaml).expect("compile");
+        let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
+        let vmx_plan = plan_vmx_init(&layout.hypervisor_reserve).expect("vmx");
+        let plan = plan_ept_init(&layout, &vmx_plan).expect("ept");
+        let mut tables = program_ept_tables(&plan).expect("program");
+        append_ept_guest_mapping(
+            &mut tables,
+            RELAY_MEASUREMENT_PAGE_GUEST_PHYS,
+            0x7000,
+            EPT_PAGE_SIZE_BYTES,
+        )
+        .expect("append");
+        let mut allocator = MockPageAllocator::new(0x0000_0000_0300_0000);
+        let installed = install_ept_tables(&mut allocator, &tables).expect("install");
+        let host = resolve_guest_phys_to_host(&installed, RELAY_MEASUREMENT_PAGE_GUEST_PHYS)
+            .expect("resolve");
+        assert_eq!(host, 0x7000);
     }
 
     #[test]

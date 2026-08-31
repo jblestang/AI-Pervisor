@@ -67,6 +67,21 @@ pub fn append_ept_guest_mapping(
             "EPT mapping bases must be page aligned",
         ));
     }
+    let guest_end = guest_phys.checked_add(size_bytes).ok_or_else(|| {
+        EptError::new(EptErrorKind::Planning, "EPT mapping guest end overflow")
+    })?;
+    for existing in &tables.mappings {
+        let existing_end = existing
+            .guest_phys
+            .checked_add(existing.size_bytes)
+            .ok_or_else(|| EptError::new(EptErrorKind::Planning, "EPT mapping guest end overflow"))?;
+        if guest_phys < existing_end && existing.guest_phys < guest_end {
+            return Err(EptError::new(
+                EptErrorKind::Planning,
+                "EPT guest mapping overlaps an existing mapping",
+            ));
+        }
+    }
     tables.mappings.push(EptProgrammedMapping {
         guest_phys,
         host_phys,

@@ -19,7 +19,8 @@ pub const E1000_MMIO_GUEST_PHYS_BASE: u64 = 0xFEB0_0000;
 pub const E1000_MMIO_GUEST_PHYS_STRIDE: u64 = 0x1_0000;
 
 /// Guest physical base for the out-partition relay measurement counter page.
-pub const RELAY_MEASUREMENT_PAGE_GUEST_PHYS: u64 = 0xFEB2_0000;
+/// Placed immediately after the out-partition e1000 MMIO BAR (`vm_id` 2).
+pub const RELAY_MEASUREMENT_PAGE_GUEST_PHYS: u64 = 0xFEB4_0000;
 
 /// Relay measurement counter page size in bytes.
 pub const RELAY_MEASUREMENT_PAGE_BYTES: u64 = 4096;
