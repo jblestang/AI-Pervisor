@@ -62,9 +62,9 @@ pub fn run_mock_guest_throughput_benchmark(
         frames_for_duration(config.measurement_secs, config.mock_frames_per_sec);
     let mut run_throughputs = Vec::with_capacity(config.min_runs as usize);
     let mut guest_relay_frames = 0u64;
+    let mut runtime = GuestDatapathRuntime::new(plan_datapath_forward(layout)?);
 
     for _ in 0..config.min_runs {
-        let mut runtime = GuestDatapathRuntime::new(plan_datapath_forward(layout)?);
         for _ in 0..warmup_frames {
             runtime.run(layout)?;
             guest_relay_frames = guest_relay_frames.saturating_add(1);

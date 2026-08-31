@@ -72,20 +72,24 @@ impl<'a> IpcQueueView<'a> {
                 "ipc payload exceeds slot size",
             ));
         }
-        let next = self
+        let occupancy = self
             .header
             .head
-            .checked_add(1)
-            .ok_or_else(|| DatapathError::new(DatapathErrorKind::IpcViolation, "ipc head overflow"))?;
-        if next > self.header.queue_slots {
+            .checked_sub(self.header.tail)
+            .ok_or_else(|| DatapathError::new(DatapathErrorKind::IpcViolation, "ipc head underflow"))?;
+        if occupancy >= self.header.queue_slots {
             return Err(DatapathError::new(
                 DatapathErrorKind::IpcViolation,
                 "ipc queue full",
             ));
         }
-        let slot_index = self.header.head;
+        let slot_index = self.header.head % self.header.queue_slots;
         write_slot(self.bytes, &self.header, slot_index, payload)?;
-        self.header.head = next;
+        self.header.head = self
+            .header
+            .head
+            .checked_add(1)
+            .ok_or_else(|| DatapathError::new(DatapathErrorKind::IpcViolation, "ipc head overflow"))?;
         write_queue_header(self.bytes, &self.header)?;
         Ok(())
     }
@@ -98,7 +102,7 @@ impl<'a> IpcQueueView<'a> {
                 "ipc queue empty",
             ));
         }
-        let slot_index = self.header.tail;
+        let slot_index = self.header.tail % self.header.queue_slots;
         let payload_len = read_slot(self.bytes, &self.header, slot_index, out)?;
         invalidate_slot(self.bytes, &self.header, slot_index)?;
         self.header.tail = self
@@ -276,5 +280,30 @@ mod tests {
         let len = queue.dequeue(&mut out).expect("dequeue");
         assert_eq!(len, 7);
         assert_eq!(out.get(0..len), Some(b"frame-a".as_slice()));
+    }
+
+    #[test]
+    fn enqueue_rejects_when_queue_full_until_consumer_drains() {
+        let mut bytes = vec![0u8; queue_storage_bytes(4, 64).expect("storage")];
+        let mut queue = IpcQueueView::open(&mut bytes, 4, 64).expect("open");
+        for _ in 0..4 {
+            queue.enqueue(b"frame").expect("enqueue");
+        }
+        assert!(queue.enqueue(b"blocked").is_err());
+        let mut out = [0u8; 64];
+        queue.dequeue(&mut out).expect("mid drains one slot");
+        queue.enqueue(b"after-drain").expect("producer resumes after drain");
+    }
+
+    #[test]
+    fn ring_buffer_reuses_slots_after_many_frames() {
+        let mut bytes = vec![0u8; queue_storage_bytes(4, 64).expect("storage")];
+        let mut queue = IpcQueueView::open(&mut bytes, 4, 64).expect("open");
+        let mut out = [0u8; 64];
+        for _ in 0..256 {
+            queue.enqueue(b"frame").expect("enqueue");
+            let len = queue.dequeue(&mut out).expect("dequeue");
+            assert_eq!(len, 5);
+        }
     }
 }

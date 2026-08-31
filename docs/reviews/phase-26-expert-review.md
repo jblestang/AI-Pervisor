@@ -42,6 +42,13 @@ Multi-domain review of Gate D in-VM guest throughput benchmark: mock guest-runti
 - `cargo test -p hv-hypervisor-efi --features datapath-guest-throughput`
 - `cargo clippy -p hv-hypervisor-boot -p hv-hypervisor-efi -p hv-x86-cpu -p hv-datapath --features datapath-guest-throughput -- -D warnings`
 
+## Issues found and fixed
+
+| Issue | Fix |
+|-------|-----|
+| IPC queue treated monotonic head as capacity | Ring-buffer occupancy check (`head - tail >= queue_slots`) and `% queue_slots` slot indexing in `hv-datapath` (aligned with guest-common) |
+| Guest throughput benchmark reset queues per run | Reverted; sustained benchmark reuses one runtime — MID drain keeps producer unblocked |
+
 ## Review status
 
 Phase 26 closes the in-VM throughput scaffolding gap from Phase 25: Gate D runs the guest runtime relay benchmark with the official 200 Mbit/s metric, validates the target in init, and wires a throughput CPU seam for live REAL_HW opt-in. Host/CI tests remain validate-only with mock timing; ring-0 firmware with live execution enabled may reach `GuestThroughputDisposition::Executed`. Sustained in-guest benchmark loops in freestanding guest source remain deferred.

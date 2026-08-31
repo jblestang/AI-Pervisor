@@ -178,10 +178,11 @@ pub fn scan_ipc_queue_integrity(
             "ipc queue tail exceeds head",
         ));
     }
-    if header.head > header.queue_slots {
+    let occupancy = header.head.saturating_sub(header.tail);
+    if occupancy > header.queue_slots {
         return Err(DatapathError::new(
             DatapathErrorKind::IpcViolation,
-            "ipc queue head exceeds capacity",
+            "ipc queue occupancy exceeds capacity",
         ));
     }
     for slot_index in 0..queue_slots {
@@ -190,6 +191,12 @@ pub fn scan_ipc_queue_integrity(
         if valid == 0 {
             continue;
         }
+        if !slot_in_active_ring_window(&header, slot_index) {
+            return Err(DatapathError::new(
+                DatapathErrorKind::IpcViolation,
+                "stale ipc slot marked valid after consumption",
+            ));
+        }
         let payload_len = read_u32(bytes, offset + 4)?;
         if payload_len > header.slot_size_bytes {
             return Err(DatapathError::new(
@@ -197,14 +204,21 @@ pub fn scan_ipc_queue_integrity(
                 "ipc slot payload length invalid",
             ));
         }
-        if slot_index < header.tail {
-            return Err(DatapathError::new(
-                DatapathErrorKind::IpcViolation,
-                "stale ipc slot marked valid after consumption",
-            ));
-        }
     }
     Ok(())
+}
+
+fn slot_in_active_ring_window(header: &IpcQueueHeader, slot_index: u32) -> bool {
+    let occupancy = header.head.saturating_sub(header.tail);
+    if occupancy == 0 {
+        return false;
+    }
+    for k in 0..occupancy {
+        if (header.tail + k) % header.queue_slots == slot_index {
+            return true;
+        }
+    }
+    false
 }
 
 /// Enforces IPC integrity on both forward-plan channels before datapath execution.
@@ -330,5 +344,19 @@ mod tests {
             forged_payload_len: REFERENCE_IPC_SLOT_SIZE_BYTES + 64,
         };
         assert!(crate::forward::is_compromised_action_blocked(&mut plan, action));
+    }
+
+    #[test]
+    fn ring_buffer_queue_passes_integrity_after_many_forwards() {
+        use crate::forward::forward_synthetic_frame;
+
+        let yaml = include_str!("../../../configs/qemu.yaml");
+        let compiled = compile_config_from_str(yaml).expect("compile");
+        let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
+        let mut plan = plan_datapath_forward(&layout).expect("plan");
+        for _ in 0..512 {
+            forward_synthetic_frame(&mut plan).expect("forward");
+        }
+        enforce_forward_integrity(&plan).expect("ring buffer integrity");
     }
 }
