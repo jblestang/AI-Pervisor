@@ -1410,9 +1410,67 @@ pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAlloca
         ));
     }
 
+    #[cfg(feature = "datapath-guest-relay-live")]
+    let expected_relay_frames = {
+        use hv_datapath::GUEST_RELAY_BENCHMARK_FRAMES;
+        u64::from(GUEST_RELAY_BENCHMARK_FRAMES)
+    };
+    #[cfg(not(feature = "datapath-guest-relay-live"))]
+    let expected_relay_frames = 0u64;
+
+    #[cfg(feature = "datapath-guest-relay-measurement")]
+    let in_vm_relay_frames = {
+        use hv_guest_boot::GuestBootInfoView;
+        use hv_x86_cpu::{
+            measure_in_vm_relay_frames_from_boot_infos, GuestBootInfoMeasurementSite,
+        };
+
+        let guests = &execution.live.sources.runtime.benchmark.guests;
+        let partition_boot_infos = &guests.malicious.live.foundation.partition_boot_infos;
+        let mut sites = alloc::vec::Vec::with_capacity(guests.partition_launches.len());
+        for record in &guests.partition_launches {
+            let boot_info_phys = record.boot_info_guest_phys.ok_or_else(|| {
+                BootCheckError::new(
+                    BootCheckErrorKind::Platform,
+                    "relay measurement requires installed guest boot info",
+                )
+            })?;
+            let blob = partition_boot_infos
+                .iter()
+                .find(|(vm_id, _)| *vm_id == record.vm_id)
+                .map(|(_, blob)| blob.as_slice())
+                .ok_or_else(|| {
+                    BootCheckError::new(
+                        BootCheckErrorKind::Platform,
+                        "relay measurement missing boot info blob for partition",
+                    )
+                })?;
+            let view = GuestBootInfoView::parse(blob).map_err(|err| {
+                BootCheckError::new(BootCheckErrorKind::Platform, err.message)
+            })?;
+            sites.push(GuestBootInfoMeasurementSite {
+                vm_id: record.vm_id,
+                host_boot_info_phys: boot_info_phys,
+                boot_info_size: view.header().size,
+            });
+        }
+        measure_in_vm_relay_frames_from_boot_infos(
+            &execution.execution_seam,
+            &sites,
+            expected_relay_frames,
+        )
+        .map_err(map_cpu_seam_error)?
+    };
+    #[cfg(all(feature = "datapath-guest-relay-live", not(feature = "datapath-guest-relay-measurement")))]
+    let in_vm_relay_frames = 0u64;
+    #[cfg(not(feature = "datapath-guest-relay-live"))]
+    let in_vm_relay_frames = 0u64;
+
     let throughput_seam = run_datapath_guest_throughput_cpu_seam(
         &execution.execution_seam,
         throughput.benchmark.runs_completed,
+        in_vm_relay_frames,
+        expected_relay_frames,
     )
     .map_err(map_cpu_seam_error)?;
 
@@ -1453,17 +1511,22 @@ pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAlloca
         .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
         let guest_execution_executed =
             execution.execution_seam.disposition == CpuInstructionDisposition::Executed;
-        // In-VM relay frame counts are reported by the execution seam once live measurement exists.
-        let in_vm_relay_frames = 0u64;
         throughput = guest_throughput_result_with_live_relay(
             throughput,
             guest_execution_executed,
             in_vm_relay_frames,
-            u64::from(GUEST_RELAY_BENCHMARK_FRAMES),
+            expected_relay_frames,
             &benchmark_config,
             skipped_no_hardware,
         )
         .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
+        #[cfg(feature = "datapath-guest-relay-measurement")]
+        if throughput_seam.in_vm_relay_frames != in_vm_relay_frames {
+            return Err(BootCheckError::new(
+                BootCheckErrorKind::Platform,
+                "guest relay measurement seam frame count mismatch",
+            ));
+        }
         if throughput_seam.live_relay_validated != guest_execution_executed {
             return Err(BootCheckError::new(
                 BootCheckErrorKind::Platform,
@@ -1471,7 +1534,7 @@ pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAlloca
             ));
         }
         if throughput.disposition == GuestThroughputDisposition::Executed
-            && in_vm_relay_frames < u64::from(GUEST_RELAY_BENCHMARK_FRAMES)
+            && in_vm_relay_frames < expected_relay_frames
         {
             return Err(BootCheckError::new(
                 BootCheckErrorKind::Platform,

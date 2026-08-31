@@ -327,6 +327,9 @@ pub struct DatapathGuestThroughputCpuSeamOutcome {
     /// Whether live sustained guest relay measurement validated under VMX execution.
     #[cfg(feature = "datapath-guest-relay-live")]
     pub live_relay_validated: bool,
+    /// In-VM relay frames read from guest boot-info counters (Phase 29 measurement).
+    #[cfg(feature = "datapath-guest-relay-measurement")]
+    pub in_vm_relay_frames: u64,
 }
 
 /// Validates (and optionally executes) live in-VM guest throughput measurement.
@@ -334,6 +337,8 @@ pub struct DatapathGuestThroughputCpuSeamOutcome {
 pub fn run_datapath_guest_throughput_cpu_seam(
     execution_seam: &DatapathGuestExecutionCpuSeamOutcome,
     measurement_runs: u32,
+    in_vm_relay_frames: u64,
+    expected_relay_frames: u64,
 ) -> Result<DatapathGuestThroughputCpuSeamOutcome, CpuSeamError> {
     if execution_seam.partitions_validated == 0 {
         return Err(CpuSeamError::new(
@@ -359,8 +364,22 @@ pub fn run_datapath_guest_throughput_cpu_seam(
     {
         CpuInstructionDisposition::SkippedNoHardware
     } else {
-        // Live in-VM relay measurement is deferred; validate measurement plan only.
-        CpuInstructionDisposition::SeamValidated
+        #[cfg(feature = "datapath-guest-relay-measurement")]
+        {
+            if execution_seam.disposition == CpuInstructionDisposition::Executed
+                && expected_relay_frames > 0
+                && in_vm_relay_frames >= expected_relay_frames
+            {
+                CpuInstructionDisposition::Executed
+            } else {
+                CpuInstructionDisposition::SeamValidated
+            }
+        }
+        #[cfg(not(feature = "datapath-guest-relay-measurement"))]
+        {
+            // Live in-VM relay measurement is deferred; validate measurement plan only.
+            CpuInstructionDisposition::SeamValidated
+        }
     };
     Ok(DatapathGuestThroughputCpuSeamOutcome {
         disposition,
@@ -369,6 +388,8 @@ pub fn run_datapath_guest_throughput_cpu_seam(
         measurement_runs_validated: measurement_runs,
         #[cfg(feature = "datapath-guest-relay-live")]
         live_relay_validated: execution_seam.disposition == CpuInstructionDisposition::Executed,
+        #[cfg(feature = "datapath-guest-relay-measurement")]
+        in_vm_relay_frames,
     })
 }
 
@@ -842,7 +863,7 @@ mod tests {
             partitions_validated: 0,
             vmlaunch_attempts: 0,
         };
-        assert!(run_datapath_guest_throughput_cpu_seam(&execution, 1).is_err());
+        assert!(run_datapath_guest_throughput_cpu_seam(&execution, 1, 0, 0).is_err());
     }
 
     #[cfg(feature = "datapath-guest-throughput")]
@@ -854,7 +875,7 @@ mod tests {
             partitions_validated: 1,
             vmlaunch_attempts: 0,
         };
-        assert!(run_datapath_guest_throughput_cpu_seam(&execution, 0).is_err());
+        assert!(run_datapath_guest_throughput_cpu_seam(&execution, 0, 0, 0).is_err());
     }
 
     #[cfg(feature = "datapath-guest-throughput")]
@@ -867,10 +888,30 @@ mod tests {
             vmlaunch_attempts: 0,
         };
         let outcome =
-            run_datapath_guest_throughput_cpu_seam(&execution, 5).expect("guest throughput");
+            run_datapath_guest_throughput_cpu_seam(&execution, 5, 0, 0).expect("guest throughput");
         assert_eq!(outcome.partitions_validated, 3);
         assert_eq!(outcome.measurement_runs_validated, 5);
         assert!(outcome.vmexit_stub_validated);
         assert_ne!(outcome.disposition, CpuInstructionDisposition::Executed);
+    }
+
+    #[cfg(all(feature = "datapath-guest-throughput", feature = "datapath-guest-relay-measurement"))]
+    #[test]
+    fn run_datapath_guest_throughput_cpu_seam_executed_with_in_vm_relay_frames() {
+        use crate::cpuid::{cpuid_ept_available, cpuid_vmx_available};
+
+        if !cpuid_vmx_available() || !cpuid_ept_available() {
+            return;
+        }
+        let execution = DatapathGuestExecutionCpuSeamOutcome {
+            disposition: CpuInstructionDisposition::Executed,
+            vmexit_stub_validated: true,
+            partitions_validated: 3,
+            vmlaunch_attempts: 3,
+        };
+        let outcome = run_datapath_guest_throughput_cpu_seam(&execution, 5, 64, 64)
+            .expect("guest throughput measurement");
+        assert_eq!(outcome.disposition, CpuInstructionDisposition::Executed);
+        assert_eq!(outcome.in_vm_relay_frames, 64);
     }
 }

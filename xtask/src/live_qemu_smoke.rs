@@ -11,16 +11,36 @@ use crate::constants::{
 use crate::{run, run_build_boot_chain_live};
 pub use hv_boot_abi::{
     GATE_D_GUEST_BOOT_INFO_INSTALLED_MARKER, GATE_D_GUEST_SOURCE_ELF_MARKER,
-    GATE_D_GUEST_THROUGHPUT_MARKER, GATE_D_GUEST_THROUGHPUT_TARGET_MET_MARKER,
-    REAL_HW_BOOT_SUCCESS_MARKER, REAL_HW_EPT_EXECUTED_MARKER, REAL_HW_VMLAUNCH_EXECUTED_MARKER,
-    REAL_HW_VMXON_EXECUTED_MARKER,
+    GATE_D_GUEST_THROUGHPUT_EXECUTED_MARKER, GATE_D_GUEST_THROUGHPUT_MARKER,
+    GATE_D_GUEST_THROUGHPUT_TARGET_MET_MARKER, REAL_HW_BOOT_SUCCESS_MARKER,
+    REAL_HW_EPT_EXECUTED_MARKER, REAL_HW_VMLAUNCH_EXECUTED_MARKER, REAL_HW_VMXON_EXECUTED_MARKER,
 };
+pub use hv_guest_boot::GUEST_DATAPATH_RELAY_BENCHMARK_COMPLETE_MARKER;
+
+/// Evaluates serial output for Gate D in-VM guest relay measurement under REAL_HW.
+pub fn evaluate_gate_d_guest_relay_measurement_smoke(log: &str) -> Result<(), String> {
+    evaluate_gate_d_guest_relay_live_smoke(log)?;
+    if !log.contains(GATE_D_GUEST_THROUGHPUT_EXECUTED_MARKER) {
+        return Err(format!(
+            "serial log missing Gate D executed throughput marker: {GATE_D_GUEST_THROUGHPUT_EXECUTED_MARKER}"
+        ));
+    }
+    if !log.contains(GUEST_DATAPATH_RELAY_BENCHMARK_COMPLETE_MARKER) {
+        return Err(format!(
+            "serial log missing guest relay benchmark marker: {GUEST_DATAPATH_RELAY_BENCHMARK_COMPLETE_MARKER}"
+        ));
+    }
+    Ok(())
+}
 
 /// Evaluates OVMF serial output for a successful REAL_HW Gate C boot.
 pub fn evaluate_live_qemu_smoke_serial(log: &str) -> Result<(), String> {
     evaluate_ovmf_chain_load(log)?;
     if log.contains(REAL_HW_BOOT_SUCCESS_MARKER) {
         return Ok(());
+    }
+    if log.contains(GATE_D_GUEST_THROUGHPUT_EXECUTED_MARKER) {
+        return evaluate_gate_d_guest_relay_measurement_smoke(log);
     }
     evaluate_gate_d_guest_relay_live_smoke(log)
 }
@@ -311,6 +331,36 @@ mod tests {
     fn evaluate_live_serial_rejects_missing_ovmf_boot_attempt() {
         let log = format!("{REAL_HW_BOOT_SUCCESS_MARKER}\n");
         assert!(evaluate_live_qemu_smoke_serial(&log).is_err());
+    }
+
+    #[test]
+    fn evaluate_gate_d_guest_relay_measurement_smoke_accepts_executed_markers() {
+        let log = format!(
+            "BdsDxe: starting Boot0001 \"app\"\n\
+             {REAL_HW_VMLAUNCH_EXECUTED_MARKER}\n\
+             {GATE_D_GUEST_SOURCE_ELF_MARKER}\n\
+             {GATE_D_GUEST_BOOT_INFO_INSTALLED_MARKER}\n\
+             {GATE_D_GUEST_THROUGHPUT_TARGET_MET_MARKER}\n\
+             {GATE_D_GUEST_THROUGHPUT_MARKER}\n\
+             {GATE_D_GUEST_THROUGHPUT_EXECUTED_MARKER}\n\
+             {GUEST_DATAPATH_RELAY_BENCHMARK_COMPLETE_MARKER}\n",
+        );
+        assert!(evaluate_gate_d_guest_relay_measurement_smoke(&log).is_ok());
+        assert!(evaluate_live_qemu_smoke_serial(&log).is_ok());
+    }
+
+    #[test]
+    fn evaluate_gate_d_guest_relay_measurement_smoke_rejects_missing_guest_marker() {
+        let log = format!(
+            "BdsDxe: starting Boot0001 \"app\"\n\
+             {REAL_HW_VMXON_EXECUTED_MARKER}\n\
+             {GATE_D_GUEST_SOURCE_ELF_MARKER}\n\
+             {GATE_D_GUEST_BOOT_INFO_INSTALLED_MARKER}\n\
+             {GATE_D_GUEST_THROUGHPUT_TARGET_MET_MARKER}\n\
+             {GATE_D_GUEST_THROUGHPUT_MARKER}\n\
+             {GATE_D_GUEST_THROUGHPUT_EXECUTED_MARKER}\n",
+        );
+        assert!(evaluate_gate_d_guest_relay_measurement_smoke(&log).is_err());
     }
 
     #[test]

@@ -31,6 +31,10 @@ datapath-guest-live = ["dep:hv-guest-boot", "hv-hypervisor-efi/datapath-guest-li
 datapath-guest-execution = ["dep:hv-guest-boot", "hv-hypervisor-efi/datapath-guest-execution"]
 datapath-guest-throughput = ["dep:hv-guest-boot", "hv-hypervisor-efi/datapath-guest-throughput"]
 datapath-guest-relay-live = ["dep:hv-guest-boot", "hv-hypervisor-efi/datapath-guest-relay-live"]
+datapath-guest-relay-measurement = [
+    "datapath-guest-relay-live",
+    "hv-hypervisor-efi/datapath-guest-relay-measurement",
+]
 
 [profile.dev]
 panic = "abort"
