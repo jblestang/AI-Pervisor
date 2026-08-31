@@ -75,6 +75,7 @@ pub use seams::{run_datapath_guest_throughput_cpu_seam, DatapathGuestThroughputC
 pub use guest_relay_measurement::{
     measure_in_vm_relay_frames_from_boot_infos, measure_in_vm_relay_from_context,
     read_ipc_delivered_frames_from_guest, read_relay_frames_completed_from_boot_info_blob,
-    read_relay_measurement_extension_from_guest, GuestBootInfoMeasurementSite,
+    read_relay_measurement_extension_from_guest,
+    read_relay_measurement_extension_from_installed_boot_info, GuestBootInfoMeasurementSite,
     GuestRelayMeasurementContext, InVmRelayMeasurement, GUEST_RELAY_MEASUREMENT_VM_ID,
 };

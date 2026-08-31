@@ -12,7 +12,14 @@ Hypervisor-owned relay measurement counter page (`cursor/phase-33-hypervisor-mea
 | EPT | `append_ept_guest_mapping()` for non-identity GPA→HPA mapping at runtime |
 | Gate D | Out partition: install page, patch boot info GPA, append EPT mapping, record host phys |
 | Guest firmware | Counter/TSC writes target hypervisor-owned page via published GPA |
-| Measurement seam | Authoritative read from `measurement_page_host_phys`; boot-info EPT path is fallback |
+| Measurement seam | Authoritative read from `measurement_page_host_phys`; boot-info EPT path retained for installed-blob validation only |
+
+## Review notes (addressed in Phase 34)
+
+- Shared ABI parser for measurement page header; no duplicate local parsing
+- Require hypervisor page for executed measurement reads
+- Validate patched install blob and post-execution installed boot info GPA
+- Refresh EPT host tables after runtime mapping append
 
 ## Trust model
 

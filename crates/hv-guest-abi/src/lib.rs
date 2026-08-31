@@ -190,6 +190,34 @@ pub fn parse_guest_boot_info_relay_measurement(
     Some(extension)
 }
 
+/// Parses a relay measurement page header sample (first 40 bytes of the counter page).
+pub fn parse_relay_measurement_page_header(
+    bytes: &[u8],
+) -> Option<GuestBootInfoRelayMeasurement> {
+    if bytes.len() < GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES {
+        return None;
+    }
+    let tail = bytes.get(0..GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES)?;
+    let extension = GuestBootInfoRelayMeasurement {
+        magic: read_u32(tail, 0)?,
+        version: read_u32(tail, 4)?,
+        frames_completed: read_u64(tail, 8)?,
+        tsc_start: read_u64(tail, 16)?,
+        tsc_end: read_u64(tail, 24)?,
+        measurement_page_gpa: read_u64(tail, 32)?,
+    };
+    if extension.magic != GUEST_RELAY_MEASUREMENT_MAGIC {
+        return None;
+    }
+    if extension.version == 0 || extension.version > GUEST_RELAY_MEASUREMENT_EXTENSION_VERSION {
+        return None;
+    }
+    if extension.version >= 2 && extension.measurement_page_gpa == 0 {
+        return None;
+    }
+    Some(extension)
+}
+
 fn read_u32(bytes: &[u8], offset: usize) -> Option<u32> {
     let slice = bytes.get(offset..offset + 4)?;
     Some(u32::from_le_bytes([slice[0], slice[1], slice[2], slice[3]]))
@@ -303,5 +331,20 @@ mod tests {
         let extension = parse_guest_boot_info_relay_measurement(&blob).expect("parse");
         assert_eq!(extension.frames_completed, 64);
         assert_eq!(guest_relay_measurement_elapsed_tsc(&extension), 1_000_000);
+    }
+
+    #[test]
+    fn parse_relay_measurement_page_header_requires_v2_gpa() {
+        let mut header = [0u8; 40];
+        header[0..4].copy_from_slice(&GUEST_RELAY_MEASUREMENT_MAGIC.to_le_bytes());
+        header[4..8].copy_from_slice(&2u32.to_le_bytes());
+        header[8..16].copy_from_slice(&8u64.to_le_bytes());
+        header[32..40].copy_from_slice(&0xFEB2_0000u64.to_le_bytes());
+        let extension = parse_relay_measurement_page_header(&header).expect("parse");
+        assert_eq!(extension.measurement_page_gpa, 0xFEB2_0000);
+        assert_eq!(extension.frames_completed, 8);
+
+        header[32..40].copy_from_slice(&0u64.to_le_bytes());
+        assert!(parse_relay_measurement_page_header(&header).is_none());
     }
 }

@@ -3,7 +3,8 @@
 use hv_ept::{resolve_guest_phys_range_to_host, EptProgrammedTables};
 use hv_guest_abi::{
     guest_relay_measurement_elapsed_tsc, parse_guest_boot_info_relay_measurement,
-    GuestBootInfoRelayMeasurement, GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES,
+    parse_relay_measurement_page_header, GuestBootInfoRelayMeasurement,
+    GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES,
 };
 use hv_types::VmId;
 
@@ -72,13 +73,43 @@ impl GuestBootInfoMeasurementSite {
     }
 }
 
+/// Reads the relay measurement extension from an installed guest boot info blob via EPT.
+pub fn read_relay_measurement_extension_from_installed_boot_info(
+    ept_tables: &EptProgrammedTables,
+    boot_info_guest_phys: u64,
+    boot_info_size: u32,
+) -> Result<GuestBootInfoRelayMeasurement, CpuSeamError> {
+    if boot_info_guest_phys == 0 {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "relay measurement requires installed boot info guest address",
+        ));
+    }
+    let bytes = read_guest_bytes_via_ept(
+        ept_tables,
+        boot_info_guest_phys,
+        boot_info_size as usize,
+    )?;
+    parse_guest_boot_info_relay_measurement(&bytes).ok_or_else(|| {
+        CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "installed guest boot info relay measurement extension invalid",
+        )
+    })
+}
+
 /// Reads the relay measurement extension from the hypervisor-owned page or boot info via EPT.
 pub fn read_relay_measurement_extension_from_guest(
     context: &GuestRelayMeasurementContext,
 ) -> Result<GuestBootInfoRelayMeasurement, CpuSeamError> {
     if let Some(host_phys) = context.measurement_page_host_phys {
         let bytes = read_host_bytes(host_phys, GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES)?;
-        return parse_extension_bytes(&bytes);
+        return parse_relay_measurement_page_header(&bytes).ok_or_else(|| {
+            CpuSeamError::new(
+                CpuSeamErrorKind::InvalidInput,
+                "relay measurement page header invalid",
+            )
+        });
     }
     let bytes = read_guest_bytes_via_ept(
         &context.ept_tables,
@@ -136,6 +167,12 @@ pub fn measure_in_vm_relay_from_context(
             ipc_delivered_frames: 0,
             extension_frames: 0,
         });
+    }
+    if context.measurement_page_host_phys.is_none() {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "relay measurement requires hypervisor-owned measurement page",
+        ));
     }
     if context.out_boot_info_guest_phys == 0 {
         return Err(CpuSeamError::new(
@@ -228,38 +265,6 @@ fn read_host_bytes(host_phys: u64, len: usize) -> Result<alloc::vec::Vec<u8>, Cp
         bytes.copy_from_slice(src);
     }
     Ok(bytes)
-}
-
-fn parse_extension_bytes(bytes: &[u8]) -> Result<GuestBootInfoRelayMeasurement, CpuSeamError> {
-    if bytes.len() < GUEST_BOOT_INFO_RELAY_MEASUREMENT_TAIL_BYTES {
-        return Err(CpuSeamError::new(
-            CpuSeamErrorKind::InvalidInput,
-            "relay measurement page sample too short",
-        ));
-    }
-    let extension = GuestBootInfoRelayMeasurement {
-        magic: u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]),
-        version: u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]),
-        frames_completed: u64::from_le_bytes([
-            bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15],
-        ]),
-        tsc_start: u64::from_le_bytes([
-            bytes[16], bytes[17], bytes[18], bytes[19], bytes[20], bytes[21], bytes[22], bytes[23],
-        ]),
-        tsc_end: u64::from_le_bytes([
-            bytes[24], bytes[25], bytes[26], bytes[27], bytes[28], bytes[29], bytes[30], bytes[31],
-        ]),
-        measurement_page_gpa: u64::from_le_bytes([
-            bytes[32], bytes[33], bytes[34], bytes[35], bytes[36], bytes[37], bytes[38], bytes[39],
-        ]),
-    };
-    if extension.magic != hv_guest_abi::GUEST_RELAY_MEASUREMENT_MAGIC {
-        return Err(CpuSeamError::new(
-            CpuSeamErrorKind::InvalidInput,
-            "relay measurement page magic invalid",
-        ));
-    }
-    Ok(extension)
 }
 
 fn map_ept_error(err: hv_ept::EptError) -> CpuSeamError {
