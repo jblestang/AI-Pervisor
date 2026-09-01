@@ -31,6 +31,8 @@ pub struct LiveQemuSmokeOptions {
     pub require_executed: bool,
     /// Fail instead of skipping when KVM/VMX or the OVMF/KVM probe is unavailable.
     pub no_skip: bool,
+    /// Disable host-connected outer QEMU e1000/netdev wiring even when enabled in config.
+    pub no_host_net: bool,
 }
 
 impl LiveQemuSmokeOptions {
@@ -39,6 +41,7 @@ impl LiveQemuSmokeOptions {
         Self {
             require_executed: true,
             no_skip: true,
+            no_host_net: false,
         }
     }
 }
@@ -363,34 +366,48 @@ fn run_live_qemu_smoke_with(
 
     let cpu_arg = format!("{LIVE_QEMU_CPU},kvm=on");
 
-    let status = runner(
-        "timeout",
-        &[
-            &timeout,
-            "qemu-system-x86_64",
-            "-machine",
-            LIVE_QEMU_MACHINE,
-            "-cpu",
-            &cpu_arg,
-            "-smp",
-            SMOKE_GUEST_SMP,
-            "-m",
-            SMOKE_GUEST_MEMORY_MIB,
-            "-display",
-            "none",
-            "-serial",
-            &serial_arg,
-            "-net",
-            "none",
-            "-no-reboot",
-            "-drive",
-            &code_drive,
-            "-drive",
-            &vars_drive,
-            "-drive",
-            &esp_drive,
-        ],
-    );
+    let mut owned_qemu_args: Vec<String> = vec![
+        "-machine".into(),
+        LIVE_QEMU_MACHINE.into(),
+        "-cpu".into(),
+        cpu_arg,
+        "-smp".into(),
+        SMOKE_GUEST_SMP.into(),
+        "-m".into(),
+        SMOKE_GUEST_MEMORY_MIB.into(),
+        "-display".into(),
+        "none".into(),
+        "-serial".into(),
+        serial_arg,
+        "-no-reboot".into(),
+        "-drive".into(),
+        code_drive,
+        "-drive".into(),
+        vars_drive,
+        "-drive".into(),
+        esp_drive,
+    ];
+    if options.no_host_net {
+        owned_qemu_args.push("-net".into());
+        owned_qemu_args.push("none".into());
+    } else if let Ok(plan) = crate::qemu_network::plan_qemu_network_from_config(config_path) {
+        if plan.args.is_empty() {
+            owned_qemu_args.push("-net".into());
+            owned_qemu_args.push("none".into());
+        } else {
+            owned_qemu_args.extend(plan.args);
+        }
+    } else {
+        owned_qemu_args.push("-net".into());
+        owned_qemu_args.push("none".into());
+    }
+
+    let mut timeout_args: Vec<String> = vec![timeout];
+    timeout_args.push("qemu-system-x86_64".into());
+    timeout_args.extend(owned_qemu_args);
+    let runner_args: Vec<&str> = timeout_args.iter().map(String::as_str).collect();
+
+    let status = runner("timeout", &runner_args);
 
     if status != 0 && status != 124 {
         eprintln!("live QEMU smoke boot exited with status {status}");

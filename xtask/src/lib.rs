@@ -17,6 +17,7 @@ mod constants;
 mod datapath_benchmark;
 mod live_qemu_smoke;
 mod ovmf_smoke;
+mod qemu_network;
 
 use clap::{Parser, Subcommand};
 use constants::{
@@ -876,6 +877,7 @@ fn dispatch_task_with(task: TaskCommand, runner: fn(&str, &[&str]) -> i32) -> i3
             build,
             require_executed,
             no_skip,
+            no_host_net,
         } => run_live_qemu_smoke_with_options(
             &config,
             &boot_chain_dir,
@@ -884,6 +886,7 @@ fn dispatch_task_with(task: TaskCommand, runner: fn(&str, &[&str]) -> i32) -> i3
             &live_qemu_smoke::LiveQemuSmokeOptions {
                 require_executed,
                 no_skip,
+                no_host_net,
             },
         ),
         TaskCommand::DatapathBenchmark { config } => {
@@ -1002,6 +1005,9 @@ enum TaskCommandCli {
         /// Fail instead of skipping when KVM/VMX or the OVMF/KVM serial probe is unavailable.
         #[arg(long, default_value_t = false)]
         no_skip: bool,
+        /// Disable host-connected outer QEMU e1000/netdev wiring even when enabled in config.
+        #[arg(long, default_value_t = false)]
+        no_host_net: bool,
     },
     /// Run the host datapath throughput benchmark per docs/benchmark.md.
     DatapathBenchmark {
@@ -1071,6 +1077,7 @@ pub(crate) fn map_cli_command(command: TaskCommandCli) -> TaskCommand {
             no_build,
             require_executed,
             no_skip,
+            no_host_net,
         } => TaskCommand::LiveQemuSmoke {
             config,
             boot_chain_dir,
@@ -1078,6 +1085,7 @@ pub(crate) fn map_cli_command(command: TaskCommandCli) -> TaskCommand {
             build: !no_build,
             require_executed,
             no_skip,
+            no_host_net,
         },
         TaskCommandCli::DatapathBenchmark { config } => TaskCommand::DatapathBenchmark { config },
         TaskCommandCli::BuildGuests => TaskCommand::BuildGuests,
@@ -1173,6 +1181,8 @@ pub enum TaskCommand {
         require_executed: bool,
         /// Fail instead of skipping when KVM/VMX or the OVMF/KVM serial probe is unavailable.
         no_skip: bool,
+        /// Disable host-connected outer QEMU e1000/netdev wiring even when enabled in config.
+        no_host_net: bool,
     },
     /// Run the host datapath throughput benchmark per docs/benchmark.md.
     DatapathBenchmark {
@@ -1548,6 +1558,7 @@ mod tests {
             build: false,
             require_executed: false,
             no_skip: false,
+            no_host_net: false,
         });
         assert_eq!(
             smoke_status,
@@ -1702,6 +1713,7 @@ mod tests {
                 build: true,
                 require_executed: false,
                 no_skip: false,
+                no_host_net: false,
             }
         );
         assert_eq!(
@@ -1719,6 +1731,7 @@ mod tests {
                 build: true,
                 require_executed: true,
                 no_skip: true,
+                no_host_net: false,
             }
         );
     }

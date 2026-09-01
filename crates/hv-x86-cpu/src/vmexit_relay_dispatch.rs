@@ -110,7 +110,13 @@ pub fn handle_relay_dispatch_vmexit(
         }
     }
     if let Some(mmio) = config.e1000_mmio {
-        if handle_e1000_mmio_vmexit(exit_reason, guest_phys, exit_qualification, &mmio)? {
+        if handle_e1000_mmio_vmexit(
+            exit_reason,
+            guest_phys,
+            exit_qualification,
+            guest_rax,
+            &mmio,
+        )? {
             outcome.mmio_relay_events = 1;
             return Ok(outcome);
         }

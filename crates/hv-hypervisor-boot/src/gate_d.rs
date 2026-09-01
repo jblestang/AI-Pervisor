@@ -1624,6 +1624,11 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
                     state_host_phys: state_page.host_phys,
                 },
             ));
+            hv_x86_cpu::initialize_e1000_mmio_guest_view(
+                &hv_datapath::E1000MmioState::default(),
+                mmio_gpa,
+            )
+            .map_err(map_cpu_seam_error)?;
         }
         if e1000_by_vm.len() != expected_e1000_devices {
             return Err(BootCheckError::new(
