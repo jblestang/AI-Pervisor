@@ -29,6 +29,8 @@ mod resident;
 mod resident_backends;
 mod seams;
 #[cfg(feature = "datapath-guest-relay-measurement")]
+mod vmexit_ipc_relay;
+#[cfg(feature = "datapath-guest-relay-measurement")]
 mod vmexit_mmio_relay;
 #[cfg(feature = "datapath-guest-relay-measurement")]
 mod vmexit_relay_counter;
@@ -90,6 +92,11 @@ pub use seams::{
 #[cfg(feature = "datapath-guests")]
 pub use seams::{run_multi_vmx_launch_cpu_seam, MultiVmxLaunchCpuSeamOutcome};
 #[cfg(feature = "datapath-guest-relay-measurement")]
+pub use vmexit_ipc_relay::{
+    handle_ipc_vmexit, initialize_ipc_queue_backing, ipc_write_size_from_instruction_len,
+    is_ipc_region_write_violation, VmexitIpcRelayConfig, VMCS_GUEST_RAX,
+};
+#[cfg(feature = "datapath-guest-relay-measurement")]
 pub use vmexit_mmio_relay::{
     handle_e1000_mmio_vmexit, is_e1000_mmio_write_violation, VmexitE1000MmioConfig,
 };
@@ -103,6 +110,6 @@ pub use vmexit_relay_counter::{
 #[cfg(feature = "datapath-guest-relay-measurement")]
 pub use vmexit_relay_dispatch::{
     finalize_measurement_relay_frames, handle_relay_dispatch_vmexit,
-    validate_vmexit_mmio_relay_events, VmexitRelayDispatchConfig, VmexitRelayDispatchOutcome,
-    VmexitRelayDispatchPlan,
+    validate_vmexit_ipc_relay_events, validate_vmexit_mmio_relay_events, VmexitRelayDispatchConfig,
+    VmexitRelayDispatchOutcome, VmexitRelayDispatchPlan,
 };

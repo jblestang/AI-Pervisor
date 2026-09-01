@@ -1467,15 +1467,17 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
         .collect::<Result<alloc::vec::Vec<_>, BootCheckError>>()?;
     #[cfg(feature = "datapath-guest-relay-measurement")]
     let relay_dispatch = {
-        use hv_datapath::{plan_e1000_mmio_guest_phys, plan_relay_measurement_page_gpa};
+        use hv_datapath::{
+            plan_datapath_for_vm_id, plan_e1000_mmio_guest_phys, plan_relay_measurement_page_gpa,
+        };
         use hv_ept::{
             ept_guest_leaf_entry, ept_leaf_entry_guest_writable, ept_maps_guest_page,
             set_ept_mapping_guest_writable,
         };
         use hv_x86_cpu::{
-            install_e1000_mmio_state_page, run_ept_pointer_reload_cpu_seam_batch,
-            VmexitE1000MmioConfig, VmexitRelayCounterConfig, VmexitRelayDispatchPlan,
-            GUEST_RELAY_MEASUREMENT_VM_ID,
+            initialize_ipc_queue_backing, install_e1000_mmio_state_page,
+            run_ept_pointer_reload_cpu_seam_batch, VmexitE1000MmioConfig, VmexitIpcRelayConfig,
+            VmexitRelayCounterConfig, VmexitRelayDispatchPlan, GUEST_RELAY_MEASUREMENT_VM_ID,
         };
 
         let measurement_page_host_phys = guests
@@ -1508,6 +1510,68 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
                     "VM-exit relay dispatch requires programmed EPT tables",
                 )
             })?;
+        let mut ipc_by_vm = alloc::vec::Vec::new();
+        let mut expected_ipc_configs = 0usize;
+        for record in &guests.partition_launches {
+            let partition_plan = plan_datapath_for_vm_id(layout, record.vm_id)
+                .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
+            expected_ipc_configs =
+                expected_ipc_configs.saturating_add(partition_plan.ipc_regions.len());
+            let mut ipc_configs = alloc::vec::Vec::new();
+            for ipc_region in &partition_plan.ipc_regions {
+                let ipc_gpa = ipc_region.guest_phys.raw();
+                let backing = ept_tables
+                    .mappings
+                    .iter()
+                    .find(|mapping| {
+                        ipc_gpa >= mapping.guest_phys
+                            && ipc_gpa < mapping.guest_phys.saturating_add(mapping.size_bytes)
+                    })
+                    .map(|mapping| {
+                        mapping
+                            .host_phys
+                            .saturating_add(ipc_gpa.saturating_sub(mapping.guest_phys))
+                    })
+                    .ok_or_else(|| {
+                        BootCheckError::new(
+                            BootCheckErrorKind::Platform,
+                            "IPC GPA not mapped in EPT hierarchy",
+                        )
+                    })?;
+                set_ept_mapping_guest_writable(ept_tables, ipc_gpa, false).map_err(|err| {
+                    BootCheckError::new(BootCheckErrorKind::Platform, err.message)
+                })?;
+                if !ept_tables.mappings.iter().any(|mapping| {
+                    ipc_gpa >= mapping.guest_phys
+                        && ipc_gpa < mapping.guest_phys.saturating_add(mapping.size_bytes)
+                        && !mapping.guest_writable
+                }) {
+                    return Err(BootCheckError::new(
+                        BootCheckErrorKind::Platform,
+                        "IPC mapping must remain read-only after permission patch",
+                    ));
+                }
+                initialize_ipc_queue_backing(backing).map_err(map_cpu_seam_error)?;
+                ipc_configs.push(VmexitIpcRelayConfig {
+                    ipc_guest_phys: ipc_gpa,
+                    ipc_region_bytes: ipc_region.size,
+                    backing_host_phys: backing,
+                });
+            }
+            if !ipc_configs.is_empty() {
+                ipc_by_vm.push((record.vm_id, ipc_configs));
+            }
+        }
+        let installed_ipc_configs = ipc_by_vm
+            .iter()
+            .map(|(_, configs)| configs.len())
+            .sum::<usize>();
+        if installed_ipc_configs != expected_ipc_configs {
+            return Err(BootCheckError::new(
+                BootCheckErrorKind::Platform,
+                "IPC VM-exit relay dispatch plan missing one or more shared regions",
+            ));
+        }
         let mut e1000_by_vm = alloc::vec::Vec::new();
         let expected_e1000_devices = layout
             .pci_devices
@@ -1567,9 +1631,32 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
                 "e1000 VM-exit relay dispatch plan missing one or more NIC devices",
             ));
         }
-        if !e1000_by_vm.is_empty() {
+        if !e1000_by_vm.is_empty() || !ipc_by_vm.is_empty() {
             *ept_tables = hv_x86_cpu::install_ept_tables(allocator, ept_tables)
                 .map_err(map_cpu_seam_error)?;
+            for (_, ipc_configs) in &ipc_by_vm {
+                for config in ipc_configs {
+                    if !ept_maps_guest_page(ept_tables, config.ipc_guest_phys) {
+                        return Err(BootCheckError::new(
+                            BootCheckErrorKind::Platform,
+                            "IPC GPA not mapped after EPT install",
+                        ));
+                    }
+                    let leaf_entry = ept_guest_leaf_entry(ept_tables, config.ipc_guest_phys)
+                        .ok_or_else(|| {
+                            BootCheckError::new(
+                                BootCheckErrorKind::Platform,
+                                "IPC EPT leaf entry missing after install",
+                            )
+                        })?;
+                    if ept_leaf_entry_guest_writable(leaf_entry) {
+                        return Err(BootCheckError::new(
+                            BootCheckErrorKind::Platform,
+                            "IPC must remain read-only after EPT install",
+                        ));
+                    }
+                }
+            }
             for (_, config) in &e1000_by_vm {
                 if !ept_maps_guest_page(ept_tables, config.mmio_guest_phys) {
                     return Err(BootCheckError::new(
@@ -1603,6 +1690,7 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
                 measurement_page_host_phys: host_phys,
                 measurement_page_gpa,
             },
+            ipc_by_vm,
             e1000_by_vm,
         })
     };
@@ -1627,7 +1715,7 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
     #[cfg(feature = "datapath-guest-relay-measurement")]
     if executed {
         use hv_datapath::GUEST_RELAY_BENCHMARK_FRAMES;
-        use hv_x86_cpu::validate_vmexit_mmio_relay_events;
+        use hv_x86_cpu::{validate_vmexit_ipc_relay_events, validate_vmexit_mmio_relay_events};
 
         if layout
             .pci_devices
@@ -1636,6 +1724,13 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
         {
             validate_vmexit_mmio_relay_events(
                 execution_seam.vmexit_mmio_relay_events,
+                u64::from(GUEST_RELAY_BENCHMARK_FRAMES),
+            )
+            .map_err(map_cpu_seam_error)?;
+        }
+        if !layout.ipc_memory.is_empty() {
+            validate_vmexit_ipc_relay_events(
+                execution_seam.vmexit_ipc_relay_events,
                 u64::from(GUEST_RELAY_BENCHMARK_FRAMES),
             )
             .map_err(map_cpu_seam_error)?;
@@ -1896,10 +1991,15 @@ pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAlloca
         }
         #[cfg(feature = "datapath-guest-relay-measurement")]
         if execution.execution_seam.disposition == CpuInstructionDisposition::Executed {
-            use hv_x86_cpu::validate_vmexit_mmio_relay_events;
+            use hv_x86_cpu::{validate_vmexit_ipc_relay_events, validate_vmexit_mmio_relay_events};
 
             validate_vmexit_mmio_relay_events(
                 execution.execution_seam.vmexit_mmio_relay_events,
+                expected_relay_frames,
+            )
+            .map_err(map_cpu_seam_error)?;
+            validate_vmexit_ipc_relay_events(
+                execution.execution_seam.vmexit_ipc_relay_events,
                 expected_relay_frames,
             )
             .map_err(map_cpu_seam_error)?;
