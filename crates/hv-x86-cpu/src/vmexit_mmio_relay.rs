@@ -97,6 +97,13 @@ fn write_mmio_state(host_phys: u64, state: &E1000MmioState) -> Result<(), CpuSea
     unsafe {
         core::ptr::copy_nonoverlapping(bytes.as_ptr(), host_phys as *mut u8, bytes.len());
     }
+    let read_back = read_mmio_state(host_phys)?;
+    if read_back != *state {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "e1000 MMIO relay state write read-back mismatch",
+        ));
+    }
     Ok(())
 }
 

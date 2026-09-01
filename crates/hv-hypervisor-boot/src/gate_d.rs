@@ -1509,6 +1509,11 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
                 )
             })?;
         let mut e1000_by_vm = alloc::vec::Vec::new();
+        let expected_e1000_devices = layout
+            .pci_devices
+            .iter()
+            .filter(|device| device.kind == "nic_e1000")
+            .count();
         for device in &layout.pci_devices {
             if device.kind != "nic_e1000" {
                 continue;
@@ -1520,6 +1525,16 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
                 install_e1000_mmio_state_page(allocator).map_err(map_cpu_seam_error)?;
             set_ept_mapping_guest_writable(ept_tables, mmio_gpa, false)
                 .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
+            if !ept_tables.mappings.iter().any(|mapping| {
+                mapping.guest_phys == mmio_gpa
+                    && mapping.size_bytes >= hv_datapath::E1000_MMIO_SIZE_BYTES
+                    && !mapping.guest_writable
+            }) {
+                return Err(BootCheckError::new(
+                    BootCheckErrorKind::Platform,
+                    "e1000 MMIO mapping must remain read-only after permission patch",
+                ));
+            }
             if !ept_maps_guest_page(ept_tables, mmio_gpa) {
                 return Err(BootCheckError::new(
                     BootCheckErrorKind::Platform,
@@ -1546,9 +1561,36 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
                 },
             ));
         }
+        if e1000_by_vm.len() != expected_e1000_devices {
+            return Err(BootCheckError::new(
+                BootCheckErrorKind::Platform,
+                "e1000 VM-exit relay dispatch plan missing one or more NIC devices",
+            ));
+        }
         if !e1000_by_vm.is_empty() {
             *ept_tables = hv_x86_cpu::install_ept_tables(allocator, ept_tables)
                 .map_err(map_cpu_seam_error)?;
+            for (_, config) in &e1000_by_vm {
+                if !ept_maps_guest_page(ept_tables, config.mmio_guest_phys) {
+                    return Err(BootCheckError::new(
+                        BootCheckErrorKind::Platform,
+                        "e1000 MMIO GPA not mapped after EPT install",
+                    ));
+                }
+                let leaf_entry = ept_guest_leaf_entry(ept_tables, config.mmio_guest_phys)
+                    .ok_or_else(|| {
+                        BootCheckError::new(
+                            BootCheckErrorKind::Platform,
+                            "e1000 MMIO EPT leaf entry missing after install",
+                        )
+                    })?;
+                if ept_leaf_entry_guest_writable(leaf_entry) {
+                    return Err(BootCheckError::new(
+                        BootCheckErrorKind::Platform,
+                        "e1000 MMIO must remain read-only after EPT install",
+                    ));
+                }
+            }
             let vmcs_phys_list: alloc::vec::Vec<u64> = seam_inputs
                 .iter()
                 .map(|(vmcs_phys, _, _, _)| *vmcs_phys)
@@ -1583,17 +1625,21 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
         ));
     }
     #[cfg(feature = "datapath-guest-relay-measurement")]
-    if executed
-        && layout
+    if executed {
+        use hv_datapath::GUEST_RELAY_BENCHMARK_FRAMES;
+        use hv_x86_cpu::validate_vmexit_mmio_relay_events;
+
+        if layout
             .pci_devices
             .iter()
             .any(|device| device.kind == "nic_e1000")
-        && execution_seam.vmexit_mmio_relay_events == 0
-    {
-        return Err(BootCheckError::new(
-            BootCheckErrorKind::Platform,
-            "guest execution requires non-zero VM-exit MMIO relay events when e1000 devices are present",
-        ));
+        {
+            validate_vmexit_mmio_relay_events(
+                execution_seam.vmexit_mmio_relay_events,
+                u64::from(GUEST_RELAY_BENCHMARK_FRAMES),
+            )
+            .map_err(map_cpu_seam_error)?;
+        }
     }
     if !live.sources.runtime.runtime.guest_frame_forwarded {
         return Err(BootCheckError::new(
@@ -1847,6 +1893,16 @@ pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAlloca
                 BootCheckErrorKind::Platform,
                 "relay measurement VM-exit frame count below expected benchmark frames",
             ));
+        }
+        #[cfg(feature = "datapath-guest-relay-measurement")]
+        if execution.execution_seam.disposition == CpuInstructionDisposition::Executed {
+            use hv_x86_cpu::validate_vmexit_mmio_relay_events;
+
+            validate_vmexit_mmio_relay_events(
+                execution.execution_seam.vmexit_mmio_relay_events,
+                expected_relay_frames,
+            )
+            .map_err(map_cpu_seam_error)?;
         }
         #[cfg(feature = "datapath-guest-relay-measurement")]
         if execution.execution_seam.disposition == CpuInstructionDisposition::Executed
