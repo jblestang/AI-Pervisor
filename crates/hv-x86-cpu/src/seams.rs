@@ -292,14 +292,17 @@ pub struct DatapathGuestExecutionCpuSeamOutcome {
     /// Relay frames counted by the hypervisor on VM-exits during out-partition execution.
     #[cfg(feature = "datapath-guest-relay-measurement")]
     pub vmexit_relay_frames: u64,
+    /// e1000 MMIO writes emulated on VM-exits across all partitions.
+    #[cfg(feature = "datapath-guest-relay-measurement")]
+    pub vmexit_mmio_relay_events: u64,
 }
 
 /// Validates (and optionally executes) live VMX guest code for all source-tree partitions.
 #[cfg(feature = "datapath-guest-execution")]
 pub fn run_datapath_guest_execution_cpu_seam(
     launches: &[(u64, &VmcsProgrammedFields, u64, hv_types::VmId)],
-    #[cfg(feature = "datapath-guest-relay-measurement")] relay_counter: Option<
-        crate::vmexit_relay_counter::VmexitRelayCounterConfig,
+    #[cfg(feature = "datapath-guest-relay-measurement")] relay_dispatch: Option<
+        crate::vmexit_relay_dispatch::VmexitRelayDispatchPlan,
     >,
 ) -> Result<DatapathGuestExecutionCpuSeamOutcome, CpuSeamError> {
     if launches.is_empty() {
@@ -324,12 +327,14 @@ pub fn run_datapath_guest_execution_cpu_seam(
             hypervisor_tsc_end: 0,
             #[cfg(feature = "datapath-guest-relay-measurement")]
             vmexit_relay_frames: 0,
+            #[cfg(feature = "datapath-guest-relay-measurement")]
+            vmexit_mmio_relay_events: 0,
         });
     }
     let batch = execute_datapath_guest_vmlaunch_fields_if_enabled(
         launches,
         #[cfg(feature = "datapath-guest-relay-measurement")]
-        relay_counter,
+        relay_dispatch,
     )?;
     Ok(DatapathGuestExecutionCpuSeamOutcome {
         disposition: batch.disposition,
@@ -342,6 +347,8 @@ pub fn run_datapath_guest_execution_cpu_seam(
         hypervisor_tsc_end: batch.hypervisor_tsc_end,
         #[cfg(feature = "datapath-guest-relay-measurement")]
         vmexit_relay_frames: batch.vmexit_relay_frames,
+        #[cfg(feature = "datapath-guest-relay-measurement")]
+        vmexit_mmio_relay_events: batch.vmexit_mmio_relay_events,
     })
 }
 
@@ -355,13 +362,15 @@ struct GuestVmlaunchBatchOutcome {
     hypervisor_tsc_end: u64,
     #[cfg(feature = "datapath-guest-relay-measurement")]
     vmexit_relay_frames: u64,
+    #[cfg(feature = "datapath-guest-relay-measurement")]
+    vmexit_mmio_relay_events: u64,
 }
 
 #[cfg(feature = "datapath-guest-execution")]
 fn execute_datapath_guest_vmlaunch_fields_if_enabled(
     launches: &[(u64, &VmcsProgrammedFields, u64, hv_types::VmId)],
-    #[cfg(feature = "datapath-guest-relay-measurement")] relay_counter: Option<
-        crate::vmexit_relay_counter::VmexitRelayCounterConfig,
+    #[cfg(feature = "datapath-guest-relay-measurement")] relay_dispatch: Option<
+        crate::vmexit_relay_dispatch::VmexitRelayDispatchPlan,
     >,
 ) -> Result<GuestVmlaunchBatchOutcome, CpuSeamError> {
     #[cfg(feature = "datapath-guest-relay-measurement")]
@@ -370,6 +379,8 @@ fn execute_datapath_guest_vmlaunch_fields_if_enabled(
     let mut hypervisor_tsc_end = 0u64;
     #[cfg(feature = "datapath-guest-relay-measurement")]
     let mut vmexit_relay_frames = 0u64;
+    #[cfg(feature = "datapath-guest-relay-measurement")]
+    let mut vmexit_mmio_relay_events = 0u64;
     #[cfg(not(feature = "datapath-guest-relay-measurement"))]
     let hypervisor_tsc_start = 0u64;
     #[cfg(not(feature = "datapath-guest-relay-measurement"))]
@@ -400,21 +411,20 @@ fn execute_datapath_guest_vmlaunch_fields_if_enabled(
                     Err(err) => return Err(err),
                 }
                 #[cfg(feature = "datapath-guest-relay-measurement")]
-                let launch_relay_config =
-                    if *vm_id == crate::guest_relay_measurement::GUEST_RELAY_MEASUREMENT_VM_ID {
-                        relay_counter
-                    } else {
-                        None
-                    };
+                let launch_dispatch_config = relay_dispatch
+                    .as_ref()
+                    .map(|plan| plan.config_for_vm(*vm_id));
                 #[cfg(feature = "datapath-guest-relay-measurement")]
-                if let Some(config) = launch_relay_config {
-                    crate::vmexit_relay_counter::reset_relay_measurement_page_frames(
-                        config.measurement_page_host_phys,
-                    )?;
+                if let Some(config) = launch_dispatch_config {
+                    if let Some(measurement) = config.measurement {
+                        crate::vmexit_relay_counter::reset_relay_measurement_page_frames(
+                            measurement.measurement_page_host_phys,
+                        )?;
+                    }
                 }
                 if !stub_installed {
                     #[cfg(feature = "datapath-guest-relay-measurement")]
-                    let stub_result = if relay_counter.is_some() {
+                    let stub_result = if relay_dispatch.is_some() {
                         crate::instructions::vmexit_stub::install_vmexit_stub_ret_only(
                             *host_exit_phys,
                         )
@@ -435,27 +445,31 @@ fn execute_datapath_guest_vmlaunch_fields_if_enabled(
                 }
                 vmlaunch_attempts = vmlaunch_attempts.saturating_add(1);
                 #[cfg(feature = "datapath-guest-relay-measurement")]
-                let use_host_dispatch = relay_counter.is_some();
+                let use_host_dispatch = launch_dispatch_config
+                    .map(crate::vmexit_relay_dispatch::VmexitRelayDispatchConfig::requires_host_dispatch)
+                    .unwrap_or(false);
                 #[cfg(feature = "datapath-guest-relay-measurement")]
                 let launch_result =
-                    crate::instructions::vmx_guest_run::run_vmx_guest_until_halt_with_relay_counter(
+                    crate::instructions::vmx_guest_run::run_vmx_guest_until_halt_with_relay_dispatch(
                         *vmcs_phys,
                         use_host_dispatch,
-                        launch_relay_config,
+                        launch_dispatch_config,
                     );
                 #[cfg(not(feature = "datapath-guest-relay-measurement"))]
                 let launch_result =
-                    crate::instructions::vmx_guest_run::run_vmx_guest_until_halt(*vmcs_phys, false)
-                        .map(|_| 0u64);
+                    crate::instructions::vmx_guest_run::run_vmx_guest_until_halt(*vmcs_phys, false);
                 match launch_result {
-                    Ok(frames) => {
-                        #[cfg(feature = "datapath-guest-relay-measurement")]
+                    #[cfg(feature = "datapath-guest-relay-measurement")]
+                    Ok(dispatch_outcome) => {
+                        if launch_dispatch_config.is_some_and(|config| config.measurement.is_some())
                         {
-                            if launch_relay_config.is_some() {
-                                vmexit_relay_frames = frames;
-                            }
+                            vmexit_relay_frames = dispatch_outcome.relay_frames;
                         }
+                        vmexit_mmio_relay_events = vmexit_mmio_relay_events
+                            .saturating_add(dispatch_outcome.mmio_relay_events);
                     }
+                    #[cfg(not(feature = "datapath-guest-relay-measurement"))]
+                    Ok(()) => {}
                     Err(err)
                         if err.kind == CpuSeamErrorKind::Unavailable
                             || err.kind == CpuSeamErrorKind::ExecutionFailed =>
@@ -480,6 +494,8 @@ fn execute_datapath_guest_vmlaunch_fields_if_enabled(
                     hypervisor_tsc_end,
                     #[cfg(feature = "datapath-guest-relay-measurement")]
                     vmexit_relay_frames,
+                    #[cfg(feature = "datapath-guest-relay-measurement")]
+                    vmexit_mmio_relay_events,
                 });
             }
             return Ok(GuestVmlaunchBatchOutcome {
@@ -491,6 +507,8 @@ fn execute_datapath_guest_vmlaunch_fields_if_enabled(
                 hypervisor_tsc_end,
                 #[cfg(feature = "datapath-guest-relay-measurement")]
                 vmexit_relay_frames,
+                #[cfg(feature = "datapath-guest-relay-measurement")]
+                vmexit_mmio_relay_events,
             });
         }
     }
@@ -504,6 +522,8 @@ fn execute_datapath_guest_vmlaunch_fields_if_enabled(
         hypervisor_tsc_end,
         #[cfg(feature = "datapath-guest-relay-measurement")]
         vmexit_relay_frames,
+        #[cfg(feature = "datapath-guest-relay-measurement")]
+        vmexit_mmio_relay_events,
     })
 }
 
@@ -1196,6 +1216,8 @@ mod tests {
             hypervisor_tsc_end: 0,
             #[cfg(feature = "datapath-guest-relay-measurement")]
             vmexit_relay_frames: 0,
+            #[cfg(feature = "datapath-guest-relay-measurement")]
+            vmexit_mmio_relay_events: 0,
         };
         assert!(run_datapath_guest_throughput_cpu_seam(&execution, 1, 0, 0).is_err());
     }
@@ -1214,6 +1236,8 @@ mod tests {
             hypervisor_tsc_end: 0,
             #[cfg(feature = "datapath-guest-relay-measurement")]
             vmexit_relay_frames: 0,
+            #[cfg(feature = "datapath-guest-relay-measurement")]
+            vmexit_mmio_relay_events: 0,
         };
         assert!(run_datapath_guest_throughput_cpu_seam(&execution, 0, 0, 0).is_err());
     }
@@ -1232,6 +1256,8 @@ mod tests {
             hypervisor_tsc_end: 0,
             #[cfg(feature = "datapath-guest-relay-measurement")]
             vmexit_relay_frames: 0,
+            #[cfg(feature = "datapath-guest-relay-measurement")]
+            vmexit_mmio_relay_events: 0,
         };
         let outcome =
             run_datapath_guest_throughput_cpu_seam(&execution, 5, 0, 0).expect("guest throughput");
@@ -1263,6 +1289,8 @@ mod tests {
             hypervisor_tsc_end: 2_000,
             #[cfg(feature = "datapath-guest-relay-measurement")]
             vmexit_relay_frames: 64,
+            #[cfg(feature = "datapath-guest-relay-measurement")]
+            vmexit_mmio_relay_events: 0,
         };
         let outcome = run_datapath_guest_throughput_cpu_seam(&execution, 5, 64, 64)
             .expect("guest throughput measurement");

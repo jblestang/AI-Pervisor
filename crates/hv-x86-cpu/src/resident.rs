@@ -291,6 +291,28 @@ pub fn install_relay_measurement_page<A: PageAllocator>(
     })
 }
 
+/// Installed hypervisor-owned e1000 MMIO emulation state page.
+#[cfg(feature = "datapath-guest-relay-measurement")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct E1000MmioStatePageInstall {
+    /// Host physical base of the emulated MMIO state page.
+    pub host_phys: u64,
+}
+
+/// Allocates and initializes a hypervisor-owned e1000 MMIO emulation state page.
+#[cfg(feature = "datapath-guest-relay-measurement")]
+pub fn install_e1000_mmio_state_page<A: PageAllocator>(
+    allocator: &mut A,
+) -> Result<E1000MmioStatePageInstall, CpuSeamError> {
+    use hv_ept::EPT_PAGE_SIZE_BYTES;
+
+    let size = EPT_PAGE_SIZE_BYTES as usize;
+    let host_phys = allocator.allocate_pages(size, VMXON_REGION_ALIGNMENT_BYTES)?;
+    let page = alloc::vec![0u8; size];
+    allocator.copy_to_pages(host_phys, &page)?;
+    Ok(E1000MmioStatePageInstall { host_phys })
+}
+
 fn align_up_usize(value: usize, alignment: usize) -> Result<usize, CpuSeamError> {
     if alignment == 0 || alignment & (alignment - 1) != 0 {
         return Err(CpuSeamError::new(

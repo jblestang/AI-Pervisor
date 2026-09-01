@@ -29,7 +29,11 @@ mod resident;
 mod resident_backends;
 mod seams;
 #[cfg(feature = "datapath-guest-relay-measurement")]
+mod vmexit_mmio_relay;
+#[cfg(feature = "datapath-guest-relay-measurement")]
 mod vmexit_relay_counter;
+#[cfg(feature = "datapath-guest-relay-measurement")]
+mod vmexit_relay_dispatch;
 
 pub use backends::{CpuSeamEptBackend, CpuSeamVmxBackend, CpuSeamVtdBackend};
 pub use constants::{
@@ -56,14 +60,17 @@ pub use instructions::{
 };
 #[cfg(feature = "datapath-guests")]
 pub use resident::install_guest_elf;
+#[cfg(feature = "datapath-guest-relay-measurement")]
+pub use resident::{
+    install_e1000_mmio_state_page, install_relay_measurement_page, E1000MmioStatePageInstall,
+    RelayMeasurementPageInstall,
+};
 pub use resident::{
     install_ept_tables, install_guest_image, install_vmcs_region, install_vmxon_region,
     resolve_vmxon_revision, MockPageAllocator, PageAllocator, VMCS_REGION_BYTES,
 };
 #[cfg(feature = "datapath-guest-live")]
 pub use resident::{install_guest_elf_with_boot_info, GuestElfWithBootInfoInstall};
-#[cfg(feature = "datapath-guest-relay-measurement")]
-pub use resident::{install_relay_measurement_page, RelayMeasurementPageInstall};
 pub use resident_backends::{
     ResidentCpuSeamEptBackend, ResidentCpuSeamVmxBackend, ResidentCpuSeamVtdBackend,
 };
@@ -83,9 +90,18 @@ pub use seams::{
 #[cfg(feature = "datapath-guests")]
 pub use seams::{run_multi_vmx_launch_cpu_seam, MultiVmxLaunchCpuSeamOutcome};
 #[cfg(feature = "datapath-guest-relay-measurement")]
+pub use vmexit_mmio_relay::{
+    handle_e1000_mmio_vmexit, is_e1000_mmio_write_violation, VmexitE1000MmioConfig,
+};
+#[cfg(feature = "datapath-guest-relay-measurement")]
 pub use vmexit_relay_counter::{
     handle_relay_frame_vmexit, increment_relay_measurement_page_frames,
     is_measurement_page_write_violation, read_relay_measurement_page_frames,
     reset_relay_measurement_page_frames, validate_vmexit_relay_frame_count,
     VmexitRelayCounterConfig, VM_EXIT_REASON_EPT_VIOLATION, VM_EXIT_REASON_HLT,
+};
+#[cfg(feature = "datapath-guest-relay-measurement")]
+pub use vmexit_relay_dispatch::{
+    finalize_measurement_relay_frames, handle_relay_dispatch_vmexit, VmexitRelayDispatchConfig,
+    VmexitRelayDispatchOutcome, VmexitRelayDispatchPlan,
 };
