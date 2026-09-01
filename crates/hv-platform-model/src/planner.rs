@@ -126,7 +126,7 @@ fn mmio_guest_phys_for_bdf(intent: &StaticIntentIR, bdf: PciBdf) -> Result<u64, 
         .pci_intent
         .devices
         .iter()
-        .find(|(device_bdf, _, _, _, _)| *device_bdf == bdf)
+        .find(|(device_bdf, _, kind, _, _)| *device_bdf == bdf && kind == "nic_e1000")
         .map(|(_, _, _, _, mmio_guest_phys)| *mmio_guest_phys)
         .ok_or_else(|| {
             PlatformError::new(

@@ -229,6 +229,7 @@ fn validate_host_network(
     }
 
     let mut network_bdfs: HashMap<PciBdf, String> = HashMap::new();
+    let mut network_partitions: HashSet<String> = HashSet::new();
     let mut tap_ifnames: HashSet<String> = HashSet::new();
 
     for (index, interface) in raw.qemu.network.interfaces.iter().enumerate() {
@@ -238,6 +239,16 @@ fn validate_host_network(
                 ConfigErrorKind::Semantic,
                 format!(
                     "host network interface references unknown partition '{}'",
+                    interface.partition
+                ),
+            )
+            .with_path(format!("{path}.partition")));
+        }
+        if !network_partitions.insert(interface.partition.clone()) {
+            return Err(ConfigError::new(
+                ConfigErrorKind::Semantic,
+                format!(
+                    "duplicate host network interface for partition '{}'",
                     interface.partition
                 ),
             )
@@ -290,6 +301,19 @@ fn validate_host_network(
                 "host network interface BDF must reference a nic_e1000 device",
             )
             .with_path(path));
+        }
+
+        if raw.qemu.network.backend == "tap"
+            && interface
+                .tap_ifname
+                .as_deref()
+                .is_none_or(str::is_empty)
+        {
+            return Err(ConfigError::new(
+                ConfigErrorKind::Semantic,
+                "host network tap backend requires tap_ifname on each interface",
+            )
+            .with_path(format!("{path}.tap_ifname")));
         }
 
         if let Some(tap_ifname) = interface.tap_ifname.as_deref() {
@@ -463,6 +487,15 @@ mod tests {
     #[test]
     fn host_network_rejects_bdf_missing_from_partition() {
         let yaml = include_str!("../tests/fixtures/invalid/host_network_bdf_mismatch.yaml");
+        let raw = load_raw_from_str(yaml).expect("parse");
+        crate::syntax::validate_syntax(&raw).expect("syntax");
+        let err = validate_semantics(&raw).expect_err("semantic");
+        assert_eq!(err.kind, ConfigErrorKind::Semantic);
+    }
+
+    #[test]
+    fn host_network_rejects_tap_backend_without_ifname() {
+        let yaml = include_str!("../tests/fixtures/invalid/host_network_tap_missing_ifname.yaml");
         let raw = load_raw_from_str(yaml).expect("parse");
         crate::syntax::validate_syntax(&raw).expect("syntax");
         let err = validate_semantics(&raw).expect_err("semantic");

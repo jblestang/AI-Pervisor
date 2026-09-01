@@ -44,3 +44,11 @@ partitions:
 - `cargo test --workspace`
 - `cargo clippy --all-targets --all-features`
 - `cargo xtask build-boot-chain --config configs/ovmf-smoke.yaml`
+
+## Review fixes
+
+- Semantic validation requires `tap_ifname` when backend is `tap`; rejects duplicate partition entries
+- `mmio_guest_phys_for_bdf` resolves `nic_e1000` devices only; coherence checks PCI kind
+- Layout snapshot encode/decode fails closed on zero host network MMIO
+- Snapshot restore validates host network coherence against PCI layout
+- Gate D cross-checks e1000 PCI MMIO against host network interface metadata

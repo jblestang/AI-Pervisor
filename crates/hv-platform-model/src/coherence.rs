@@ -35,6 +35,12 @@ pub fn validate_layout_host_network_coherence(
                 "host network interface MMIO mismatch with PCI layout",
             ));
         }
+        if pci.kind != "nic_e1000" {
+            return Err(PlatformError::new(
+                PlatformErrorKind::Planning,
+                "host network interface BDF must reference nic_e1000 PCI layout entry",
+            ));
+        }
         let guest = layout
             .guest_memory
             .iter()
