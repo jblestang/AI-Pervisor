@@ -14,7 +14,6 @@ mod guest_relay_live;
 mod guest_runtime;
 mod guest_throughput;
 mod ipc;
-mod l2_frame;
 mod plan;
 mod runtime;
 mod topology;
@@ -39,14 +38,9 @@ pub use e1000::{
     E1000_REG_TDH, E1000_REG_TDT,
 };
 pub use e1000_host_attach::{
-    apply_discovered_host_bar0, decode_host_attach_state, encode_host_attach_state,
-    host_attach_interfaces_ready, host_in_forward_ingress_to_ipc, host_out_emit_from_ipc,
-    initialize_host_attach_state, plan_e1000_host_attach, E1000HostAttachPlan,
-    E1000HostAttachState, E1000_HOST_ATTACH_BAR0_READY_MARKER, E1000_HOST_ATTACH_INSTALLED_MARKER,
-    HostInAttachState, HostNicBinding, HostNicRole, HostOutAttachState,
-};
-pub use l2_frame::{
-    is_reference_l2_frame, write_reference_l2_frame, L2_RELAY_FRAME_ETHERTYPE, REFERENCE_L2_FRAME_LEN,
+    decode_host_attach_state, encode_host_attach_state, host_in_forward_ingress_to_ipc,
+    host_out_emit_from_ipc, initialize_host_attach_state, plan_e1000_host_attach,
+    E1000HostAttachPlan, E1000HostAttachState,
 };
 pub use error::{DatapathError, DatapathErrorKind};
 pub use forward::{

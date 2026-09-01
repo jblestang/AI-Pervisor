@@ -311,25 +311,12 @@ pub struct E1000HostAttachStatePageInstall {
 #[cfg(feature = "datapath-guest-relay-measurement")]
 pub fn install_e1000_host_attach_state_page<A: PageAllocator>(
     allocator: &mut A,
-    plan: &hv_datapath::E1000HostAttachPlan,
+    _plan: &hv_datapath::E1000HostAttachPlan,
 ) -> Result<E1000HostAttachStatePageInstall, CpuSeamError> {
-    use hv_datapath::{encode_host_attach_state, initialize_host_attach_state, HostNicRole};
+    use hv_datapath::{encode_host_attach_state, initialize_host_attach_state};
     use hv_ept::EPT_PAGE_SIZE_BYTES;
 
-    let state = {
-        let mut state = initialize_host_attach_state(plan);
-        #[cfg(all(feature = "execute-instructions", not(test)))]
-        {
-            use crate::pci_config::read_pci_bar0_mmio;
-            if let Ok(bar0) = read_pci_bar0_mmio(plan.host_in.bdf) {
-                hv_datapath::apply_discovered_host_bar0(&mut state, HostNicRole::HostIn, bar0);
-            }
-            if let Ok(bar0) = read_pci_bar0_mmio(plan.host_out.bdf) {
-                hv_datapath::apply_discovered_host_bar0(&mut state, HostNicRole::HostOut, bar0);
-            }
-        }
-        state
-    };
+    let state = initialize_host_attach_state();
     let size = EPT_PAGE_SIZE_BYTES as usize;
     let host_phys = allocator.allocate_pages(size, VMXON_REGION_ALIGNMENT_BYTES)?;
     let mut page = alloc::vec![0u8; size];

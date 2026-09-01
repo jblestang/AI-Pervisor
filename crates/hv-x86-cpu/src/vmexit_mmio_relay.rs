@@ -110,11 +110,10 @@ fn service_host_attach_hook(
     match config.host_attach_role {
         VmexitE1000HostAttachRole::Disabled => {}
         VmexitE1000HostAttachRole::HostIn if mmio_state.tx_doorbell => {
-            host_in_forward_ingress_to_ipc(&mut attach.host_in, &mut ipc_bytes)
-                .map_err(map_datapath_error)?;
+            host_in_forward_ingress_to_ipc(&mut attach, &mut ipc_bytes).map_err(map_datapath_error)?;
         }
         VmexitE1000HostAttachRole::HostOut if mmio_state.rx_doorbell => {
-            host_out_emit_from_ipc(&mut attach.host_out, &mut ipc_bytes).map_err(map_datapath_error)?;
+            host_out_emit_from_ipc(&mut attach, &mut ipc_bytes).map_err(map_datapath_error)?;
         }
         VmexitE1000HostAttachRole::HostIn | VmexitE1000HostAttachRole::HostOut => {}
     }
