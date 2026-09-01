@@ -322,6 +322,7 @@ pub fn layout_snapshot_from_platform_ir(
         netdev_id_len: 0,
         reserved: 0,
         netdev_id: [0; LAYOUT_HOST_NETWORK_NETDEV_LEN],
+        mmio_guest_phys: 0,
     }; MAX_LAYOUT_HOST_NETWORK_INTERFACES];
     for (index, interface) in layout.host_network.interfaces.iter().enumerate() {
         if let Some(slot) = host_network_interfaces.get_mut(index) {
@@ -548,6 +549,7 @@ fn layout_host_network_to_snapshot(
         netdev_id_len,
         reserved: 0,
         netdev_id,
+        mmio_guest_phys: interface.mmio_guest_phys,
     })
 }
 
@@ -578,6 +580,7 @@ fn host_network_from_layout_snapshot(
         } else {
             Some(tap_ifname)
         },
+        mmio_guest_phys: interface.mmio_guest_phys,
     })
 }
 
@@ -860,6 +863,20 @@ mod tests {
                 .pci_devices
                 .iter()
                 .map(|device| (device.vm_id, device.kind.as_str(), device.mmio_guest_phys))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            restored
+                .host_network
+                .interfaces
+                .iter()
+                .map(|interface| (interface.bdf, interface.mmio_guest_phys))
+                .collect::<Vec<_>>(),
+            layout
+                .host_network
+                .interfaces
+                .iter()
+                .map(|interface| (interface.bdf, interface.mmio_guest_phys))
                 .collect::<Vec<_>>()
         );
     }

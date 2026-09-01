@@ -126,6 +126,7 @@ pub fn validate_semantics(raw: &RawConfig) -> Result<Vec<ConfigWarning>, ConfigE
     validate_ipc_graph(raw, &partition_ids)?;
     validate_guest_images(raw, &partition_ids)?;
     validate_datapath_policy(raw)?;
+    validate_host_network(raw, &partition_ids)?;
 
     if raw.platform.requirements.smt_policy == RawSmtPolicy::AllowCrossPartition {
         warnings.push(ConfigWarning::new(
@@ -216,6 +217,122 @@ fn validate_guest_images(
             )));
         }
     }
+    Ok(())
+}
+
+fn validate_host_network(
+    raw: &RawConfig,
+    partition_ids: &HashSet<String>,
+) -> Result<(), ConfigError> {
+    if !raw.qemu.network.enabled {
+        return Ok(());
+    }
+
+    let mut network_bdfs: HashMap<PciBdf, String> = HashMap::new();
+    let mut tap_ifnames: HashSet<String> = HashSet::new();
+
+    for (index, interface) in raw.qemu.network.interfaces.iter().enumerate() {
+        let path = format!("qemu.network.interfaces[{index}]");
+        if !partition_ids.contains(&interface.partition) {
+            return Err(ConfigError::new(
+                ConfigErrorKind::Semantic,
+                format!(
+                    "host network interface references unknown partition '{}'",
+                    interface.partition
+                ),
+            )
+            .with_path(format!("{path}.partition")));
+        }
+        let bdf = parse_bdf(&interface.bdf)
+            .map_err(|err| err.with_path(format!("{path}.bdf")))?;
+        if let Some(existing) = network_bdfs.insert(bdf, interface.partition.clone()) {
+            return Err(ConfigError::new(
+                ConfigErrorKind::Semantic,
+                format!(
+                    "host network PCI BDF {bdf:?} assigned to '{existing}' and '{}'",
+                    interface.partition
+                ),
+            )
+            .with_path(path));
+        }
+
+        let partition = raw
+            .partitions
+            .iter()
+            .find(|partition| partition.id == interface.partition)
+            .ok_or_else(|| {
+                ConfigError::new(
+                    ConfigErrorKind::Semantic,
+                    format!(
+                        "host network interface references unknown partition '{}'",
+                        interface.partition
+                    ),
+                )
+                .with_path(format!("{path}.partition"))
+            })?;
+        let matching_device = partition
+            .devices
+            .iter()
+            .find(|device| parse_bdf(&device.bdf).ok() == Some(bdf));
+        let Some(device) = matching_device else {
+            return Err(ConfigError::new(
+                ConfigErrorKind::Semantic,
+                format!(
+                    "host network BDF {bdf:?} missing from partition '{}' devices",
+                    interface.partition
+                ),
+            )
+            .with_path(path));
+        };
+        if device.kind != crate::raw::RawDeviceKind::NicE1000 {
+            return Err(ConfigError::new(
+                ConfigErrorKind::Semantic,
+                "host network interface BDF must reference a nic_e1000 device",
+            )
+            .with_path(path));
+        }
+
+        if let Some(tap_ifname) = interface.tap_ifname.as_deref() {
+            if !tap_ifnames.insert(tap_ifname.to_string()) {
+                return Err(ConfigError::new(
+                    ConfigErrorKind::Semantic,
+                    format!("duplicate host network tap interface '{tap_ifname}'"),
+                )
+                .with_path(format!("{path}.tap_ifname")));
+            }
+        }
+    }
+
+    for partition in &raw.partitions {
+        for device in &partition.devices {
+            let Some(role) = device.role else {
+                continue;
+            };
+            let bdf = parse_bdf(&device.bdf).map_err(|err| {
+                err.with_path(format!("partitions[id={}].devices.bdf", partition.id))
+            })?;
+            if !raw
+                .qemu
+                .network
+                .interfaces
+                .iter()
+                .any(|interface| {
+                    interface.partition == partition.id
+                        && parse_bdf(&interface.bdf).ok() == Some(bdf)
+                })
+            {
+                return Err(ConfigError::new(
+                    ConfigErrorKind::Semantic,
+                    format!(
+                        "datapath role '{role:?}' device on partition '{}' missing from host network plan",
+                        partition.id
+                    ),
+                )
+                .with_path(format!("partitions[id={}].devices.role", partition.id)));
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -332,5 +449,23 @@ mod tests {
         let raw = load_raw_from_str(yaml).expect("parse");
         crate::syntax::validate_syntax(&raw).expect("syntax");
         validate_semantics(&raw).expect("semantic");
+    }
+
+    #[test]
+    fn host_network_rejects_unknown_partition() {
+        let yaml = include_str!("../tests/fixtures/invalid/host_network_unknown_partition.yaml");
+        let raw = load_raw_from_str(yaml).expect("parse");
+        crate::syntax::validate_syntax(&raw).expect("syntax");
+        let err = validate_semantics(&raw).expect_err("semantic");
+        assert_eq!(err.kind, ConfigErrorKind::Semantic);
+    }
+
+    #[test]
+    fn host_network_rejects_bdf_missing_from_partition() {
+        let yaml = include_str!("../tests/fixtures/invalid/host_network_bdf_mismatch.yaml");
+        let raw = load_raw_from_str(yaml).expect("parse");
+        crate::syntax::validate_syntax(&raw).expect("syntax");
+        let err = validate_semantics(&raw).expect_err("semantic");
+        assert_eq!(err.kind, ConfigErrorKind::Semantic);
     }
 }

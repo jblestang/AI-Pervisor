@@ -130,6 +130,8 @@ pub struct LayoutHostNetworkSnapshot {
     pub reserved: u8,
     /// QEMU netdev identifier bytes (UTF-8, zero padded).
     pub netdev_id: [u8; LAYOUT_HOST_NETWORK_NETDEV_LEN],
+    /// Guest physical MMIO BAR base for the nested e1000.
+    pub mmio_guest_phys: u64,
 }
 
 /// Fixed-size static layout snapshot embedded in the hypervisor image.
@@ -176,7 +178,7 @@ mod tests {
         assert_eq!(size_of::<LayoutGuestRegionSnapshot>(), 40);
         assert_eq!(size_of::<LayoutIpcRegionSnapshot>(), 32);
         assert_eq!(size_of::<LayoutPciSnapshot>(), 32);
-        assert_eq!(size_of::<LayoutHostNetworkSnapshot>(), 48);
+        assert_eq!(size_of::<LayoutHostNetworkSnapshot>(), 56);
         assert_eq!(align_of::<LayoutSnapshot>(), 8);
         assert!(size_of::<LayoutSnapshot>() > size_of::<LayoutGuestRegionSnapshot>());
     }

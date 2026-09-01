@@ -4,8 +4,8 @@
 //! described in platform configuration. Nested guests own in→mid→out relay over IPC.
 
 use hv_platform_model::{
-    bdf_for_datapath_role, mmio_guest_phys_for_datapath_role, StaticPlatformIR, DATAPATH_ROLE_IN,
-    DATAPATH_ROLE_OUT,
+    bdf_for_datapath_role, mmio_guest_phys_for_datapath_role, validate_layout_host_network_coherence,
+    StaticPlatformIR, DATAPATH_ROLE_IN, DATAPATH_ROLE_OUT,
 };
 use hv_types::PciBdf;
 
@@ -45,6 +45,7 @@ pub fn plan_e1000_host_attach(
         ));
     }
     if layout.host_network.enabled {
+        validate_layout_host_network_coherence(layout).map_err(map_platform_error)?;
         validate_host_network_matches_pci(layout, host_in_bdf, host_out_bdf)?;
     }
     Ok(E1000HostAttachPlan {
@@ -118,5 +119,19 @@ mod tests {
         assert_eq!(in_mmio, 0xFEB0_0000);
         assert_eq!(out_mmio, 0xFEB2_0000);
         assert_ne!(in_mmio, out_mmio);
+        let host_in = layout
+            .host_network
+            .interfaces
+            .iter()
+            .find(|interface| interface.bdf == plan.host_in_bdf)
+            .expect("host in");
+        let host_out = layout
+            .host_network
+            .interfaces
+            .iter()
+            .find(|interface| interface.bdf == plan.host_out_bdf)
+            .expect("host out");
+        assert_eq!(host_in.mmio_guest_phys, in_mmio);
+        assert_eq!(host_out.mmio_guest_phys, out_mmio);
     }
 }

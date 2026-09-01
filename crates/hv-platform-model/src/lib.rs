@@ -12,6 +12,7 @@
 #[macro_use]
 extern crate alloc;
 
+mod coherence;
 mod constants;
 mod cpuid_constants;
 mod error;
@@ -25,6 +26,7 @@ mod validated;
 #[cfg(feature = "std")]
 mod planner;
 
+pub use coherence::validate_layout_host_network_coherence;
 pub use constants::{platform_phys_base, PLATFORM_PHYS_BASE, REGION_ALIGNMENT_BYTES};
 pub use cpuid_constants::DEFAULT_PAGE_SIZES;
 pub use error::{PlatformError, PlatformErrorKind, PlatformWarning};
