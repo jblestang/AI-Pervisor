@@ -14,24 +14,24 @@ pub fn run_vmx_guest_until_halt(
     vmcs_phys: u64,
     use_host_dispatch: bool,
 ) -> Result<(), CpuSeamError> {
-    run_vmx_guest_until_halt_with_relay_counter(vmcs_phys, use_host_dispatch, None).map(|_| ())
+    run_vmx_guest_until_halt_with_relay_dispatch(vmcs_phys, use_host_dispatch, None).map(|_| ())
 }
 
-/// Runs the guest until `HLT`, optionally counting relay frames on VM-exits.
+/// Runs the guest until `HLT`, optionally dispatching relay measurement and MMIO VM-exits.
 #[cfg(all(
     target_arch = "x86_64",
     feature = "execute-instructions",
     not(test),
     not(coverage)
 ))]
-pub fn run_vmx_guest_until_halt_with_relay_counter(
+pub fn run_vmx_guest_until_halt_with_relay_dispatch(
     vmcs_phys: u64,
     use_host_dispatch: bool,
-    relay_config: Option<crate::vmexit_relay_counter::VmexitRelayCounterConfig>,
-) -> Result<u64, CpuSeamError> {
-    use super::environment::live_execution_environment_ready;
+    dispatch_config: Option<crate::vmexit_relay_dispatch::VmexitRelayDispatchConfig>,
+) -> Result<crate::vmexit_relay_dispatch::VmexitRelayDispatchOutcome, CpuSeamError> {
+    use crate::vmexit_relay_dispatch::VmexitRelayDispatchOutcome;
 
-    if !live_execution_environment_ready() {
+    if !super::environment::live_execution_environment_ready() {
         return Err(CpuSeamError::new(
             CpuSeamErrorKind::Unavailable,
             "VMX guest run loop unavailable in this environment",
@@ -39,10 +39,10 @@ pub fn run_vmx_guest_until_halt_with_relay_counter(
     }
     super::live_asm::vmptrld(vmcs_phys)?;
     if use_host_dispatch {
-        run_vmx_guest_vmexit_dispatch_loop(relay_config)
+        run_vmx_guest_vmexit_dispatch_loop(dispatch_config)
     } else {
         super::live_asm::vmlaunch_wait_for_hlt_exit()?;
-        Ok(0)
+        Ok(VmexitRelayDispatchOutcome::default())
     }
 }
 
@@ -54,55 +54,50 @@ pub fn run_vmx_guest_until_halt_with_relay_counter(
     not(coverage)
 ))]
 fn run_vmx_guest_vmexit_dispatch_loop(
-    relay_config: Option<crate::vmexit_relay_counter::VmexitRelayCounterConfig>,
-) -> Result<u64, CpuSeamError> {
+    dispatch_config: Option<crate::vmexit_relay_dispatch::VmexitRelayDispatchConfig>,
+) -> Result<crate::vmexit_relay_dispatch::VmexitRelayDispatchOutcome, CpuSeamError> {
     use super::live_asm::{vmlaunch_to_host, vmread, vmresume_to_host, vmwrite};
     use crate::vmexit_relay_counter::{
-        handle_relay_frame_vmexit, VMCS_EXIT_QUALIFICATION, VMCS_GUEST_PHYSICAL_ADDRESS,
-        VMCS_VM_EXIT_REASON, VM_EXIT_REASON_EPT_VIOLATION, VM_EXIT_REASON_HLT,
+        VMCS_EXIT_QUALIFICATION, VMCS_GUEST_PHYSICAL_ADDRESS, VMCS_VM_EXIT_REASON,
+        VM_EXIT_REASON_HLT,
+    };
+    use crate::vmexit_relay_dispatch::{
+        finalize_measurement_relay_frames, handle_relay_dispatch_vmexit, VmexitRelayDispatchOutcome,
     };
 
-    let mut relay_frames = 0u64;
+    let mut outcome = VmexitRelayDispatchOutcome::default();
     vmlaunch_to_host()?;
     loop {
         let exit_reason = vmread(VMCS_VM_EXIT_REASON)? & 0xFFFF;
         if exit_reason == u64::from(VM_EXIT_REASON_HLT) {
             break;
         }
-        if let Some(config) = relay_config {
+        if let Some(config) = dispatch_config {
             let guest_phys = vmread(VMCS_GUEST_PHYSICAL_ADDRESS)?;
             let exit_qualification = vmread(VMCS_EXIT_QUALIFICATION)?;
-            if exit_reason == u64::from(VM_EXIT_REASON_EPT_VIOLATION) {
-                if !handle_relay_frame_vmexit(
-                    exit_reason as u32,
-                    guest_phys,
-                    exit_qualification,
-                    &config,
-                )? {
-                    return Err(CpuSeamError::new(
-                        CpuSeamErrorKind::InvalidInput,
-                        "unexpected EPT violation during relay measurement guest run",
-                    ));
-                }
-                relay_frames = relay_frames.saturating_add(1);
+            let step = handle_relay_dispatch_vmexit(
+                exit_reason as u32,
+                guest_phys,
+                exit_qualification,
+                &config,
+            )?;
+            if step.relay_frames > 0 || step.mmio_relay_events > 0 {
+                outcome.relay_frames = outcome.relay_frames.saturating_add(step.relay_frames);
+                outcome.mmio_relay_events = outcome
+                    .mmio_relay_events
+                    .saturating_add(step.mmio_relay_events);
                 advance_guest_rip(&vmread, &vmwrite)?;
             }
         }
         vmresume_to_host()?;
     }
-    if let Some(config) = relay_config {
-        let page_frames = crate::vmexit_relay_counter::read_relay_measurement_page_frames(
-            config.measurement_page_host_phys,
-        )?;
-        if page_frames != relay_frames {
-            return Err(CpuSeamError::new(
-                CpuSeamErrorKind::InvalidInput,
-                "relay measurement page frame count mismatch with VM-exit dispatch loop",
-            ));
+    if let Some(config) = dispatch_config {
+        if let Some(measurement) = config.measurement {
+            outcome.relay_frames =
+                finalize_measurement_relay_frames(&measurement, outcome.relay_frames)?;
         }
-        relay_frames = page_frames;
     }
-    Ok(relay_frames)
+    Ok(outcome)
 }
 
 #[cfg(all(
@@ -147,11 +142,11 @@ pub fn run_vmx_guest_until_halt(
     not(coverage)
 )))]
 #[cfg(feature = "datapath-guest-relay-measurement")]
-pub fn run_vmx_guest_until_halt_with_relay_counter(
+pub fn run_vmx_guest_until_halt_with_relay_dispatch(
     _vmcs_phys: u64,
     _use_host_dispatch: bool,
-    _relay_config: Option<crate::vmexit_relay_counter::VmexitRelayCounterConfig>,
-) -> Result<u64, CpuSeamError> {
+    _dispatch_config: Option<crate::vmexit_relay_dispatch::VmexitRelayDispatchConfig>,
+) -> Result<crate::vmexit_relay_dispatch::VmexitRelayDispatchOutcome, CpuSeamError> {
     Err(CpuSeamError::new(
         CpuSeamErrorKind::Unavailable,
         "VMX guest run loop unavailable in this build",

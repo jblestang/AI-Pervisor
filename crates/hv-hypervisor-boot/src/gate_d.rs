@@ -1466,9 +1466,17 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
         })
         .collect::<Result<alloc::vec::Vec<_>, BootCheckError>>()?;
     #[cfg(feature = "datapath-guest-relay-measurement")]
-    let relay_counter = {
-        use hv_datapath::plan_relay_measurement_page_gpa;
-        use hv_x86_cpu::{VmexitRelayCounterConfig, GUEST_RELAY_MEASUREMENT_VM_ID};
+    let relay_dispatch = {
+        use hv_datapath::{plan_e1000_mmio_guest_phys, plan_relay_measurement_page_gpa};
+        use hv_ept::{
+            ept_guest_leaf_entry, ept_leaf_entry_guest_writable, ept_maps_guest_page,
+            set_ept_mapping_guest_writable,
+        };
+        use hv_x86_cpu::{
+            install_e1000_mmio_state_page, run_ept_pointer_reload_cpu_seam_batch,
+            VmexitE1000MmioConfig, VmexitRelayCounterConfig, VmexitRelayDispatchPlan,
+            GUEST_RELAY_MEASUREMENT_VM_ID,
+        };
 
         let measurement_page_host_phys = guests
             .partition_launches
@@ -1483,15 +1491,83 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
                 "guest execution requires installed relay measurement page for VM-exit counting",
             )
         })?;
-        Some(VmexitRelayCounterConfig {
-            measurement_page_host_phys: host_phys,
-            measurement_page_gpa,
+        let ept_tables = guests
+            .malicious
+            .live
+            .foundation
+            .vmx_launch
+            .real_hw
+            .live
+            .cpu_seam
+            .programming
+            .ept_tables
+            .as_mut()
+            .ok_or_else(|| {
+                BootCheckError::new(
+                    BootCheckErrorKind::Platform,
+                    "VM-exit relay dispatch requires programmed EPT tables",
+                )
+            })?;
+        let mut e1000_by_vm = alloc::vec::Vec::new();
+        for device in &layout.pci_devices {
+            if device.kind != "nic_e1000" {
+                continue;
+            }
+            let mmio_gpa = plan_e1000_mmio_guest_phys(device.vm_id)
+                .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?
+                .raw();
+            let state_page =
+                install_e1000_mmio_state_page(allocator).map_err(map_cpu_seam_error)?;
+            set_ept_mapping_guest_writable(ept_tables, mmio_gpa, false)
+                .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
+            if !ept_maps_guest_page(ept_tables, mmio_gpa) {
+                return Err(BootCheckError::new(
+                    BootCheckErrorKind::Platform,
+                    "e1000 MMIO GPA not mapped in EPT hierarchy",
+                ));
+            }
+            let leaf_entry = ept_guest_leaf_entry(ept_tables, mmio_gpa).ok_or_else(|| {
+                BootCheckError::new(
+                    BootCheckErrorKind::Platform,
+                    "e1000 MMIO EPT leaf entry missing",
+                )
+            })?;
+            if ept_leaf_entry_guest_writable(leaf_entry) {
+                return Err(BootCheckError::new(
+                    BootCheckErrorKind::Platform,
+                    "e1000 MMIO must be mapped read-only for VM-exit relay dispatch",
+                ));
+            }
+            e1000_by_vm.push((
+                device.vm_id,
+                VmexitE1000MmioConfig {
+                    mmio_guest_phys: mmio_gpa,
+                    state_host_phys: state_page.host_phys,
+                },
+            ));
+        }
+        if !e1000_by_vm.is_empty() {
+            *ept_tables = hv_x86_cpu::install_ept_tables(allocator, ept_tables)
+                .map_err(map_cpu_seam_error)?;
+            let vmcs_phys_list: alloc::vec::Vec<u64> = seam_inputs
+                .iter()
+                .map(|(vmcs_phys, _, _, _)| *vmcs_phys)
+                .collect();
+            run_ept_pointer_reload_cpu_seam_batch(ept_tables, &vmcs_phys_list)
+                .map_err(map_cpu_seam_error)?;
+        }
+        Some(VmexitRelayDispatchPlan {
+            measurement: VmexitRelayCounterConfig {
+                measurement_page_host_phys: host_phys,
+                measurement_page_gpa,
+            },
+            e1000_by_vm,
         })
     };
     let execution_seam = run_datapath_guest_execution_cpu_seam(
         &seam_inputs,
         #[cfg(feature = "datapath-guest-relay-measurement")]
-        relay_counter,
+        relay_dispatch,
     )
     .map_err(map_cpu_seam_error)?;
 
@@ -1504,6 +1580,19 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
         return Err(BootCheckError::new(
             BootCheckErrorKind::Platform,
             "guest execution reported Executed without a VMLAUNCH per partition",
+        ));
+    }
+    #[cfg(feature = "datapath-guest-relay-measurement")]
+    if executed
+        && layout
+            .pci_devices
+            .iter()
+            .any(|device| device.kind == "nic_e1000")
+        && execution_seam.vmexit_mmio_relay_events == 0
+    {
+        return Err(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "guest execution requires non-zero VM-exit MMIO relay events when e1000 devices are present",
         ));
     }
     if !live.sources.runtime.runtime.guest_frame_forwarded {

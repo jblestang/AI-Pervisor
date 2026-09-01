@@ -505,6 +505,7 @@ mod tests {
             hypervisor_tsc_start: 0,
             hypervisor_tsc_end: 0,
             vmexit_relay_frames: 0,
+            vmexit_mmio_relay_events: 0,
         };
         let context = GuestRelayMeasurementContext {
             ept_tables: sample_ept(),
@@ -546,6 +547,7 @@ mod tests {
             hypervisor_tsc_start: 0,
             hypervisor_tsc_end: 0,
             vmexit_relay_frames: 0,
+            vmexit_mmio_relay_events: 0,
         };
         let site = GuestBootInfoMeasurementSite {
             vm_id: VmId::new(0),

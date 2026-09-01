@@ -29,7 +29,8 @@ pub use plan::{plan_ept_init, EptIdentityMapping, EptInitPlan};
 pub use program::{
     append_ept_guest_mapping, append_ept_guest_read_only_mapping, encode_ept_leaf_entry,
     encode_identity_ept_entry, ept_leaf_entry_guest_writable, program_ept_tables,
-    EptProgrammedMapping, EptProgrammedTables, ProgrammingEptBackend, EPT_ENTRY_EXECUTE,
-    EPT_ENTRY_MEMORY_TYPE_WB, EPT_ENTRY_READ, EPT_ENTRY_WRITE,
+    set_ept_mapping_guest_writable, EptProgrammedMapping, EptProgrammedTables,
+    ProgrammingEptBackend, EPT_ENTRY_EXECUTE, EPT_ENTRY_MEMORY_TYPE_WB, EPT_ENTRY_READ,
+    EPT_ENTRY_WRITE,
 };
 pub use resolve::{resolve_guest_phys_range_to_host, resolve_guest_phys_to_host};

@@ -1,0 +1,151 @@
+//! VM-exit-driven e1000 MMIO relay emulation (Phase 45).
+
+use core::mem::size_of;
+
+use hv_datapath::{handle_e1000_mmio_write, E1000MmioState, E1000_MMIO_SIZE_BYTES};
+
+use crate::error::{CpuSeamError, CpuSeamErrorKind};
+use crate::vmexit_relay_counter::VM_EXIT_REASON_EPT_VIOLATION;
+
+/// Host-side e1000 MMIO relay state installed for VM-exit emulation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VmexitE1000MmioConfig {
+    /// Guest physical base of the e1000 MMIO window.
+    pub mmio_guest_phys: u64,
+    /// Host physical base of the emulated `E1000MmioState` page.
+    pub state_host_phys: u64,
+}
+
+/// Returns whether an EPT violation exit qualifies as an e1000 MMIO write trap.
+pub fn is_e1000_mmio_write_violation(
+    guest_phys: u64,
+    exit_qualification: u64,
+    config: &VmexitE1000MmioConfig,
+) -> bool {
+    if config.mmio_guest_phys == 0 || config.state_host_phys == 0 {
+        return false;
+    }
+    let page_end = config
+        .mmio_guest_phys
+        .saturating_add(E1000_MMIO_SIZE_BYTES.saturating_sub(1));
+    if guest_phys < config.mmio_guest_phys || guest_phys > page_end {
+        return false;
+    }
+    exit_qualification & (1 << 1) != 0
+}
+
+/// Handles one e1000 MMIO write VM-exit by updating hypervisor-side MMIO state.
+pub fn handle_e1000_mmio_vmexit(
+    exit_reason: u32,
+    guest_phys: u64,
+    exit_qualification: u64,
+    config: &VmexitE1000MmioConfig,
+) -> Result<bool, CpuSeamError> {
+    if exit_reason != VM_EXIT_REASON_EPT_VIOLATION {
+        return Ok(false);
+    }
+    if !is_e1000_mmio_write_violation(guest_phys, exit_qualification, config) {
+        return Ok(false);
+    }
+    let offset = guest_phys.saturating_sub(config.mmio_guest_phys);
+    let state = read_mmio_state(config.state_host_phys)?;
+    let mut updated = state;
+    handle_e1000_mmio_write(&mut updated, offset, 1).map_err(map_datapath_error)?;
+    write_mmio_state(config.state_host_phys, &updated)?;
+    Ok(true)
+}
+
+fn read_mmio_state(host_phys: u64) -> Result<E1000MmioState, CpuSeamError> {
+    if host_phys == 0 {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "e1000 MMIO relay state host address must be non-zero",
+        ));
+    }
+    let mut bytes = [0u8; size_of::<E1000MmioState>()];
+    // SAFETY: caller guarantees the host state page is readable.
+    unsafe {
+        core::ptr::copy_nonoverlapping(host_phys as *const u8, bytes.as_mut_ptr(), bytes.len());
+    }
+    Ok(E1000MmioState {
+        tdh: u32::from_le_bytes(bytes[0..4].try_into().map_err(|_| {
+            CpuSeamError::new(CpuSeamErrorKind::InvalidInput, "e1000 tdh unreadable")
+        })?),
+        tdt: u32::from_le_bytes(bytes[4..8].try_into().map_err(|_| {
+            CpuSeamError::new(CpuSeamErrorKind::InvalidInput, "e1000 tdt unreadable")
+        })?),
+        rdh: u32::from_le_bytes(bytes[8..12].try_into().map_err(|_| {
+            CpuSeamError::new(CpuSeamErrorKind::InvalidInput, "e1000 rdh unreadable")
+        })?),
+        rdt: u32::from_le_bytes(bytes[12..16].try_into().map_err(|_| {
+            CpuSeamError::new(CpuSeamErrorKind::InvalidInput, "e1000 rdt unreadable")
+        })?),
+        tx_doorbell: bytes[16] != 0,
+        rx_doorbell: bytes[17] != 0,
+    })
+}
+
+fn write_mmio_state(host_phys: u64, state: &E1000MmioState) -> Result<(), CpuSeamError> {
+    let mut bytes = [0u8; size_of::<E1000MmioState>()];
+    bytes[0..4].copy_from_slice(&state.tdh.to_le_bytes());
+    bytes[4..8].copy_from_slice(&state.tdt.to_le_bytes());
+    bytes[8..12].copy_from_slice(&state.rdh.to_le_bytes());
+    bytes[12..16].copy_from_slice(&state.rdt.to_le_bytes());
+    bytes[16] = u8::from(state.tx_doorbell);
+    bytes[17] = u8::from(state.rx_doorbell);
+    // SAFETY: caller guarantees the host state page is writable.
+    unsafe {
+        core::ptr::copy_nonoverlapping(bytes.as_ptr(), host_phys as *mut u8, bytes.len());
+    }
+    Ok(())
+}
+
+fn map_datapath_error(err: hv_datapath::DatapathError) -> CpuSeamError {
+    CpuSeamError::new(CpuSeamErrorKind::InvalidInput, err.message)
+}
+
+#[cfg(test)]
+#[cfg(feature = "datapath-guest-relay-measurement")]
+#[allow(clippy::expect_used)]
+mod tests {
+    use super::*;
+    use hv_datapath::E1000_REG_TDT;
+
+    fn sample_config(host_phys: u64, mmio_guest_phys: u64) -> VmexitE1000MmioConfig {
+        VmexitE1000MmioConfig {
+            mmio_guest_phys,
+            state_host_phys: host_phys,
+        }
+    }
+
+    #[test]
+    fn is_e1000_mmio_write_violation_requires_write_qualification() {
+        let config = sample_config(0x9000, 0xFEB0_0000);
+        assert!(is_e1000_mmio_write_violation(
+            0xFEB0_0000 + E1000_REG_TDT,
+            1 << 1,
+            &config,
+        ));
+        assert!(!is_e1000_mmio_write_violation(
+            0xFEB0_0000 + E1000_REG_TDT,
+            1 << 0,
+            &config,
+        ));
+    }
+
+    #[test]
+    fn handle_e1000_mmio_vmexit_updates_host_state() {
+        let mut page = [0u8; 64];
+        let state_host = page.as_mut_ptr() as u64;
+        let config = sample_config(state_host, 0xFEB0_0000);
+        assert!(handle_e1000_mmio_vmexit(
+            VM_EXIT_REASON_EPT_VIOLATION,
+            0xFEB0_0000 + E1000_REG_TDT,
+            1 << 1,
+            &config,
+        )
+        .expect("handle"));
+        let state = read_mmio_state(state_host).expect("read");
+        assert!(state.tx_doorbell);
+    }
+}

@@ -117,6 +117,31 @@ fn append_ept_guest_mapping_with_permissions(
     Ok(())
 }
 
+/// Updates guest write permission on the mapping covering `guest_phys`.
+pub fn set_ept_mapping_guest_writable(
+    tables: &mut EptProgrammedTables,
+    guest_phys: u64,
+    guest_writable: bool,
+) -> Result<(), EptError> {
+    let mapping = tables
+        .mappings
+        .iter_mut()
+        .find(|mapping| {
+            guest_phys >= mapping.guest_phys
+                && guest_phys < mapping.guest_phys.saturating_add(mapping.size_bytes)
+        })
+        .ok_or_else(|| {
+            EptError::new(
+                EptErrorKind::Planning,
+                "EPT guest mapping not found for permission update",
+            )
+        })?;
+    mapping.guest_writable = guest_writable;
+    mapping.encoded_entry = encode_ept_leaf_entry(mapping.host_phys, guest_writable);
+    materialize_ept_paging(tables)?;
+    Ok(())
+}
+
 /// Encodes a leaf EPT entry for an identity mapping.
 pub fn encode_identity_ept_entry(host_phys: u64) -> u64 {
     encode_ept_leaf_entry(host_phys, true)
@@ -226,5 +251,29 @@ mod tests {
             .mappings
             .iter()
             .all(|entry| entry.encoded_entry & EPT_ENTRY_READ != 0));
+    }
+
+    #[test]
+    fn set_ept_mapping_guest_writable_patches_leaf_permissions() {
+        let yaml = include_str!("../../../configs/qemu.yaml");
+        let compiled = compile_config_from_str(yaml).expect("compile");
+        let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
+        let vmx_plan = plan_vmx_init(&layout.hypervisor_reserve).expect("vmx");
+        let plan = plan_ept_init(&layout, &vmx_plan).expect("ept");
+        let mut tables = program_ept_tables(&plan).expect("program");
+        let e1000_mapping = tables
+            .mappings
+            .iter()
+            .find(|mapping| mapping.guest_phys == 0xFEB0_0000)
+            .expect("e1000 mapping");
+        assert!(e1000_mapping.guest_writable);
+        set_ept_mapping_guest_writable(&mut tables, 0xFEB0_0000, false).expect("read-only");
+        let updated = tables
+            .mappings
+            .iter()
+            .find(|mapping| mapping.guest_phys == 0xFEB0_0000)
+            .expect("e1000 mapping");
+        assert!(!updated.guest_writable);
+        assert!(!ept_leaf_entry_guest_writable(updated.encoded_entry));
     }
 }
