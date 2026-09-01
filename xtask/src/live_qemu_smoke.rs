@@ -10,10 +10,17 @@ use crate::constants::{
 };
 use crate::{run, run_build_boot_chain_live};
 pub use hv_boot_abi::{
-    GATE_D_GUEST_BOOT_INFO_INSTALLED_MARKER, GATE_D_GUEST_EXECUTION_MARKER,
+    GATE_D_BENCHMARK_TARGET_MET_MARKER, GATE_D_BOOT_INFO_BUILT_MARKER,
+    GATE_D_DATAPATH_BENCHMARK_MARKER, GATE_D_DATAPATH_FOUNDATION_MARKER,
+    GATE_D_DATAPATH_GUESTS_MARKER, GATE_D_DATAPATH_LIVE_MARKER, GATE_D_DATAPATH_MALICIOUS_MARKER,
+    GATE_D_DATAPATH_RUNTIME_MARKER, GATE_D_E1000_MMIO_MARKER,
+    GATE_D_GUEST_BOOT_INFO_INSTALLED_MARKER, GATE_D_GUEST_DATAPATH_FRAME_MARKER,
+    GATE_D_GUEST_ELF_INSTALLED_MARKER, GATE_D_GUEST_EXECUTION_MARKER,
     GATE_D_GUEST_SOURCE_ELF_MARKER, GATE_D_GUEST_THROUGHPUT_EXECUTED_MARKER,
     GATE_D_GUEST_THROUGHPUT_MARKER, GATE_D_GUEST_THROUGHPUT_TARGET_MET_MARKER,
-    REAL_HW_BOOT_SUCCESS_MARKER, REAL_HW_EPT_EXECUTED_MARKER, REAL_HW_VMLAUNCH_EXECUTED_MARKER,
+    GATE_D_IPC_FORWARD_MARKER, GATE_D_IPC_INTEGRITY_MARKER, GATE_D_MULTI_VMLAUNCH_MARKER,
+    REAL_HW_BOOT_SUCCESS_MARKER, REAL_HW_EPT_EXECUTED_MARKER,
+    REAL_HW_OUTER_HOST_BAR0_DISCOVERED_MARKER, REAL_HW_VMLAUNCH_EXECUTED_MARKER,
     REAL_HW_VMXON_EXECUTED_MARKER,
 };
 pub use hv_guest_boot::GUEST_DATAPATH_RELAY_BENCHMARK_COMPLETE_MARKER;
@@ -48,7 +55,7 @@ impl LiveQemuSmokeOptions {
 
 /// Evaluates serial output for Gate D in-VM guest relay measurement under REAL_HW.
 pub fn evaluate_gate_d_guest_relay_measurement_smoke(log: &str) -> Result<(), String> {
-    evaluate_gate_d_guest_relay_live_smoke(log)?;
+    evaluate_gate_d_guest_relay_live_smoke_with(log, true)?;
     if !log.contains(GATE_D_GUEST_THROUGHPUT_EXECUTED_MARKER) {
         return Err(format!(
             "serial log missing Gate D executed throughput marker: {GATE_D_GUEST_THROUGHPUT_EXECUTED_MARKER}"
@@ -83,7 +90,7 @@ pub fn evaluate_live_qemu_smoke_serial_with(
     if log.contains(GATE_D_GUEST_THROUGHPUT_EXECUTED_MARKER) {
         return evaluate_gate_d_guest_relay_measurement_smoke(log);
     }
-    evaluate_gate_d_guest_relay_live_smoke(log)
+    evaluate_gate_d_guest_relay_live_smoke_with(log, !options.no_host_net)
 }
 
 /// Evaluates serial output for strict Gate D executed proof (no validate-only mock tier).
@@ -94,6 +101,13 @@ pub fn evaluate_gate_d_guest_relay_executed_smoke(log: &str) -> Result<(), Strin
 
 /// Requires all REAL_HW VMX markers and live guest execution under VMX.
 pub fn evaluate_gate_d_guest_relay_strict_real_hw_smoke(log: &str) -> Result<(), String> {
+    evaluate_gate_d_guest_relay_strict_real_hw_smoke_with(log, true)
+}
+
+fn evaluate_gate_d_guest_relay_strict_real_hw_smoke_with(
+    log: &str,
+    expect_outer_host_bar0: bool,
+) -> Result<(), String> {
     for marker in [
         REAL_HW_VMXON_EXECUTED_MARKER,
         REAL_HW_EPT_EXECUTED_MARKER,
@@ -106,11 +120,24 @@ pub fn evaluate_gate_d_guest_relay_strict_real_hw_smoke(log: &str) -> Result<(),
             ));
         }
     }
+    if expect_outer_host_bar0 && !log.contains(REAL_HW_OUTER_HOST_BAR0_DISCOVERED_MARKER) {
+        return Err(format!(
+            "serial log missing outer host BAR0 discovery marker: {REAL_HW_OUTER_HOST_BAR0_DISCOVERED_MARKER}"
+        ));
+    }
     Ok(())
 }
 
 /// Evaluates serial output for Gate D guest relay live under REAL_HW (validate-only default).
 pub fn evaluate_gate_d_guest_relay_live_smoke(log: &str) -> Result<(), String> {
+    evaluate_gate_d_guest_relay_live_smoke_with(log, true)
+}
+
+/// Evaluates serial output for Gate D guest relay live with optional host-network BAR marker.
+pub fn evaluate_gate_d_guest_relay_live_smoke_with(
+    log: &str,
+    expect_outer_host_bar0: bool,
+) -> Result<(), String> {
     for marker in [
         GATE_D_GUEST_THROUGHPUT_MARKER,
         GATE_D_GUEST_THROUGHPUT_TARGET_MET_MARKER,
@@ -127,6 +154,11 @@ pub fn evaluate_gate_d_guest_relay_live_smoke(log: &str) -> Result<(), String> {
     {
         return Err(String::from(
             "serial log missing REAL_HW VMX execution marker (VMXON, EPT, or VMLAUNCH)",
+        ));
+    }
+    if expect_outer_host_bar0 && !log.contains(REAL_HW_OUTER_HOST_BAR0_DISCOVERED_MARKER) {
+        return Err(format!(
+            "serial log missing outer host BAR0 discovery marker: {REAL_HW_OUTER_HOST_BAR0_DISCOVERED_MARKER}"
         ));
     }
     Ok(())
@@ -394,6 +426,10 @@ fn run_live_qemu_smoke_with(
         owned_qemu_args.push("-net".into());
         owned_qemu_args.push("none".into());
     } else if crate::qemu_network::qemu_network_enabled_in_config(config_path) {
+        if let Err(err) = crate::host_net_taps::ensure_host_net_taps_ready(config_path) {
+            eprintln!("{err}");
+            return 1;
+        }
         match crate::qemu_network::plan_qemu_network_from_config(config_path) {
             Ok(plan) => owned_qemu_args.extend(plan.args),
             Err(err) => {
@@ -553,11 +589,19 @@ mod tests {
         format!(
             "BdsDxe: starting Boot0001 \"app\"\n\
              {REAL_HW_VMXON_EXECUTED_MARKER}\n\
+             {REAL_HW_OUTER_HOST_BAR0_DISCOVERED_MARKER}\n\
              {GATE_D_GUEST_SOURCE_ELF_MARKER}\n\
              {GATE_D_GUEST_BOOT_INFO_INSTALLED_MARKER}\n\
              {GATE_D_GUEST_THROUGHPUT_TARGET_MET_MARKER}\n\
              {GATE_D_GUEST_THROUGHPUT_MARKER}\n",
         )
+    }
+
+    fn mock_live_smoke_options() -> LiveQemuSmokeOptions {
+        LiveQemuSmokeOptions {
+            no_host_net: true,
+            ..LiveQemuSmokeOptions::default()
+        }
     }
 
     #[test]
@@ -571,6 +615,7 @@ mod tests {
         let log = format!(
             "BdsDxe: starting Boot0001 \"app\"\n\
              {REAL_HW_VMLAUNCH_EXECUTED_MARKER}\n\
+             {REAL_HW_OUTER_HOST_BAR0_DISCOVERED_MARKER}\n\
              {GATE_D_GUEST_SOURCE_ELF_MARKER}\n\
              {GATE_D_GUEST_BOOT_INFO_INSTALLED_MARKER}\n\
              {GATE_D_GUEST_THROUGHPUT_TARGET_MET_MARKER}\n\
@@ -728,7 +773,7 @@ mod tests {
             "target/live-mock-boot-chain",
             1,
             false,
-            &LiveQemuSmokeOptions::default(),
+            &mock_live_smoke_options(),
             |_, _| 0,
             |_, _| {
                 let serial_log = crate::workspace_root()
@@ -755,7 +800,7 @@ mod tests {
             "target/live-mock-boot-chain-legacy",
             1,
             false,
-            &LiveQemuSmokeOptions::default(),
+            &mock_live_smoke_options(),
             |_, _| 0,
             |_, _| {
                 let serial_log = crate::workspace_root()
@@ -883,7 +928,7 @@ mod tests {
             "target/live-mock-boot-chain-timeout",
             1,
             false,
-            &LiveQemuSmokeOptions::default(),
+            &mock_live_smoke_options(),
             |_, _| 0,
             |_, _| {
                 let serial_log = crate::workspace_root()
@@ -960,6 +1005,7 @@ mod tests {
              {REAL_HW_VMXON_EXECUTED_MARKER}\n\
              {REAL_HW_EPT_EXECUTED_MARKER}\n\
              {REAL_HW_VMLAUNCH_EXECUTED_MARKER}\n\
+             {REAL_HW_OUTER_HOST_BAR0_DISCOVERED_MARKER}\n\
              {GATE_D_GUEST_EXECUTION_MARKER}\n\
              {GATE_D_GUEST_SOURCE_ELF_MARKER}\n\
              {GATE_D_GUEST_BOOT_INFO_INSTALLED_MARKER}\n\
