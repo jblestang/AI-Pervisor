@@ -3,25 +3,12 @@
 use core::mem::size_of;
 
 use hv_datapath::{
-    decode_host_attach_state, encode_host_attach_state, handle_e1000_mmio_read,
-    handle_e1000_mmio_write, host_in_forward_ingress_to_ipc, host_out_emit_from_ipc,
-    E1000MmioState, E1000_REG_RDH, E1000_REG_RDT, E1000_REG_TDH, E1000_REG_TDT,
-    E1000_MMIO_SIZE_BYTES, REFERENCE_IPC_SHARED_BYTES,
+    handle_e1000_mmio_read, handle_e1000_mmio_write, E1000MmioState, E1000_REG_RDH, E1000_REG_RDT,
+    E1000_REG_TDH, E1000_REG_TDT, E1000_MMIO_SIZE_BYTES,
 };
 
 use crate::error::{CpuSeamError, CpuSeamErrorKind};
 use crate::vmexit_relay_counter::VM_EXIT_REASON_EPT_VIOLATION;
-
-/// Host attach role for an independent outer e1000 / host interface.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum VmexitE1000HostAttachRole {
-    /// Host attach disabled for this nested MMIO relay.
-    Disabled,
-    /// Independent host IN interface for the in partition.
-    HostIn,
-    /// Independent host OUT interface for the out partition.
-    HostOut,
-}
 
 /// Host-side e1000 MMIO relay state installed for VM-exit emulation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,12 +17,6 @@ pub struct VmexitE1000MmioConfig {
     pub mmio_guest_phys: u64,
     /// Host physical base of the emulated `E1000MmioState` page.
     pub state_host_phys: u64,
-    /// Host physical base of hypervisor host-attach state (zero disables hooks).
-    pub attach_host_phys: u64,
-    /// Host physical IPC queue backing used by host attach hooks.
-    pub ipc_backing_host_phys: u64,
-    /// Independent host interface role for this nested partition.
-    pub host_attach_role: VmexitE1000HostAttachRole,
 }
 
 /// Returns whether an EPT violation exit qualifies as an e1000 MMIO write trap.
@@ -85,70 +66,7 @@ pub fn handle_e1000_mmio_vmexit(
     handle_e1000_mmio_write(&mut updated, offset, write_value).map_err(map_datapath_error)?;
     write_mmio_state(config.state_host_phys, &updated)?;
     mirror_e1000_mmio_guest_view(&updated, config.mmio_guest_phys)?;
-    service_host_attach_hook(config, &updated)?;
     Ok(true)
-}
-
-fn service_host_attach_hook(
-    config: &VmexitE1000MmioConfig,
-    mmio_state: &E1000MmioState,
-) -> Result<(), CpuSeamError> {
-    if config.attach_host_phys == 0 || config.ipc_backing_host_phys == 0 {
-        return Ok(());
-    }
-    let mut attach_bytes = [0u8; 512];
-    read_host_bytes(config.attach_host_phys, &mut attach_bytes)?;
-    let mut attach = decode_host_attach_state(&attach_bytes).map_err(map_datapath_error)?;
-    let ipc_len = usize::try_from(REFERENCE_IPC_SHARED_BYTES).map_err(|_| {
-        CpuSeamError::new(
-            CpuSeamErrorKind::InvalidInput,
-            "IPC backing size exceeds host addressable range",
-        )
-    })?;
-    let mut ipc_bytes = alloc::vec![0u8; ipc_len];
-    read_host_bytes(config.ipc_backing_host_phys, &mut ipc_bytes)?;
-    match config.host_attach_role {
-        VmexitE1000HostAttachRole::Disabled => {}
-        VmexitE1000HostAttachRole::HostIn if mmio_state.tx_doorbell => {
-            host_in_forward_ingress_to_ipc(&mut attach, &mut ipc_bytes).map_err(map_datapath_error)?;
-        }
-        VmexitE1000HostAttachRole::HostOut if mmio_state.rx_doorbell => {
-            host_out_emit_from_ipc(&mut attach, &mut ipc_bytes).map_err(map_datapath_error)?;
-        }
-        VmexitE1000HostAttachRole::HostIn | VmexitE1000HostAttachRole::HostOut => {}
-    }
-    write_host_bytes(config.ipc_backing_host_phys, &ipc_bytes)?;
-    encode_host_attach_state(&attach, &mut attach_bytes).map_err(map_datapath_error)?;
-    write_host_bytes(config.attach_host_phys, &attach_bytes)?;
-    Ok(())
-}
-
-fn read_host_bytes(host_phys: u64, out: &mut [u8]) -> Result<(), CpuSeamError> {
-    if host_phys == 0 {
-        return Err(CpuSeamError::new(
-            CpuSeamErrorKind::InvalidInput,
-            "host read address must be non-zero",
-        ));
-    }
-    // SAFETY: caller guarantees the host range is hypervisor-readable.
-    unsafe {
-        core::ptr::copy_nonoverlapping(host_phys as *const u8, out.as_mut_ptr(), out.len());
-    }
-    Ok(())
-}
-
-fn write_host_bytes(host_phys: u64, bytes: &[u8]) -> Result<(), CpuSeamError> {
-    if host_phys == 0 {
-        return Err(CpuSeamError::new(
-            CpuSeamErrorKind::InvalidInput,
-            "host write address must be non-zero",
-        ));
-    }
-    // SAFETY: caller guarantees the host range is hypervisor-writable.
-    unsafe {
-        core::ptr::copy_nonoverlapping(bytes.as_ptr(), host_phys as *mut u8, bytes.len());
-    }
-    Ok(())
 }
 
 /// Reads one emulated e1000 register from hypervisor-side state.
@@ -274,9 +192,6 @@ mod tests {
         VmexitE1000MmioConfig {
             mmio_guest_phys,
             state_host_phys: host_phys,
-            attach_host_phys: 0,
-            ipc_backing_host_phys: 0,
-            host_attach_role: VmexitE1000HostAttachRole::Disabled,
         }
     }
 
@@ -304,9 +219,6 @@ mod tests {
         let config = VmexitE1000MmioConfig {
             mmio_guest_phys,
             state_host_phys: state_host,
-            attach_host_phys: 0,
-            ipc_backing_host_phys: 0,
-            host_attach_role: VmexitE1000HostAttachRole::Disabled,
         };
         assert!(handle_e1000_mmio_vmexit(
             VM_EXIT_REASON_EPT_VIOLATION,

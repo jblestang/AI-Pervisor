@@ -37,11 +37,7 @@ pub use e1000::{
     handle_e1000_mmio_read, handle_e1000_mmio_write, E1000MmioState, E1000_REG_RDH, E1000_REG_RDT,
     E1000_REG_TDH, E1000_REG_TDT,
 };
-pub use e1000_host_attach::{
-    decode_host_attach_state, encode_host_attach_state, host_in_forward_ingress_to_ipc,
-    host_out_emit_from_ipc, initialize_host_attach_state, plan_e1000_host_attach,
-    E1000HostAttachPlan, E1000HostAttachState,
-};
+pub use e1000_host_attach::{plan_e1000_host_attach, E1000HostAttachPlan};
 pub use error::{DatapathError, DatapathErrorKind};
 pub use forward::{
     forward_frame_in_mid_out, forward_synthetic_frame, is_compromised_action_blocked,

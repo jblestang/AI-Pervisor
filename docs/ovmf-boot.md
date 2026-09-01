@@ -80,7 +80,7 @@ For a real experiment without validate-only mock proof, require in-VM executed m
 cargo xtask live-qemu-smoke --require-executed --no-skip --build
 ```
 
-When `configs/qemu.yaml` declares `qemu.network.enabled: true` (the default production config), live smoke attaches outer-QEMU e1000 devices at the contract BDFs on **independent host tap interfaces** (`hvdp-in0` for IN, `hvdp-out0` for OUT). IN and OUT are not bridged together; MID forwards between them over IPC only. Pass `--no-host-net` to force the legacy `-net none` launch.
+When `configs/qemu.yaml` declares `qemu.network.enabled: true` (the default production config), live smoke attaches outer-QEMU e1000 devices at the contract BDFs on **independent host tap interfaces** (`hvdp-in0` for IN, `hvdp-out0` for OUT). IN and OUT are not bridged together. Nested **guests** own in→mid→out relay over IPC; the hypervisor emulates nested e1000 MMIO doorbells only and does not forward packets between host taps. Pass `--no-host-net` to force the legacy `-net none` launch.
 
 ```bash
 # Outer QEMU e1000 at 0000:00:03.0 / 0000:00:04.0 on separate tap netdevs (from config)

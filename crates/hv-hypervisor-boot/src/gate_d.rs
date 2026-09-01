@@ -1482,9 +1482,8 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
         };
         use hv_datapath::plan_e1000_host_attach;
         use hv_x86_cpu::{
-            initialize_ipc_queue_backing, install_e1000_host_attach_state_page,
-            install_e1000_mmio_state_page, run_ept_pointer_reload_cpu_seam_batch,
-            VmexitE1000HostAttachRole, VmexitE1000MmioConfig, VmexitIpcRelayConfig,
+            initialize_ipc_queue_backing, install_e1000_mmio_state_page,
+            run_ept_pointer_reload_cpu_seam_batch, VmexitE1000MmioConfig, VmexitIpcRelayConfig,
             VmexitRelayCounterConfig, VmexitRelayDispatchPlan, GUEST_RELAY_MEASUREMENT_VM_ID,
         };
 
@@ -1586,11 +1585,8 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
             .iter()
             .filter(|device| device.kind == "nic_e1000")
             .count();
-        let attach_plan = plan_e1000_host_attach(layout)
+        plan_e1000_host_attach(layout)
             .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
-        let attach_page =
-            install_e1000_host_attach_state_page(allocator, &attach_plan).map_err(map_cpu_seam_error)?;
-        let attach_host_phys = attach_page.host_phys;
         for device in &layout.pci_devices {
             if device.kind != "nic_e1000" {
                 continue;
@@ -1600,17 +1596,6 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
                 .raw();
             let state_page =
                 install_e1000_mmio_state_page(allocator).map_err(map_cpu_seam_error)?;
-            let ipc_backing_host_phys = ipc_by_vm
-                .iter()
-                .find(|(vm_id, _)| *vm_id == device.vm_id)
-                .and_then(|(_, configs)| configs.first())
-                .map(|config| config.backing_host_phys)
-                .unwrap_or(0);
-            let host_attach_role = match device.vm_id.raw() {
-                0 => VmexitE1000HostAttachRole::HostIn,
-                2 => VmexitE1000HostAttachRole::HostOut,
-                _ => VmexitE1000HostAttachRole::Disabled,
-            };
             set_ept_mapping_guest_writable(ept_tables, mmio_gpa, false)
                 .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
             if !ept_tables.mappings.iter().any(|mapping| {
@@ -1646,9 +1631,6 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
                 VmexitE1000MmioConfig {
                     mmio_guest_phys: mmio_gpa,
                     state_host_phys: state_page.host_phys,
-                    attach_host_phys,
-                    ipc_backing_host_phys,
-                    host_attach_role,
                 },
             ));
             hv_x86_cpu::initialize_e1000_mmio_guest_view(

@@ -106,6 +106,24 @@ mod tests {
     }
 
     #[test]
+    fn plan_qemu_network_uses_distinct_tap_ifnames_for_in_and_out() {
+        let yaml = include_str!("../../configs/qemu.yaml");
+        let compiled = hv_config_model::compile_config_from_str(yaml).expect("compile");
+        let interfaces = &compiled.normalized.qemu.network.interfaces;
+        let in_if = interfaces
+            .iter()
+            .find(|iface| iface.partition == "in")
+            .and_then(|iface| iface.tap_ifname.as_deref())
+            .expect("in tap");
+        let out_if = interfaces
+            .iter()
+            .find(|iface| iface.partition == "out")
+            .and_then(|iface| iface.tap_ifname.as_deref())
+            .expect("out tap");
+        assert_ne!(in_if, out_if);
+    }
+
+    #[test]
     fn plan_qemu_network_rejects_missing_config() {
         assert!(plan_qemu_network_from_config("configs/missing.yaml").is_err());
     }

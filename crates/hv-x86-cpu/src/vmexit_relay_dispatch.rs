@@ -217,9 +217,6 @@ mod tests {
             e1000_mmio: Some(VmexitE1000MmioConfig {
                 mmio_guest_phys: 0xFEB0_0000,
                 state_host_phys: 0x8000,
-                attach_host_phys: 0,
-                ipc_backing_host_phys: 0,
-                host_attach_role: VmexitE1000HostAttachRole::Disabled,
             }),
         };
         assert!(config.requires_host_dispatch());
@@ -254,9 +251,6 @@ mod tests {
             e1000_mmio: Some(VmexitE1000MmioConfig {
                 mmio_guest_phys: 0xFEB0_0000,
                 state_host_phys: 0x8000,
-                attach_host_phys: 0,
-                ipc_backing_host_phys: 0,
-                host_attach_role: VmexitE1000HostAttachRole::Disabled,
             }),
         };
         assert!(handle_relay_dispatch_vmexit(
