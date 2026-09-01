@@ -293,7 +293,7 @@ fn map_cpu_seam_error(err: hv_x86_cpu::CpuSeamError) -> BootCheckError {
 #[cfg(feature = "datapath-guest-relay-measurement")]
 fn discover_and_validate_outer_host_bars(
     attach_plan: &hv_datapath::E1000HostAttachPlan,
-) -> Result<(), hv_datapath::DatapathError> {
+) -> Result<bool, hv_datapath::DatapathError> {
     use hv_datapath::{validate_discovered_outer_host_bars, DiscoveredOuterHostBars};
 
     #[cfg(feature = "real-hw-execution")]
@@ -301,16 +301,18 @@ fn discover_and_validate_outer_host_bars(
         use hv_x86_cpu::read_pci_bar0_mmio;
 
         let discovered = DiscoveredOuterHostBars {
-            host_in_bar0: read_pci_bar0_mmio(attach_plan.host_in_bdf).map_err(map_datapath_error)?,
+            host_in_bar0: read_pci_bar0_mmio(attach_plan.host_in_bdf)
+                .map_err(map_datapath_error)?,
             host_out_bar0: read_pci_bar0_mmio(attach_plan.host_out_bdf)
                 .map_err(map_datapath_error)?,
         };
-        validate_discovered_outer_host_bars(attach_plan, &discovered)
+        validate_discovered_outer_host_bars(attach_plan, &discovered)?;
+        Ok(true)
     }
     #[cfg(not(feature = "real-hw-execution"))]
     {
         let _ = attach_plan;
-        Ok(())
+        Ok(false)
     }
 }
 
@@ -1370,6 +1372,8 @@ pub struct GateDDatapathGuestExecutionResult {
     pub live: GateDDatapathGuestLiveResult,
     /// Live VMX guest execution seam outcome for all source-tree partitions.
     pub execution_seam: hv_x86_cpu::DatapathGuestExecutionCpuSeamOutcome,
+    /// Whether outer host e1000 BAR0 was discovered from PCI config space.
+    pub outer_host_bar0_discovered: bool,
 }
 
 /// Runs transfer boot checks and Gate D guest execution init using embedded snapshots.
@@ -1506,6 +1510,8 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
         })
         .collect::<Result<alloc::vec::Vec<_>, BootCheckError>>()?;
     #[cfg(feature = "datapath-guest-relay-measurement")]
+    let mut outer_host_bar0_discovered = false;
+    #[cfg(feature = "datapath-guest-relay-measurement")]
     let relay_dispatch = {
         use hv_datapath::plan_e1000_host_attach;
         use hv_datapath::{
@@ -1624,7 +1630,7 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
         let attach_plan = plan_e1000_host_attach(layout)
             .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
         if layout.host_network.enabled {
-            discover_and_validate_outer_host_bars(&attach_plan)
+            outer_host_bar0_discovered = discover_and_validate_outer_host_bars(&attach_plan)
                 .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
         }
         for device in &layout.pci_devices {
@@ -1842,6 +1848,16 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
     Ok(GateDDatapathGuestExecutionResult {
         live,
         execution_seam,
+        outer_host_bar0_discovered: {
+            #[cfg(feature = "datapath-guest-relay-measurement")]
+            {
+                outer_host_bar0_discovered
+            }
+            #[cfg(not(feature = "datapath-guest-relay-measurement"))]
+            {
+                false
+            }
+        },
     })
 }
 

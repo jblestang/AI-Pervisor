@@ -254,8 +254,7 @@ fn validate_host_network(
             )
             .with_path(format!("{path}.partition")));
         }
-        let bdf = parse_bdf(&interface.bdf)
-            .map_err(|err| err.with_path(format!("{path}.bdf")))?;
+        let bdf = parse_bdf(&interface.bdf).map_err(|err| err.with_path(format!("{path}.bdf")))?;
         if let Some(existing) = network_bdfs.insert(bdf, interface.partition.clone()) {
             return Err(ConfigError::new(
                 ConfigErrorKind::Semantic,
@@ -304,10 +303,7 @@ fn validate_host_network(
         }
 
         if raw.qemu.network.backend == "tap"
-            && interface
-                .tap_ifname
-                .as_deref()
-                .is_none_or(str::is_empty)
+            && interface.tap_ifname.as_deref().is_none_or(str::is_empty)
         {
             return Err(ConfigError::new(
                 ConfigErrorKind::Semantic,
@@ -335,16 +331,9 @@ fn validate_host_network(
             let bdf = parse_bdf(&device.bdf).map_err(|err| {
                 err.with_path(format!("partitions[id={}].devices.bdf", partition.id))
             })?;
-            if !raw
-                .qemu
-                .network
-                .interfaces
-                .iter()
-                .any(|interface| {
-                    interface.partition == partition.id
-                        && parse_bdf(&interface.bdf).ok() == Some(bdf)
-                })
-            {
+            if !raw.qemu.network.interfaces.iter().any(|interface| {
+                interface.partition == partition.id && parse_bdf(&interface.bdf).ok() == Some(bdf)
+            }) {
                 return Err(ConfigError::new(
                     ConfigErrorKind::Semantic,
                     format!(

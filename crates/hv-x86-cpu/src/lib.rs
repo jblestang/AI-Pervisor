@@ -62,8 +62,8 @@ pub use instructions::{
     IA32_VMX_BASIC,
 };
 pub use pci_config::{
-    decode_bar0_mmio_from_config_dwords, is_e1000_vendor_device, read_pci_bar0_mmio,
-    pci_config_read32, E1000_PCI_DEVICE_ID, E1000_PCI_VENDOR_ID,
+    decode_bar0_mmio_from_config_dwords, is_e1000_vendor_device, pci_config_read32,
+    read_pci_bar0_mmio, E1000_PCI_DEVICE_ID, E1000_PCI_VENDOR_ID,
 };
 #[cfg(feature = "datapath-guests")]
 pub use resident::install_guest_elf;

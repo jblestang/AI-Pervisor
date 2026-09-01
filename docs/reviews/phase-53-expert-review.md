@@ -32,3 +32,10 @@ Nested guest MMIO GPAs remain config-driven (Phase 51–52). Outer BAR discovery
 - `cargo clippy --all-targets --all-features`
 - `cargo xtask build-boot-chain --config configs/ovmf-smoke.yaml`
 - Opt-in live: `cargo xtask live-qemu-smoke --require-executed --no-skip --build`
+
+## Review fixes
+
+- `discover_and_validate_outer_host_bars` returns `Result<bool, …>` so validate-only builds do not claim discovery
+- `GateDDatapathGuestExecutionResult.outer_host_bar0_discovered` propagates to firmware serial markers
+- EFI logs `REAL_HW: outer host e1000 BAR0 discovered` when PCI config read succeeds under REAL_HW
+- Live smoke requires the BAR0 discovery marker when host networking is enabled (unless `--no-host-net`)

@@ -15,6 +15,7 @@ use std::process::Command as ProcessCommand;
 mod build_guests;
 mod constants;
 mod datapath_benchmark;
+mod host_net_taps;
 mod live_qemu_smoke;
 mod ovmf_smoke;
 mod qemu_network;
@@ -147,6 +148,17 @@ pub fn run_live_qemu_smoke(
     build_first: bool,
 ) -> i32 {
     live_qemu_smoke::run_live_qemu_smoke(config_path, boot_chain_dir, timeout_secs, build_first)
+}
+
+/// Creates and brings up host tap interfaces declared in the config host network plan.
+pub fn run_setup_host_net_taps(config_path: &str) -> i32 {
+    match host_net_taps::setup_host_net_taps(config_path) {
+        Ok(()) => 0,
+        Err(err) => {
+            eprintln!("{err}");
+            1
+        }
+    }
 }
 
 /// Runs live QEMU smoke with explicit strict/executed options.
@@ -915,6 +927,7 @@ fn dispatch_task_with(task: TaskCommand, runner: fn(&str, &[&str]) -> i32) -> i3
         }
         TaskCommand::ConfigValidate { path } => run_config_validate(&path),
         TaskCommand::ConfigGenerate { path, output } => run_config_generate(&path, &output),
+        TaskCommand::SetupHostNetTaps { config } => run_setup_host_net_taps(&config),
     }
 }
 
@@ -1023,6 +1036,12 @@ enum TaskCommandCli {
         #[arg(long, default_value_t = false)]
         no_host_net: bool,
     },
+    /// Create and bring up host tap interfaces from the config host network plan.
+    SetupHostNetTaps {
+        /// Path to YAML configuration describing host network taps.
+        #[arg(long, default_value = DEFAULT_EFI_CONFIG_PATH)]
+        config: String,
+    },
     /// Run the host datapath throughput benchmark per docs/benchmark.md.
     DatapathBenchmark {
         /// Path to YAML configuration used to plan the reference datapath.
@@ -1101,6 +1120,7 @@ pub(crate) fn map_cli_command(command: TaskCommandCli) -> TaskCommand {
             no_skip,
             no_host_net,
         },
+        TaskCommandCli::SetupHostNetTaps { config } => TaskCommand::SetupHostNetTaps { config },
         TaskCommandCli::DatapathBenchmark { config } => TaskCommand::DatapathBenchmark { config },
         TaskCommandCli::BuildGuests => TaskCommand::BuildGuests,
         TaskCommandCli::DatapathLiveBenchmark { config } => {
@@ -1197,6 +1217,11 @@ pub enum TaskCommand {
         no_skip: bool,
         /// Disable host-connected outer QEMU e1000/netdev wiring even when enabled in config.
         no_host_net: bool,
+    },
+    /// Create and bring up host tap interfaces from the config host network plan.
+    SetupHostNetTaps {
+        /// Path to YAML configuration describing host network taps.
+        config: String,
     },
     /// Run the host datapath throughput benchmark per docs/benchmark.md.
     DatapathBenchmark {
@@ -1746,6 +1771,12 @@ mod tests {
                 require_executed: true,
                 no_skip: true,
                 no_host_net: false,
+            }
+        );
+        assert_eq!(
+            parse_task_command(["xtask", "setup-host-net-taps"]).expect("parse setup taps"),
+            TaskCommand::SetupHostNetTaps {
+                config: String::from(DEFAULT_EFI_CONFIG_PATH),
             }
         );
     }

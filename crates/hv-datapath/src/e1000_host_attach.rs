@@ -4,8 +4,8 @@
 //! described in platform configuration. Nested guests own in→mid→out relay over IPC.
 
 use hv_platform_model::{
-    bdf_for_datapath_role, mmio_guest_phys_for_datapath_role, validate_layout_host_network_coherence,
-    StaticPlatformIR, DATAPATH_ROLE_IN, DATAPATH_ROLE_OUT,
+    bdf_for_datapath_role, mmio_guest_phys_for_datapath_role,
+    validate_layout_host_network_coherence, StaticPlatformIR, DATAPATH_ROLE_IN, DATAPATH_ROLE_OUT,
 };
 use hv_types::PciBdf;
 

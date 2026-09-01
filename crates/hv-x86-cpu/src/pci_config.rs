@@ -10,7 +10,10 @@ pub const E1000_PCI_VENDOR_ID: u16 = 0x8086;
 pub const E1000_PCI_DEVICE_ID: u16 = 0x100E;
 
 /// Decodes BAR0 MMIO base from PCI config dwords at offsets 0x10 (and 0x14 for 64-bit).
-pub fn decode_bar0_mmio_from_config_dwords(bar0_low: u32, bar0_high: u32) -> Result<u64, CpuSeamError> {
+pub fn decode_bar0_mmio_from_config_dwords(
+    bar0_low: u32,
+    bar0_high: u32,
+) -> Result<u64, CpuSeamError> {
     if bar0_low & 0x1 != 0 {
         return Err(CpuSeamError::new(
             CpuSeamErrorKind::InvalidInput,

@@ -7,6 +7,12 @@
 extern crate alloc;
 
 use hv_boot_abi::HypervisorTransferHeader;
+#[cfg(any(
+    feature = "datapath-guest-execution",
+    feature = "datapath-guest-throughput",
+    feature = "datapath-guest-relay-live"
+))]
+use hv_boot_abi::REAL_HW_OUTER_HOST_BAR0_DISCOVERED_MARKER;
 #[cfg(any(feature = "datapath-runtime", feature = "datapath-guest-sources", feature = "datapath-guest-live", feature = "datapath-guest-execution", feature = "datapath-guest-throughput", feature = "datapath-guest-relay-live"))]
 use hv_guest_boot::GUEST_DATAPATH_CAPABLE_MARKER;
 #[cfg(feature = "datapath-guest-relay-live")]
@@ -501,6 +507,9 @@ fn log_datapath_guest_execution_markers(markers: &DatapathGuestExecutionBootMark
     log_datapath_guest_live_markers(&markers.live);
     if markers.guest_code_executed {
         log::info!("{GATE_D_GUEST_EXECUTION_MARKER}");
+    }
+    if markers.outer_host_bar0_discovered {
+        log::info!("{REAL_HW_OUTER_HOST_BAR0_DISCOVERED_MARKER}");
     }
 }
 
