@@ -10,12 +10,38 @@ use crate::constants::{
 };
 use crate::{run, run_build_boot_chain_live};
 pub use hv_boot_abi::{
-    GATE_D_GUEST_BOOT_INFO_INSTALLED_MARKER, GATE_D_GUEST_SOURCE_ELF_MARKER,
-    GATE_D_GUEST_THROUGHPUT_EXECUTED_MARKER, GATE_D_GUEST_THROUGHPUT_MARKER,
-    GATE_D_GUEST_THROUGHPUT_TARGET_MET_MARKER, REAL_HW_BOOT_SUCCESS_MARKER,
-    REAL_HW_EPT_EXECUTED_MARKER, REAL_HW_VMLAUNCH_EXECUTED_MARKER, REAL_HW_VMXON_EXECUTED_MARKER,
+    GATE_D_GUEST_BOOT_INFO_INSTALLED_MARKER, GATE_D_GUEST_EXECUTION_MARKER,
+    GATE_D_GUEST_SOURCE_ELF_MARKER, GATE_D_GUEST_THROUGHPUT_EXECUTED_MARKER,
+    GATE_D_GUEST_THROUGHPUT_MARKER, GATE_D_GUEST_THROUGHPUT_TARGET_MET_MARKER,
+    REAL_HW_BOOT_SUCCESS_MARKER, REAL_HW_EPT_EXECUTED_MARKER, REAL_HW_VMLAUNCH_EXECUTED_MARKER,
+    REAL_HW_VMXON_EXECUTED_MARKER,
 };
 pub use hv_guest_boot::GUEST_DATAPATH_RELAY_BENCHMARK_COMPLETE_MARKER;
+
+/// Seconds to wait for a minimal OVMF/KVM serial probe before the full smoke boot.
+pub const LIVE_QEMU_KVM_PROBE_TIMEOUT_SECS: u64 = 8;
+
+/// Minimum serial output length from the OVMF/KVM probe (empty logs indicate broken nested boot).
+pub const LIVE_QEMU_KVM_PROBE_MIN_SERIAL_BYTES: usize = 64;
+
+/// Options controlling strict REAL_HW live smoke evaluation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct LiveQemuSmokeOptions {
+    /// Require in-VM executed throughput and guest relay markers (reject validate-only proof).
+    pub require_executed: bool,
+    /// Fail instead of skipping when KVM/VMX or the OVMF/KVM probe is unavailable.
+    pub no_skip: bool,
+}
+
+impl LiveQemuSmokeOptions {
+    /// Strict mode for real QEMU/KVM experiments without validate-only mock proof.
+    pub fn without_mocks() -> Self {
+        Self {
+            require_executed: true,
+            no_skip: true,
+        }
+    }
+}
 
 /// Evaluates serial output for Gate D in-VM guest relay measurement under REAL_HW.
 pub fn evaluate_gate_d_guest_relay_measurement_smoke(log: &str) -> Result<(), String> {
@@ -35,7 +61,19 @@ pub fn evaluate_gate_d_guest_relay_measurement_smoke(log: &str) -> Result<(), St
 
 /// Evaluates OVMF serial output for a successful REAL_HW Gate C boot.
 pub fn evaluate_live_qemu_smoke_serial(log: &str) -> Result<(), String> {
+    evaluate_live_qemu_smoke_serial_with(log, &LiveQemuSmokeOptions::default())
+}
+
+/// Evaluates OVMF serial output with optional strict executed REAL_HW requirements.
+pub fn evaluate_live_qemu_smoke_serial_with(
+    log: &str,
+    options: &LiveQemuSmokeOptions,
+) -> Result<(), String> {
     evaluate_ovmf_chain_load(log)?;
+    if options.require_executed {
+        evaluate_gate_d_guest_relay_executed_smoke(log)?;
+        return Ok(());
+    }
     if log.contains(REAL_HW_BOOT_SUCCESS_MARKER) {
         return Ok(());
     }
@@ -43,6 +81,27 @@ pub fn evaluate_live_qemu_smoke_serial(log: &str) -> Result<(), String> {
         return evaluate_gate_d_guest_relay_measurement_smoke(log);
     }
     evaluate_gate_d_guest_relay_live_smoke(log)
+}
+
+/// Evaluates serial output for strict Gate D executed proof (no validate-only mock tier).
+pub fn evaluate_gate_d_guest_relay_executed_smoke(log: &str) -> Result<(), String> {
+    evaluate_gate_d_guest_relay_measurement_smoke(log)?;
+    evaluate_gate_d_guest_relay_strict_real_hw_smoke(log)
+}
+
+/// Requires all REAL_HW VMX markers and live guest execution under VMX.
+pub fn evaluate_gate_d_guest_relay_strict_real_hw_smoke(log: &str) -> Result<(), String> {
+    for marker in [
+        REAL_HW_VMXON_EXECUTED_MARKER,
+        REAL_HW_EPT_EXECUTED_MARKER,
+        REAL_HW_VMLAUNCH_EXECUTED_MARKER,
+        GATE_D_GUEST_EXECUTION_MARKER,
+    ] {
+        if !log.contains(marker) {
+            return Err(format!("serial log missing strict REAL_HW marker: {marker}"));
+        }
+    }
+    Ok(())
 }
 
 /// Evaluates serial output for Gate D guest relay live under REAL_HW (validate-only default).
@@ -87,6 +146,99 @@ pub fn live_qemu_hardware_ready() -> bool {
     kvm_device_available() && host_vmx_available()
 }
 
+/// Returns whether OVMF produces serial output under KVM (detects broken nested virt hosts).
+pub fn live_qemu_kvm_ovmf_serial_ready_with(
+    runner: fn(&str, &[&str]) -> i32,
+    locate_ovmf: fn() -> Option<(PathBuf, PathBuf)>,
+) -> bool {
+    if !live_qemu_hardware_ready() {
+        return false;
+    }
+    let Some((ovmf_code, ovmf_vars_template)) = locate_ovmf() else {
+        return false;
+    };
+    if !command_exists("qemu-system-x86_64") || !command_exists("timeout") {
+        return false;
+    }
+
+    let workspace = crate::workspace_root();
+    let probe_dir = workspace.join(LIVE_QEMU_SMOKE_WORK_DIR).join("kvm-probe");
+    let vars_fd = probe_dir.join("OVMF_VARS.fd");
+    let serial_log = probe_dir.join("serial.log");
+    if fs::remove_dir_all(&probe_dir).is_err() && probe_dir.exists() {
+        return false;
+    }
+    if fs::create_dir_all(&probe_dir).is_err() {
+        return false;
+    }
+    if fs::copy(&ovmf_vars_template, &vars_fd).is_err() {
+        return false;
+    }
+
+    let timeout = LIVE_QEMU_KVM_PROBE_TIMEOUT_SECS.to_string();
+    let serial_path = serial_log.to_string_lossy().into_owned();
+    let serial_arg = format!("file:{serial_path}");
+    let code_drive = format!(
+        "if=pflash,format=raw,readonly=on,file={}",
+        ovmf_code.display()
+    );
+    let vars_drive = format!("if=pflash,format=raw,file={}", vars_fd.display());
+    let cpu_arg = format!("{LIVE_QEMU_CPU},kvm=on");
+    let status = runner(
+        "timeout",
+        &[
+            &timeout,
+            "qemu-system-x86_64",
+            "-machine",
+            LIVE_QEMU_MACHINE,
+            "-cpu",
+            &cpu_arg,
+            "-smp",
+            "1",
+            "-m",
+            "512",
+            "-display",
+            "none",
+            "-serial",
+            &serial_arg,
+            "-net",
+            "none",
+            "-no-reboot",
+            "-drive",
+            &code_drive,
+            "-drive",
+            &vars_drive,
+        ],
+    );
+    if status != 0 && status != 124 {
+        return false;
+    }
+    let Ok(log) = fs::read_to_string(&serial_log) else {
+        return false;
+    };
+    log.len() >= LIVE_QEMU_KVM_PROBE_MIN_SERIAL_BYTES
+        && (log.contains(OVMF_BOOT_ATTEMPT_MARKER) || log.contains("UEFI"))
+}
+
+/// Returns whether OVMF produces serial output under KVM.
+pub fn live_qemu_kvm_ovmf_serial_ready() -> bool {
+    live_qemu_kvm_ovmf_serial_ready_with(run, locate_ovmf_firmware)
+}
+
+/// Returns whether the host can run strict REAL_HW live smoke (KVM serial + VMX).
+pub fn live_qemu_strict_hardware_ready() -> bool {
+    live_qemu_hardware_ready() && live_qemu_kvm_ovmf_serial_ready()
+}
+
+fn report_live_qemu_skip(options: &LiveQemuSmokeOptions) -> i32 {
+    if options.no_skip {
+        eprintln!("live-qemu-smoke failed: KVM nested virt, host VMX, or OVMF/KVM serial probe unavailable");
+        return 1;
+    }
+    eprintln!("live-qemu-smoke skipped: KVM nested virt or host VMX unavailable");
+    0
+}
+
 /// Runs a KVM/QEMU REAL_HW smoke boot of the loader + hypervisor chain.
 pub fn run_live_qemu_smoke(
     config_path: &str,
@@ -94,15 +246,47 @@ pub fn run_live_qemu_smoke(
     timeout_secs: u64,
     build_first: bool,
 ) -> i32 {
-    if !live_qemu_hardware_ready() {
-        eprintln!("live-qemu-smoke skipped: KVM nested virt or host VMX unavailable");
-        return 0;
+    run_live_qemu_smoke_with_options(
+        config_path,
+        boot_chain_dir,
+        timeout_secs,
+        build_first,
+        &LiveQemuSmokeOptions::default(),
+    )
+}
+
+/// Runs live QEMU smoke with strict executed/no-mock options.
+pub fn run_live_qemu_smoke_with_options(
+    config_path: &str,
+    boot_chain_dir: &str,
+    timeout_secs: u64,
+    build_first: bool,
+    options: &LiveQemuSmokeOptions,
+) -> i32 {
+    if options.require_executed || options.no_skip {
+        if !live_qemu_hardware_ready() {
+            return report_live_qemu_skip(options);
+        }
+        if !live_qemu_kvm_ovmf_serial_ready_with(run, locate_ovmf_firmware) {
+            if options.no_skip {
+                eprintln!(
+                    "live-qemu-smoke failed: OVMF produced no serial output under KVM (nested virt may be broken on this host)"
+                );
+                return 1;
+            }
+            eprintln!("live-qemu-smoke skipped: OVMF/KVM serial probe failed");
+            return 0;
+        }
+    } else if !live_qemu_hardware_ready() {
+        return report_live_qemu_skip(options);
     }
+
     run_live_qemu_smoke_with(
         config_path,
         boot_chain_dir,
         timeout_secs,
         build_first,
+        options,
         run_build_boot_chain_live,
         run,
         locate_ovmf_firmware,
@@ -114,6 +298,7 @@ fn run_live_qemu_smoke_with(
     boot_chain_dir: &str,
     timeout_secs: u64,
     build_first: bool,
+    options: &LiveQemuSmokeOptions,
     build_boot_chain: fn(&str, &str) -> i32,
     runner: fn(&str, &[&str]) -> i32,
     locate_ovmf: fn() -> Option<(PathBuf, PathBuf)>,
@@ -223,13 +408,19 @@ fn run_live_qemu_smoke_with(
         }
     };
 
-    if let Err(message) = evaluate_live_qemu_smoke_serial(&log) {
+    if let Err(message) = evaluate_live_qemu_smoke_serial_with(&log, options) {
         eprintln!("live QEMU smoke boot failed: {message}");
         eprintln!("serial log: {}", serial_log.display());
         return 1;
     }
 
-    eprintln!("live QEMU smoke boot succeeded (Gate D guest relay live verified under KVM/OVMF)");
+    if options.require_executed {
+        eprintln!(
+            "live QEMU smoke boot succeeded (Gate D guest relay executed under live VMX without validate-only mocks)"
+        );
+    } else {
+        eprintln!("live QEMU smoke boot succeeded (Gate D guest relay live verified under KVM/OVMF)");
+    }
     0
 }
 
@@ -433,6 +624,7 @@ mod tests {
             "target/live-mock-boot-chain-no-ovmf",
             1,
             false,
+            &LiveQemuSmokeOptions::default(),
             |_, _| 0,
             |_, _| 0,
             || None,
@@ -478,6 +670,7 @@ mod tests {
             "build/missing-live-boot-chain",
             1,
             false,
+            &LiveQemuSmokeOptions::default(),
             |_, _| 0,
             |_, _| 0,
             locate_ovmf_firmware,
@@ -498,6 +691,7 @@ mod tests {
             "target/live-mock-boot-chain",
             1,
             false,
+            &LiveQemuSmokeOptions::default(),
             |_, _| 0,
             |_, _| {
                 let serial_log = crate::workspace_root()
@@ -524,6 +718,7 @@ mod tests {
             "target/live-mock-boot-chain-legacy",
             1,
             false,
+            &LiveQemuSmokeOptions::default(),
             |_, _| 0,
             |_, _| {
                 let serial_log = crate::workspace_root()
@@ -556,6 +751,7 @@ mod tests {
             "target/live-mock-boot-chain-fail",
             1,
             false,
+            &LiveQemuSmokeOptions::default(),
             |_, _| 0,
             |_, _| {
                 let serial_log = crate::workspace_root()
@@ -579,14 +775,12 @@ mod tests {
             return;
         }
         assert_eq!(
-            run_live_qemu_smoke_with(
+            run_live_qemu_smoke_with_options(
                 "configs/qemu.yaml",
                 "build/missing-live-boot-chain",
                 1,
                 false,
-                |_, _| 0,
-                |_, _| 0,
-                locate_ovmf_firmware,
+                &LiveQemuSmokeOptions::default(),
             ),
             0
         );
@@ -631,6 +825,7 @@ mod tests {
             "target/live-mock-boot-chain-missing-log",
             1,
             false,
+            &LiveQemuSmokeOptions::default(),
             |_, _| 0,
             |_, _| 0,
             locate_ovmf_firmware,
@@ -651,6 +846,7 @@ mod tests {
             "target/live-mock-boot-chain-timeout",
             1,
             false,
+            &LiveQemuSmokeOptions::default(),
             |_, _| 0,
             |_, _| {
                 let serial_log = crate::workspace_root()
@@ -677,6 +873,7 @@ mod tests {
             "target/live-mock-boot-chain-qemu-fail",
             1,
             false,
+            &LiveQemuSmokeOptions::default(),
             |_, _| 0,
             |_, _| 1,
             locate_ovmf_firmware,
@@ -692,6 +889,7 @@ mod tests {
             "target/live-mock-boot-chain",
             1,
             true,
+            &LiveQemuSmokeOptions::default(),
             |_, _| 1,
             |_, _| 0,
             locate_ovmf_firmware,
@@ -717,6 +915,80 @@ mod tests {
         let vars = work.join("OVMF_VARS.fd");
         let missing = temp.path().join("missing.fd");
         assert!(prepare_smoke_workdir(&work, &esp, &vars, &missing).is_err());
+    }
+
+    fn gate_d_relay_executed_success_log() -> String {
+        format!(
+            "BdsDxe: starting Boot0001 \"app\"\n\
+             {REAL_HW_VMXON_EXECUTED_MARKER}\n\
+             {REAL_HW_EPT_EXECUTED_MARKER}\n\
+             {REAL_HW_VMLAUNCH_EXECUTED_MARKER}\n\
+             {GATE_D_GUEST_EXECUTION_MARKER}\n\
+             {GATE_D_GUEST_SOURCE_ELF_MARKER}\n\
+             {GATE_D_GUEST_BOOT_INFO_INSTALLED_MARKER}\n\
+             {GATE_D_GUEST_THROUGHPUT_TARGET_MET_MARKER}\n\
+             {GATE_D_GUEST_THROUGHPUT_MARKER}\n\
+             {GATE_D_GUEST_THROUGHPUT_EXECUTED_MARKER}\n\
+             {GUEST_DATAPATH_RELAY_BENCHMARK_COMPLETE_MARKER}\n",
+        )
+    }
+
+    #[test]
+    fn evaluate_gate_d_guest_relay_executed_smoke_accepts_strict_markers() {
+        assert!(evaluate_gate_d_guest_relay_executed_smoke(&gate_d_relay_executed_success_log()).is_ok());
+        assert!(evaluate_live_qemu_smoke_serial_with(
+            &gate_d_relay_executed_success_log(),
+            &LiveQemuSmokeOptions::without_mocks(),
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn evaluate_gate_d_guest_relay_executed_smoke_rejects_validate_only_tier() {
+        assert!(evaluate_live_qemu_smoke_serial_with(
+            &gate_d_relay_live_success_log(),
+            &LiveQemuSmokeOptions::without_mocks(),
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn evaluate_gate_d_guest_relay_strict_real_hw_smoke_requires_all_vmx_markers() {
+        let mut log = gate_d_relay_executed_success_log();
+        log = log.replace(REAL_HW_EPT_EXECUTED_MARKER, "");
+        assert!(evaluate_gate_d_guest_relay_strict_real_hw_smoke(&log).is_err());
+    }
+
+    #[test]
+    fn run_live_qemu_smoke_no_skip_fails_when_kvm_probe_unavailable() {
+        if live_qemu_kvm_ovmf_serial_ready() {
+            return;
+        }
+        assert_eq!(
+            run_live_qemu_smoke_with_options(
+                "configs/qemu.yaml",
+                "build/missing-live-boot-chain",
+                1,
+                false,
+                &LiveQemuSmokeOptions::without_mocks(),
+            ),
+            1
+        );
+    }
+
+    #[test]
+    fn live_qemu_kvm_ovmf_serial_probe_accepts_nonempty_uefi_log() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let serial = temp.path().join("serial.log");
+        let filler = "x".repeat(LIVE_QEMU_KVM_PROBE_MIN_SERIAL_BYTES);
+        std::fs::write(
+            &serial,
+            format!("{filler}\nBdsDxe: starting Boot0001 \"shell\"\nUEFI\n"),
+        )
+        .expect("serial log");
+        let log = std::fs::read_to_string(&serial).expect("read serial");
+        assert!(log.len() >= LIVE_QEMU_KVM_PROBE_MIN_SERIAL_BYTES);
+        assert!(log.contains("UEFI"));
     }
 
     #[test]

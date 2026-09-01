@@ -74,7 +74,15 @@ Run a KVM-backed smoke boot (requires `/dev/kvm`, host VMX, OVMF, and QEMU). Exi
 cargo xtask live-qemu-smoke
 ```
 
-On success the serial log includes Gate D guest relay live markers (`Gate D: guest source ELF installed…`, `Gate D: guest boot info installed…`, `Gate D: guest throughput target 200 Mbit/s met`, `hypervisor Gate D datapath guest throughput succeeded`) and at least one REAL_HW VMX marker (`REAL_HW: VMXON Executed`, `REAL_HW: EPT pointer Executed`, or `REAL_HW: VMLAUNCH Executed`). When live in-VM measurement completes (Phase 29+), the log also includes `Gate D: guest throughput measured under live VMX` and guest `GUEST: datapath relay benchmark complete`. Legacy `vmx-launch`-only firmware may still emit `hypervisor Gate C REAL_HW boot succeeded`.
+For a real experiment without validate-only mock proof, require in-VM executed markers and fail when the host cannot run nested VMX/OVMF:
+
+```bash
+cargo xtask live-qemu-smoke --require-executed --no-skip --build
+```
+
+The strict path runs an OVMF/KVM serial probe first; hosts where OVMF produces no serial output under KVM (common on broken nested-virt cloud VMs) fail fast instead of timing out with an empty log.
+
+On success the serial log includes Gate D guest relay live markers (`Gate D: guest source ELF installed…`, `Gate D: guest boot info installed…`, `Gate D: guest throughput target 200 Mbit/s met`, `hypervisor Gate D datapath guest throughput succeeded`) and at least one REAL_HW VMX marker (`REAL_HW: VMXON Executed`, `REAL_HW: EPT pointer Executed`, or `REAL_HW: VMLAUNCH Executed`). When live in-VM measurement completes (Phase 29+), the log also includes `Gate D: guest throughput measured under live VMX` and guest `GUEST: datapath relay benchmark complete`. With `--require-executed`, all three REAL_HW VMX markers plus `Gate D: guest source-tree code executed under VMX for all partitions` are required. Legacy `vmx-launch`-only firmware may still emit `hypervisor Gate C REAL_HW boot succeeded`.
 
 ## PCI enumeration limits (Phase 8)
 

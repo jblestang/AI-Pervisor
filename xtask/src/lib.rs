@@ -148,6 +148,23 @@ pub fn run_live_qemu_smoke(
     live_qemu_smoke::run_live_qemu_smoke(config_path, boot_chain_dir, timeout_secs, build_first)
 }
 
+/// Runs live QEMU smoke with explicit strict/executed options.
+pub fn run_live_qemu_smoke_with_options(
+    config_path: &str,
+    boot_chain_dir: &str,
+    timeout_secs: u64,
+    build_first: bool,
+    options: &live_qemu_smoke::LiveQemuSmokeOptions,
+) -> i32 {
+    live_qemu_smoke::run_live_qemu_smoke_with_options(
+        config_path,
+        boot_chain_dir,
+        timeout_secs,
+        build_first,
+        options,
+    )
+}
+
 /// Builds loader and hypervisor `.efi` images into one output directory.
 pub fn run_build_boot_chain(config_path: &str, output_dir: &str) -> i32 {
     run_build_boot_chain_with(
@@ -857,7 +874,18 @@ fn dispatch_task_with(task: TaskCommand, runner: fn(&str, &[&str]) -> i32) -> i3
             boot_chain_dir,
             timeout_secs,
             build,
-        } => run_live_qemu_smoke(&config, &boot_chain_dir, timeout_secs, build),
+            require_executed,
+            no_skip,
+        } => run_live_qemu_smoke_with_options(
+            &config,
+            &boot_chain_dir,
+            timeout_secs,
+            build,
+            &live_qemu_smoke::LiveQemuSmokeOptions {
+                require_executed,
+                no_skip,
+            },
+        ),
         TaskCommand::DatapathBenchmark { config } => {
             datapath_benchmark::run_datapath_benchmark(&config)
         }
@@ -968,6 +996,12 @@ enum TaskCommandCli {
         /// Skip rebuilding the REAL_HW boot chain (requires existing `.efi` images).
         #[arg(long, default_value_t = false)]
         no_build: bool,
+        /// Require in-VM executed throughput and guest relay markers (reject validate-only proof).
+        #[arg(long, default_value_t = false)]
+        require_executed: bool,
+        /// Fail instead of skipping when KVM/VMX or the OVMF/KVM serial probe is unavailable.
+        #[arg(long, default_value_t = false)]
+        no_skip: bool,
     },
     /// Run the host datapath throughput benchmark per docs/benchmark.md.
     DatapathBenchmark {
@@ -1035,11 +1069,15 @@ pub(crate) fn map_cli_command(command: TaskCommandCli) -> TaskCommand {
             boot_chain_dir,
             timeout_secs,
             no_build,
+            require_executed,
+            no_skip,
         } => TaskCommand::LiveQemuSmoke {
             config,
             boot_chain_dir,
             timeout_secs,
             build: !no_build,
+            require_executed,
+            no_skip,
         },
         TaskCommandCli::DatapathBenchmark { config } => TaskCommand::DatapathBenchmark { config },
         TaskCommandCli::BuildGuests => TaskCommand::BuildGuests,
@@ -1131,6 +1169,10 @@ pub enum TaskCommand {
         timeout_secs: u64,
         /// Build the REAL_HW boot chain before launching QEMU.
         build: bool,
+        /// Require in-VM executed throughput and guest relay markers (reject validate-only proof).
+        require_executed: bool,
+        /// Fail instead of skipping when KVM/VMX or the OVMF/KVM serial probe is unavailable.
+        no_skip: bool,
     },
     /// Run the host datapath throughput benchmark per docs/benchmark.md.
     DatapathBenchmark {
@@ -1504,6 +1546,8 @@ mod tests {
             boot_chain_dir: String::from("build/missing-live-chain-dispatch"),
             timeout_secs: 1,
             build: false,
+            require_executed: false,
+            no_skip: false,
         });
         assert_eq!(
             smoke_status,
@@ -1656,6 +1700,25 @@ mod tests {
                 boot_chain_dir: String::from(DEFAULT_LIVE_BOOT_CHAIN_OUTPUT_DIR),
                 timeout_secs: DEFAULT_LIVE_QEMU_SMOKE_TIMEOUT_SECS,
                 build: true,
+                require_executed: false,
+                no_skip: false,
+            }
+        );
+        assert_eq!(
+            parse_task_command([
+                "xtask",
+                "live-qemu-smoke",
+                "--require-executed",
+                "--no-skip",
+            ])
+            .expect("parse live qemu smoke strict"),
+            TaskCommand::LiveQemuSmoke {
+                config: String::from(DEFAULT_EFI_CONFIG_PATH),
+                boot_chain_dir: String::from(DEFAULT_LIVE_BOOT_CHAIN_OUTPUT_DIR),
+                timeout_secs: DEFAULT_LIVE_QEMU_SMOKE_TIMEOUT_SECS,
+                build: true,
+                require_executed: true,
+                no_skip: true,
             }
         );
     }
