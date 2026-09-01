@@ -101,6 +101,23 @@ pub fn handle_relay_dispatch_vmexit(
     Ok(outcome)
 }
 
+/// Validates MMIO relay event count against the reference sustained benchmark.
+pub fn validate_vmexit_mmio_relay_events(
+    mmio_relay_events: u64,
+    expected_in_tx_events: u64,
+) -> Result<(), CpuSeamError> {
+    if expected_in_tx_events == 0 {
+        return Ok(());
+    }
+    if mmio_relay_events < expected_in_tx_events {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "VM-exit MMIO relay event count below expected in-partition TX doorbells",
+        ));
+    }
+    Ok(())
+}
+
 /// Validates dispatch loop counters against the hypervisor measurement page.
 pub fn finalize_measurement_relay_frames(
     config: &VmexitRelayCounterConfig,
@@ -151,5 +168,29 @@ mod tests {
             &config,
         )
         .is_err());
+    }
+
+    #[test]
+    fn handle_relay_dispatch_vmexit_rejects_unhandled_ept_for_mmio_only_config() {
+        let config = VmexitRelayDispatchConfig {
+            measurement: None,
+            e1000_mmio: Some(VmexitE1000MmioConfig {
+                mmio_guest_phys: 0xFEB0_0000,
+                state_host_phys: 0x8000,
+            }),
+        };
+        assert!(handle_relay_dispatch_vmexit(
+            VM_EXIT_REASON_EPT_VIOLATION,
+            0x1000,
+            1 << 1,
+            &config,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn validate_vmexit_mmio_relay_events_requires_in_tx_doorbells() {
+        assert!(validate_vmexit_mmio_relay_events(63, 64).is_err());
+        assert!(validate_vmexit_mmio_relay_events(64, 64).is_ok());
     }
 }

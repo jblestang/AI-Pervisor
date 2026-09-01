@@ -102,6 +102,7 @@ pub use vmexit_relay_counter::{
 };
 #[cfg(feature = "datapath-guest-relay-measurement")]
 pub use vmexit_relay_dispatch::{
-    finalize_measurement_relay_frames, handle_relay_dispatch_vmexit, VmexitRelayDispatchConfig,
-    VmexitRelayDispatchOutcome, VmexitRelayDispatchPlan,
+    finalize_measurement_relay_frames, handle_relay_dispatch_vmexit,
+    validate_vmexit_mmio_relay_events, VmexitRelayDispatchConfig, VmexitRelayDispatchOutcome,
+    VmexitRelayDispatchPlan,
 };

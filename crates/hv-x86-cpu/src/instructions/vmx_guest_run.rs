@@ -39,7 +39,19 @@ pub fn run_vmx_guest_until_halt_with_relay_dispatch(
     }
     super::live_asm::vmptrld(vmcs_phys)?;
     if use_host_dispatch {
-        run_vmx_guest_vmexit_dispatch_loop(dispatch_config)
+        let config = dispatch_config.ok_or_else(|| {
+            CpuSeamError::new(
+                CpuSeamErrorKind::InvalidInput,
+                "host VM-exit dispatch requires relay dispatch config",
+            )
+        })?;
+        if !config.requires_host_dispatch() {
+            return Err(CpuSeamError::new(
+                CpuSeamErrorKind::InvalidInput,
+                "host VM-exit dispatch requested without relay handlers",
+            ));
+        }
+        run_vmx_guest_vmexit_dispatch_loop(config)
     } else {
         super::live_asm::vmlaunch_wait_for_hlt_exit()?;
         Ok(VmexitRelayDispatchOutcome::default())
@@ -54,7 +66,7 @@ pub fn run_vmx_guest_until_halt_with_relay_dispatch(
     not(coverage)
 ))]
 fn run_vmx_guest_vmexit_dispatch_loop(
-    dispatch_config: Option<crate::vmexit_relay_dispatch::VmexitRelayDispatchConfig>,
+    dispatch_config: crate::vmexit_relay_dispatch::VmexitRelayDispatchConfig,
 ) -> Result<crate::vmexit_relay_dispatch::VmexitRelayDispatchOutcome, CpuSeamError> {
     use super::live_asm::{vmlaunch_to_host, vmread, vmresume_to_host, vmwrite};
     use crate::vmexit_relay_counter::{
@@ -72,30 +84,26 @@ fn run_vmx_guest_vmexit_dispatch_loop(
         if exit_reason == u64::from(VM_EXIT_REASON_HLT) {
             break;
         }
-        if let Some(config) = dispatch_config {
-            let guest_phys = vmread(VMCS_GUEST_PHYSICAL_ADDRESS)?;
-            let exit_qualification = vmread(VMCS_EXIT_QUALIFICATION)?;
-            let step = handle_relay_dispatch_vmexit(
-                exit_reason as u32,
-                guest_phys,
-                exit_qualification,
-                &config,
-            )?;
-            if step.relay_frames > 0 || step.mmio_relay_events > 0 {
-                outcome.relay_frames = outcome.relay_frames.saturating_add(step.relay_frames);
-                outcome.mmio_relay_events = outcome
-                    .mmio_relay_events
-                    .saturating_add(step.mmio_relay_events);
-                advance_guest_rip(&vmread, &vmwrite)?;
-            }
+        let guest_phys = vmread(VMCS_GUEST_PHYSICAL_ADDRESS)?;
+        let exit_qualification = vmread(VMCS_EXIT_QUALIFICATION)?;
+        let step = handle_relay_dispatch_vmexit(
+            exit_reason as u32,
+            guest_phys,
+            exit_qualification,
+            &dispatch_config,
+        )?;
+        if step.relay_frames > 0 || step.mmio_relay_events > 0 {
+            outcome.relay_frames = outcome.relay_frames.saturating_add(step.relay_frames);
+            outcome.mmio_relay_events = outcome
+                .mmio_relay_events
+                .saturating_add(step.mmio_relay_events);
+            advance_guest_rip(&vmread, &vmwrite)?;
         }
         vmresume_to_host()?;
     }
-    if let Some(config) = dispatch_config {
-        if let Some(measurement) = config.measurement {
-            outcome.relay_frames =
-                finalize_measurement_relay_frames(&measurement, outcome.relay_frames)?;
-        }
+    if let Some(measurement) = dispatch_config.measurement {
+        outcome.relay_frames =
+            finalize_measurement_relay_frames(&measurement, outcome.relay_frames)?;
     }
     Ok(outcome)
 }
