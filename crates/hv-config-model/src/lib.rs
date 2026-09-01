@@ -50,7 +50,8 @@ pub use error::{ConfigError, ConfigErrorKind, ConfigWarning, WarningKind};
 #[cfg(feature = "std")]
 pub use intent::{
     BootIntent, CpuPlacementIntent, GuestImageIntent, IpcIntent, MemoryLayoutIntent,
-    PartitionIntent, PciDeviceIntent, PciOwnershipIntent, QemuPlanIntent, StaticIntentIR,
+    PartitionIntent, PciDeviceIntent, PciOwnershipIntent, QemuNetworkInterfaceIntent,
+    QemuNetworkPlanIntent, QemuPlanIntent, StaticIntentIR,
 };
 #[cfg(feature = "std")]
 pub use normalize::{normalize, NormalizedConfig, NormalizedSmtPolicy};

@@ -8,7 +8,7 @@ use hv_guest_abi::{
     GuestDeviceKind, GuestDeviceRegion, GuestIpcRegion, GuestIpcRole, GuestMemoryKind,
     GuestMemoryRegion,
 };
-use hv_platform_model::{PlannedGuestMemory, StaticPlatformIR};
+use hv_platform_model::{vm_id_for_datapath_out, PlannedGuestMemory, StaticPlatformIR};
 use hv_types::{GuestPhysAddr, VmId};
 
 use crate::constants::{
@@ -164,7 +164,8 @@ pub fn plan_relay_measurement_page_gpa(_layout: &StaticPlatformIR) -> Result<u64
 
 /// Returns the out-partition IPC consumer queue guest physical address.
 pub fn plan_out_ipc_consumer_guest_phys(layout: &StaticPlatformIR) -> Result<u64, DatapathError> {
-    let plan = plan_datapath_for_vm_id(layout, VmId::new(2))?;
+    let out_vm = vm_id_for_datapath_out(layout).map_err(map_platform_error)?;
+    let plan = plan_datapath_for_vm_id(layout, out_vm)?;
     let consumer = plan
         .ipc_regions
         .iter()
@@ -178,12 +179,16 @@ pub fn plan_out_ipc_consumer_guest_phys(layout: &StaticPlatformIR) -> Result<u64
     Ok(consumer.guest_phys.raw())
 }
 
+fn map_platform_error(err: hv_platform_model::PlatformError) -> DatapathError {
+    DatapathError::new(DatapathErrorKind::InvalidInput, err.message)
+}
+
 #[cfg(test)]
 #[allow(clippy::expect_used)]
 mod tests {
     use super::*;
     use hv_config_model::compile_config_from_str;
-    use hv_platform_model::plan_static_platform_ir;
+    use hv_platform_model::{plan_static_platform_ir, vm_id_for_datapath_in};
 
     #[test]
     fn reference_in_partition_has_ipc_producer_and_e1000_device() {
@@ -191,7 +196,8 @@ mod tests {
         let compiled = compile_config_from_str(yaml).expect("compile");
         let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
         let plan = plan_datapath_for_partition(&layout, "in").expect("plan");
-        assert_eq!(plan.vm_id, VmId::new(0));
+        let in_vm = vm_id_for_datapath_in(&layout).expect("in vm");
+        assert_eq!(plan.vm_id, in_vm);
         assert_eq!(plan.memory_regions.len(), 1);
         assert_eq!(plan.ipc_regions.len(), 1);
         assert_eq!(

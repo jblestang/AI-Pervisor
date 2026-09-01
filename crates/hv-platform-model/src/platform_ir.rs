@@ -20,6 +20,8 @@ pub struct StaticPlatformIR {
     pub hypervisor_reserve: PlannedHypervisorReserve,
     /// PCI device ownership with resolved host placement metadata.
     pub pci_devices: Vec<PlannedPciDevice>,
+    /// Outer host network interfaces from platform configuration.
+    pub host_network: HostNetworkPlan,
 }
 
 /// Planned guest private memory region.
@@ -70,4 +72,34 @@ pub struct PlannedPciDevice {
     pub vm_id: VmId,
     /// Device kind string.
     pub kind: String,
+    /// Optional datapath role (`datapath_in`, `datapath_out`, ...).
+    pub role: Option<String>,
+}
+
+/// One outer host network interface from platform configuration.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HostNetworkInterface {
+    /// Owning partition id.
+    pub partition_id: String,
+    /// Assigned VM identifier for the partition.
+    pub vm_id: VmId,
+    /// PCI BDF for the outer e1000.
+    pub bdf: PciBdf,
+    /// QEMU PCI slot address (for example `0x3`).
+    pub pci_addr: String,
+    /// QEMU netdev identifier.
+    pub netdev_id: String,
+    /// Host tap interface when backend is `tap`.
+    pub tap_ifname: Option<String>,
+}
+
+/// Host network plan for independent outer QEMU NICs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HostNetworkPlan {
+    /// Whether host networking is enabled.
+    pub enabled: bool,
+    /// Netdev backend (`user` or `tap`).
+    pub backend: String,
+    /// Independent host interface entries sorted by BDF.
+    pub interfaces: Vec<HostNetworkInterface>,
 }

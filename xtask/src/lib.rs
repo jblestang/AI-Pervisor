@@ -594,6 +594,15 @@ fn coverage_command_with(min_lines: u8, spawn: CoverageSpawnFn) -> i32 {
 
 type CoveragePassRunner = fn(&[&str]) -> bool;
 
+fn run_test_pass(args: &[&str]) -> bool {
+    ProcessCommand::new("cargo")
+        .arg("test")
+        .args(args)
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+}
+
 fn run_llvm_cov_pass(args: &[&str]) -> bool {
     if args == ["--build-guests"] {
         return build_guests::run_build_guests() == 0;
@@ -609,13 +618,14 @@ fn run_llvm_cov_pass(args: &[&str]) -> bool {
 
 fn spawn_llvm_cov_summary(min_lines: u8) -> Result<(String, String, bool), i32> {
     let mut command = ProcessCommand::new("cargo");
-    spawn_llvm_cov_summary_with(min_lines, &mut command, run_llvm_cov_pass)
+    spawn_llvm_cov_summary_with(min_lines, &mut command, run_llvm_cov_pass, run_test_pass)
 }
 
 fn spawn_llvm_cov_summary_with(
     min_lines: u8,
     command: &mut ProcessCommand,
     pass_runner: CoveragePassRunner,
+    test_pass_runner: CoveragePassRunner,
 ) -> Result<(String, String, bool), i32> {
     let threshold = min_lines.to_string();
     if !pass_runner(&["--workspace"]) {
@@ -773,7 +783,7 @@ fn spawn_llvm_cov_summary_with(
     ]) {
         return Ok((String::new(), String::new(), false));
     }
-    if !pass_runner(&[
+    if !test_pass_runner(&[
         "-p",
         "hv-hypervisor-boot",
         "--features",
@@ -789,7 +799,7 @@ fn spawn_llvm_cov_summary_with(
     ]) {
         return Ok((String::new(), String::new(), false));
     }
-    if !pass_runner(&[
+    if !test_pass_runner(&[
         "-p",
         "hv-hypervisor-efi",
         "--features",
@@ -1364,7 +1374,7 @@ mod tests {
             .arg("-c")
             .arg("echo 'TOTAL  2018  290  85.63%  457  55  87.96%  4088  204  95.01%  0  0  -'");
         let (stdout, stderr, success) =
-            spawn_llvm_cov_summary_with(95, &mut command, mock_pass).expect("spawn");
+            spawn_llvm_cov_summary_with(95, &mut command, mock_pass, mock_pass).expect("spawn");
         assert!(stdout.contains("TOTAL"));
         assert!(stderr.is_empty());
         assert!(success);

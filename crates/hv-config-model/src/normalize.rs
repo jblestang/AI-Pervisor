@@ -466,6 +466,29 @@ fn normalize_qemu_network(raw: &RawQemuNetwork) -> Result<NormalizedQemuNetwork,
         })
         .collect::<Result<Vec<_>, ConfigError>>()?;
     interfaces.sort_by(|left, right| left.bdf.cmp(&right.bdf));
+    if raw.enabled && raw.backend == "tap" {
+        let mut tap_names = Vec::new();
+        for interface in &interfaces {
+            let ifname = interface.tap_ifname.as_deref().ok_or_else(|| {
+                ConfigError::new(
+                    ConfigErrorKind::Semantic,
+                    format!(
+                        "qemu network tap backend requires tap_ifname for {}",
+                        interface.netdev_id
+                    ),
+                )
+                .with_path(format!("qemu.network.interfaces.{}", interface.bdf))
+            })?;
+            if tap_names.iter().any(|seen: &String| seen == ifname) {
+                return Err(ConfigError::new(
+                    ConfigErrorKind::Semantic,
+                    "IN and OUT host tap interfaces must use distinct tap_ifname values",
+                )
+                .with_path("qemu.network.interfaces".to_string()));
+            }
+            tap_names.push(ifname.to_string());
+        }
+    }
     Ok(NormalizedQemuNetwork {
         enabled: raw.enabled,
         backend: raw.backend.clone(),

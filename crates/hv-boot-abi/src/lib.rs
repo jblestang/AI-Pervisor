@@ -46,9 +46,13 @@ pub use constants::{
 };
 pub use error::{BootError, BootErrorKind};
 pub use layout_snapshot::{
-    LayoutGuestRegionSnapshot, LayoutIpcRegionSnapshot, LayoutPciSnapshot, LayoutSnapshot,
-    PlannedRegionSnapshot, LAYOUT_DEVICE_KIND_NIC_E1000, MAX_LAYOUT_GUEST_REGIONS,
-    MAX_LAYOUT_IPC_REGIONS, MAX_LAYOUT_PCI_DEVICES,
+    LayoutGuestRegionSnapshot, LayoutHostNetworkSnapshot, LayoutIpcRegionSnapshot,
+    LayoutPciSnapshot, LayoutSnapshot, PlannedRegionSnapshot, LAYOUT_DEVICE_KIND_NIC_E1000,
+    LAYOUT_DEVICE_ROLE_DATAPATH_IN, LAYOUT_DEVICE_ROLE_DATAPATH_OUT, LAYOUT_DEVICE_ROLE_NONE,
+    LAYOUT_HOST_NETWORK_BACKEND_TAP, LAYOUT_HOST_NETWORK_BACKEND_USER,
+    LAYOUT_HOST_NETWORK_IFNAME_LEN, LAYOUT_HOST_NETWORK_NETDEV_LEN, MAX_LAYOUT_GUEST_REGIONS,
+    MAX_LAYOUT_HOST_NETWORK_INTERFACES, MAX_LAYOUT_IPC_REGIONS, MAX_LAYOUT_PARTITION_ID_LEN,
+    MAX_LAYOUT_PCI_DEVICES,
 };
 pub use requirements_snapshot::{
     ExpectedPciSnapshot, RequirementsSnapshot, FEATURE_DISABLED, FEATURE_OPTIONAL,

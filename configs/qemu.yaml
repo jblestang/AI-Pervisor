@@ -34,16 +34,18 @@ qemu:
   smp_threads: 1
   network:
     enabled: true
-    backend: user
+    backend: tap
     interfaces:
       - partition: in
         bdf: "0000:00:03.0"
         pci_addr: "0x3"
         netdev_id: net_in
+        tap_ifname: hvdp-in0
       - partition: out
         bdf: "0000:00:04.0"
         pci_addr: "0x4"
         netdev_id: net_out
+        tap_ifname: hvdp-out0
 
 partitions:
   - id: in

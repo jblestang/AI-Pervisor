@@ -15,6 +15,7 @@ extern crate alloc;
 mod constants;
 mod cpuid_constants;
 mod error;
+mod lookup;
 mod observe;
 mod observed;
 mod platform_ir;
@@ -32,11 +33,16 @@ pub use hv_observation_types::{
     CPUID_1_EDX_NX_BIT, CPUID_480_EBX_PREEMPTION_TIMER_BIT, CPUID_480_ECX_EPT_BIT,
     CPUID_480_ECX_VPID_BIT, CPUID_80000007_EDX_INVARIANT_TSC_BIT,
 };
+pub use lookup::{
+    bdf_for_datapath_role, pci_device_for_datapath_role, vm_id_for_datapath_in,
+    vm_id_for_datapath_mid, vm_id_for_datapath_out, vm_id_for_partition_id, DATAPATH_ROLE_IN,
+    DATAPATH_ROLE_OUT,
+};
 pub use observe::observe_platform;
 pub use observed::ObservedPlatform;
 pub use platform_ir::{
-    PlannedGuestMemory, PlannedHypervisorReserve, PlannedIpcMemory, PlannedPciDevice,
-    StaticPlatformIR,
+    HostNetworkInterface, HostNetworkPlan, PlannedGuestMemory, PlannedHypervisorReserve,
+    PlannedIpcMemory, PlannedPciDevice, StaticPlatformIR,
 };
 pub use validate::validate_platform;
 pub use validated::ValidatedPlatform;

@@ -50,7 +50,7 @@ pub use guest_relay_measurement::{
     publish_relay_measurement_page_authoritative, read_ipc_delivered_frames_from_guest,
     read_relay_frames_completed_from_boot_info_blob, read_relay_measurement_extension_from_guest,
     read_relay_measurement_extension_from_installed_boot_info, GuestBootInfoMeasurementSite,
-    GuestRelayMeasurementContext, InVmRelayMeasurement, GUEST_RELAY_MEASUREMENT_VM_ID,
+    GuestRelayMeasurementContext, InVmRelayMeasurement,
 };
 pub use instructions::{
     current_privilege_level, execute_ept_pointer_load, execute_invept_single_context,

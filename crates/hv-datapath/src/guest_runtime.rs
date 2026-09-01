@@ -1,8 +1,9 @@
 //! Guest-driven datapath runtime under VMX (validate-only default).
 
 use hv_guest_abi::GuestIpcRole;
-use hv_platform_model::StaticPlatformIR;
-use hv_types::VmId;
+use hv_platform_model::{
+    vm_id_for_datapath_in, vm_id_for_datapath_mid, vm_id_for_datapath_out, StaticPlatformIR,
+};
 
 use crate::compromised::enforce_forward_integrity;
 use crate::e1000::{handle_e1000_mmio_write, E1000_REG_TDT};
@@ -66,7 +67,8 @@ impl GuestDatapathRuntime {
         validate_guest_topology(layout)?;
         enforce_forward_integrity(&self.forward_plan)?;
 
-        let in_plan = plan_datapath_for_vm_id(layout, VmId::new(0))?;
+        let in_vm = vm_id_for_datapath_in(layout).map_err(map_platform_error)?;
+        let in_plan = plan_datapath_for_vm_id(layout, in_vm)?;
         if in_plan.device_regions.is_empty() {
             return Err(DatapathError::new(
                 DatapathErrorKind::InvalidInput,
@@ -75,7 +77,10 @@ impl GuestDatapathRuntime {
         }
         handle_e1000_mmio_write(&mut self.forward_plan.in_e1000, E1000_REG_TDT, 1)?;
 
-        let mid_plan = plan_datapath_for_vm_id(layout, VmId::new(1))?;
+        let in_vm = vm_id_for_datapath_in(layout).map_err(map_platform_error)?;
+        let out_vm = vm_id_for_datapath_out(layout).map_err(map_platform_error)?;
+        let mid_vm = vm_id_for_datapath_mid(layout, in_vm, out_vm).map_err(map_platform_error)?;
+        let mid_plan = plan_datapath_for_vm_id(layout, mid_vm)?;
         if mid_plan.ipc_regions.len() < 2 {
             return Err(DatapathError::new(
                 DatapathErrorKind::InvalidInput,
@@ -83,7 +88,7 @@ impl GuestDatapathRuntime {
             ));
         }
 
-        let out_plan = plan_datapath_for_vm_id(layout, VmId::new(2))?;
+        let out_plan = plan_datapath_for_vm_id(layout, out_vm)?;
         if out_plan.device_regions.is_empty() {
             return Err(DatapathError::new(
                 DatapathErrorKind::InvalidInput,
@@ -138,9 +143,12 @@ pub fn run_guest_datapath_runtime(
 }
 
 fn validate_guest_topology(layout: &StaticPlatformIR) -> Result<(), DatapathError> {
-    let in_plan = plan_datapath_for_vm_id(layout, VmId::new(0))?;
-    let mid_plan = plan_datapath_for_vm_id(layout, VmId::new(1))?;
-    let out_plan = plan_datapath_for_vm_id(layout, VmId::new(2))?;
+    let in_vm = vm_id_for_datapath_in(layout).map_err(map_platform_error)?;
+    let out_vm = vm_id_for_datapath_out(layout).map_err(map_platform_error)?;
+    let mid_vm = vm_id_for_datapath_mid(layout, in_vm, out_vm).map_err(map_platform_error)?;
+    let in_plan = plan_datapath_for_vm_id(layout, in_vm)?;
+    let mid_plan = plan_datapath_for_vm_id(layout, mid_vm)?;
+    let out_plan = plan_datapath_for_vm_id(layout, out_vm)?;
     if in_plan
         .ipc_regions
         .iter()
@@ -168,6 +176,10 @@ fn validate_guest_topology(layout: &StaticPlatformIR) -> Result<(), DatapathErro
         ));
     }
     Ok(())
+}
+
+fn map_platform_error(err: hv_platform_model::PlatformError) -> DatapathError {
+    DatapathError::new(DatapathErrorKind::InvalidInput, err.message)
 }
 
 #[cfg(test)]

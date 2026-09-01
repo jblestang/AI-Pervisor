@@ -3,7 +3,6 @@
 use alloc::vec;
 
 use hv_platform_model::StaticPlatformIR;
-use hv_types::VmId;
 
 use crate::compromised::apply_compromised_guest_write;
 use crate::compromised::{enforce_forward_integrity, CompromisedGuestAction};
@@ -131,16 +130,16 @@ pub fn run_reference_compromised_scenarios(
 }
 
 fn validate_reference_topology(plan: &DatapathForwardPlan) -> Result<(), DatapathError> {
-    if plan.chan_a.producer_vm_id != VmId::new(0) || plan.chan_a.consumer_vm_id != VmId::new(1) {
+    if plan.chan_a.consumer_vm_id != plan.chan_b.producer_vm_id {
         return Err(DatapathError::new(
             DatapathErrorKind::InvalidInput,
-            "chan_a topology mismatch for reference datapath",
+            "chan_a consumer must match chan_b producer for mid relay",
         ));
     }
-    if plan.chan_b.producer_vm_id != VmId::new(1) || plan.chan_b.consumer_vm_id != VmId::new(2) {
+    if plan.chan_a.producer_vm_id == plan.chan_b.consumer_vm_id {
         return Err(DatapathError::new(
             DatapathErrorKind::InvalidInput,
-            "chan_b topology mismatch for reference datapath",
+            "datapath IN and OUT partitions must not share the same VM id",
         ));
     }
     Ok(())

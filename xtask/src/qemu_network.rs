@@ -86,25 +86,41 @@ mod tests {
     }
 
     #[test]
-    fn plan_qemu_network_builds_user_backend_devices_for_reference_config() {
+    fn plan_qemu_network_builds_independent_tap_devices_for_reference_config() {
         let plan = plan_qemu_network_from_config("configs/qemu.yaml").expect("plan");
         assert_eq!(plan.args.len(), 4);
-        assert!(plan
-            .args
-            .iter()
-            .any(|arg| arg.contains("-netdev user,id=net_in")));
+        assert!(plan.args.iter().any(|arg| {
+            arg.contains("-netdev tap,id=net_in,ifname=hvdp-in0,script=no,downscript=no")
+        }));
         assert!(plan
             .args
             .iter()
             .any(|arg| arg.contains("-device e1000,netdev=net_in,bus=pcie.0,addr=0x3")));
-        assert!(plan
-            .args
-            .iter()
-            .any(|arg| arg.contains("-netdev user,id=net_out")));
+        assert!(plan.args.iter().any(|arg| {
+            arg.contains("-netdev tap,id=net_out,ifname=hvdp-out0,script=no,downscript=no")
+        }));
         assert!(plan
             .args
             .iter()
             .any(|arg| arg.contains("-device e1000,netdev=net_out,bus=pcie.0,addr=0x4")));
+    }
+
+    #[test]
+    fn plan_qemu_network_uses_distinct_tap_ifnames_for_in_and_out() {
+        let yaml = include_str!("../../configs/qemu.yaml");
+        let compiled = hv_config_model::compile_config_from_str(yaml).expect("compile");
+        let interfaces = &compiled.normalized.qemu.network.interfaces;
+        let in_if = interfaces
+            .iter()
+            .find(|iface| iface.partition == "in")
+            .and_then(|iface| iface.tap_ifname.as_deref())
+            .expect("in tap");
+        let out_if = interfaces
+            .iter()
+            .find(|iface| iface.partition == "out")
+            .and_then(|iface| iface.tap_ifname.as_deref())
+            .expect("out tap");
+        assert_ne!(in_if, out_if);
     }
 
     #[test]

@@ -7,6 +7,7 @@ mod benchmark;
 mod compromised;
 mod constants;
 mod e1000;
+mod e1000_host_attach;
 mod error;
 mod forward;
 mod guest_relay_live;
@@ -36,6 +37,7 @@ pub use e1000::{
     handle_e1000_mmio_read, handle_e1000_mmio_write, E1000MmioState, E1000_REG_RDH, E1000_REG_RDT,
     E1000_REG_TDH, E1000_REG_TDT,
 };
+pub use e1000_host_attach::{plan_e1000_host_attach, E1000HostAttachPlan};
 pub use error::{DatapathError, DatapathErrorKind};
 pub use forward::{
     forward_frame_in_mid_out, forward_synthetic_frame, is_compromised_action_blocked,

@@ -103,7 +103,7 @@ pub struct MemoryLayoutIntent {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PciOwnershipIntent {
     /// Device ownership records sorted by BDF.
-    pub devices: Vec<(PciBdf, VmId, String)>,
+    pub devices: Vec<(PciBdf, VmId, String, Option<String>)>,
 }
 
 /// Boot intent for guest images.
@@ -145,6 +145,34 @@ pub struct QemuPlanIntent {
     pub smp_cores: u32,
     /// Thread count per core.
     pub smp_threads: u32,
+    /// Host network plan for outer QEMU e1000 devices.
+    pub network: QemuNetworkPlanIntent,
+}
+
+/// Host network interface intent from configuration.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QemuNetworkInterfaceIntent {
+    /// Owning partition id.
+    pub partition: String,
+    /// PCI BDF.
+    pub bdf: PciBdf,
+    /// QEMU PCI slot address.
+    pub pci_addr: String,
+    /// QEMU netdev identifier.
+    pub netdev_id: String,
+    /// Tap interface name when backend is `tap`.
+    pub tap_ifname: Option<String>,
+}
+
+/// Host network plan intent from configuration.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QemuNetworkPlanIntent {
+    /// Whether host networking is enabled.
+    pub enabled: bool,
+    /// Netdev backend (`user` or `tap`).
+    pub backend: String,
+    /// Independent host interface entries sorted by BDF.
+    pub interfaces: Vec<QemuNetworkInterfaceIntent>,
 }
 
 /// Builds static intent IR from normalized configuration and requirements.
@@ -222,10 +250,11 @@ pub fn static_intent_ir(
                 device.bdf,
                 partition.vm_id,
                 device.kind.as_str().to_string(),
+                device.role.map(|role| role.as_str().to_string()),
             ));
         }
     }
-    pci_devices.sort_by_key(|(bdf, _, _)| {
+    pci_devices.sort_by_key(|(bdf, _, _, _)| {
         (
             bdf.segment.raw(),
             bdf.bus.raw(),
@@ -272,8 +301,46 @@ pub fn static_intent_ir(
             smp_sockets: config.qemu.smp_sockets,
             smp_cores: config.qemu.smp_cores,
             smp_threads: config.qemu.smp_threads,
+            network: qemu_network_plan_intent(config),
         },
     })
+}
+
+fn qemu_network_plan_intent(config: &NormalizedConfig) -> QemuNetworkPlanIntent {
+    let mut interfaces = config
+        .qemu
+        .network
+        .interfaces
+        .iter()
+        .filter_map(|interface| {
+            let _vm_id = config
+                .partitions
+                .iter()
+                .find(|partition| partition.id == interface.partition)
+                .map(|partition| partition.vm_id)?;
+            let bdf = crate::pci::parse_bdf(&interface.bdf).ok()?;
+            Some(QemuNetworkInterfaceIntent {
+                partition: interface.partition.clone(),
+                bdf,
+                pci_addr: interface.pci_addr.clone(),
+                netdev_id: interface.netdev_id.clone(),
+                tap_ifname: interface.tap_ifname.clone(),
+            })
+        })
+        .collect::<Vec<_>>();
+    interfaces.sort_by_key(|interface| {
+        (
+            interface.bdf.segment.raw(),
+            interface.bdf.bus.raw(),
+            interface.bdf.device.raw(),
+            interface.bdf.function.raw(),
+        )
+    });
+    QemuNetworkPlanIntent {
+        enabled: config.qemu.network.enabled,
+        backend: config.qemu.network.backend.clone(),
+        interfaces,
+    }
 }
 
 fn partition_intent(partition: &NormalizedPartition) -> PartitionIntent {
