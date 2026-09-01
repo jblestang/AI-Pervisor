@@ -11,9 +11,7 @@ use hv_guest_abi::{
 use hv_platform_model::{vm_id_for_datapath_out, PlannedGuestMemory, StaticPlatformIR};
 use hv_types::{GuestPhysAddr, VmId};
 
-use crate::constants::{
-    E1000_MMIO_GUEST_PHYS_BASE, E1000_MMIO_GUEST_PHYS_STRIDE, E1000_MMIO_SIZE_BYTES,
-};
+use crate::constants::E1000_MMIO_SIZE_BYTES;
 use crate::error::{DatapathError, DatapathErrorKind};
 
 /// Per-partition datapath view derived from static platform layout.
