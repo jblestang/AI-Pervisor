@@ -8,9 +8,7 @@ use hv_guest_abi::{
     GuestDeviceKind, GuestDeviceRegion, GuestIpcRegion, GuestIpcRole, GuestMemoryKind,
     GuestMemoryRegion,
 };
-use hv_platform_model::{
-    vm_id_for_datapath_out, PlannedGuestMemory, StaticPlatformIR,
-};
+use hv_platform_model::{vm_id_for_datapath_out, PlannedGuestMemory, StaticPlatformIR};
 use hv_types::{GuestPhysAddr, VmId};
 
 use crate::constants::{

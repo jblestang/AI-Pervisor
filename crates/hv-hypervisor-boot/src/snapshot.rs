@@ -594,14 +594,12 @@ fn decode_fixed_string<const N: usize>(len: u8, bytes: &[u8; N]) -> Result<Strin
         BootCheckErrorKind::Platform,
         "layout snapshot string unreadable",
     ))?;
-    core::str::from_utf8(slice)
-        .map(String::from)
-        .map_err(|_| {
-            BootCheckError::new(
-                BootCheckErrorKind::Platform,
-                "layout snapshot string is not valid UTF-8",
-            )
-        })
+    core::str::from_utf8(slice).map(String::from).map_err(|_| {
+        BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "layout snapshot string is not valid UTF-8",
+        )
+    })
 }
 
 fn device_role_to_snapshot(role: Option<&str>) -> u8 {

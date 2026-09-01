@@ -4,7 +4,9 @@ use hv_boot_abi::{LayoutSnapshot, RequirementsSnapshot};
 use hv_config_model::PlatformRequirements;
 use hv_datapath::{plan_datapath_for_vm_id, DatapathPartitionPlan};
 use hv_guest_boot::{build_guest_boot_infos_all_partitions, GuestBootInfoView};
-use hv_platform_model::{vm_id_for_datapath_out, PlatformWarning, StaticPlatformIR, ValidatedPlatform};
+#[cfg(feature = "datapath-guest-relay-measurement")]
+use hv_platform_model::vm_id_for_datapath_out;
+use hv_platform_model::{PlatformWarning, StaticPlatformIR, ValidatedPlatform};
 use hv_types::{VmId, SHA256_DIGEST_BYTES};
 use hv_x86_cpu::PageAllocator;
 
@@ -1476,6 +1478,7 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
         .collect::<Result<alloc::vec::Vec<_>, BootCheckError>>()?;
     #[cfg(feature = "datapath-guest-relay-measurement")]
     let relay_dispatch = {
+        use hv_datapath::plan_e1000_host_attach;
         use hv_datapath::{
             plan_datapath_for_vm_id, plan_e1000_mmio_guest_phys, plan_relay_measurement_page_gpa,
         };
@@ -1483,7 +1486,6 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
             ept_guest_leaf_entry, ept_leaf_entry_guest_writable, ept_maps_guest_page,
             set_ept_mapping_guest_writable,
         };
-        use hv_datapath::plan_e1000_host_attach;
         use hv_x86_cpu::{
             initialize_ipc_queue_backing, install_e1000_mmio_state_page,
             run_ept_pointer_reload_cpu_seam_batch, VmexitE1000MmioConfig, VmexitIpcRelayConfig,

@@ -294,6 +294,18 @@ fn render_hypervisor_embedded_config(
     ))
 }
 
+fn render_byte_array(bytes: &[u8]) -> String {
+    let mut rendered = String::from("[");
+    for (index, byte) in bytes.iter().enumerate() {
+        if index > 0 {
+            rendered.push_str(", ");
+        }
+        rendered.push_str(&format!("0x{byte:02X}"));
+    }
+    rendered.push(']');
+    rendered
+}
+
 fn render_embedded_config_rs(
     digest: &[u8; 32],
     snapshot: &hv_boot_abi::RequirementsSnapshot,
@@ -387,6 +399,14 @@ fn render_embedded_config_rs(
         rendered.push_str(&format!("            vm_id: {},\n", region.vm_id));
         rendered.push_str(&format!("            host_phys: {},\n", region.host_phys));
         rendered.push_str(&format!("            size_bytes: {},\n", region.size_bytes));
+        rendered.push_str(&format!(
+            "            partition_id_len: {},\n",
+            region.partition_id_len
+        ));
+        rendered.push_str(&format!(
+            "            partition_id: {},\n",
+            render_byte_array(&region.partition_id)
+        ));
         rendered.push_str("        },\n");
     }
     rendered.push_str("    ],\n");
@@ -424,6 +444,11 @@ fn render_embedded_config_rs(
         rendered.push_str(&format!("            device: {},\n", device.device));
         rendered.push_str(&format!("            function: {},\n", device.function));
         rendered.push_str(&format!(
+            "            device_role: {},\n",
+            device.device_role
+        ));
+        rendered.push_str(&format!("            reserved: {},\n", device.reserved));
+        rendered.push_str(&format!(
             "            device_kind: {},\n",
             device.device_kind
         ));
@@ -438,6 +463,51 @@ fn render_embedded_config_rs(
         "    hypervisor_reserve_bytes: {},\n",
         layout_snapshot.hypervisor_reserve_bytes
     ));
+    rendered.push_str(&format!(
+        "    host_network_enabled: {},\n",
+        layout_snapshot.host_network_enabled
+    ));
+    rendered.push_str(&format!(
+        "    host_network_backend: {},\n",
+        layout_snapshot.host_network_backend
+    ));
+    rendered.push_str(&format!(
+        "    host_network_reserved: {},\n",
+        render_byte_array(&layout_snapshot.host_network_reserved)
+    ));
+    rendered.push_str(&format!(
+        "    host_network_interface_count: {},\n",
+        layout_snapshot.host_network_interface_count
+    ));
+    rendered.push_str("    host_network_interfaces: [\n");
+    for interface in layout_snapshot.host_network_interfaces.iter() {
+        rendered.push_str("        hv_boot_abi::LayoutHostNetworkSnapshot {\n");
+        rendered.push_str(&format!("            vm_id: {},\n", interface.vm_id));
+        rendered.push_str(&format!("            segment: {},\n", interface.segment));
+        rendered.push_str(&format!("            bus: {},\n", interface.bus));
+        rendered.push_str(&format!("            device: {},\n", interface.device));
+        rendered.push_str(&format!("            function: {},\n", interface.function));
+        rendered.push_str(&format!("            backend: {},\n", interface.backend));
+        rendered.push_str(&format!(
+            "            tap_ifname_len: {},\n",
+            interface.tap_ifname_len
+        ));
+        rendered.push_str(&format!(
+            "            tap_ifname: {},\n",
+            render_byte_array(&interface.tap_ifname)
+        ));
+        rendered.push_str(&format!(
+            "            netdev_id_len: {},\n",
+            interface.netdev_id_len
+        ));
+        rendered.push_str(&format!("            reserved: {},\n", interface.reserved));
+        rendered.push_str(&format!(
+            "            netdev_id: {},\n",
+            render_byte_array(&interface.netdev_id)
+        ));
+        rendered.push_str("        },\n");
+    }
+    rendered.push_str("    ],\n");
     rendered.push_str("};\n");
     rendered
 }
@@ -470,6 +540,10 @@ mod tests {
         assert!(rendered.contains("REQUIREMENTS_SNAPSHOT"));
         assert!(rendered.contains("LAYOUT_SNAPSHOT"));
         assert!(rendered.contains("guest_region_count"));
+        assert!(rendered.contains("partition_id_len"));
+        assert!(rendered.contains("device_role"));
+        assert!(rendered.contains("host_network_enabled"));
+        assert!(rendered.contains("host_network_interfaces"));
     }
 
     #[test]

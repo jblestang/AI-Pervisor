@@ -3,8 +3,8 @@
 use core::mem::size_of;
 
 use hv_datapath::{
-    handle_e1000_mmio_read, handle_e1000_mmio_write, E1000MmioState, E1000_REG_RDH, E1000_REG_RDT,
-    E1000_REG_TDH, E1000_REG_TDT, E1000_MMIO_SIZE_BYTES,
+    handle_e1000_mmio_read, handle_e1000_mmio_write, E1000MmioState, E1000_MMIO_SIZE_BYTES,
+    E1000_REG_RDH, E1000_REG_RDT, E1000_REG_TDH, E1000_REG_TDT,
 };
 
 use crate::error::{CpuSeamError, CpuSeamErrorKind};

@@ -46,7 +46,10 @@ pub fn pci_device_for_datapath_role<'a>(
 }
 
 /// Returns the PCI BDF for a datapath role.
-pub fn bdf_for_datapath_role(layout: &StaticPlatformIR, role: &str) -> Result<PciBdf, PlatformError> {
+pub fn bdf_for_datapath_role(
+    layout: &StaticPlatformIR,
+    role: &str,
+) -> Result<PciBdf, PlatformError> {
     Ok(pci_device_for_datapath_role(layout, role)?.bdf)
 }
 

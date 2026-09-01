@@ -3,7 +3,9 @@
 //! Outer QEMU attaches `net_in` and `net_out` to separate host tap interfaces
 //! described in platform configuration. Nested guests own in→mid→out relay over IPC.
 
-use hv_platform_model::{bdf_for_datapath_role, StaticPlatformIR, DATAPATH_ROLE_IN, DATAPATH_ROLE_OUT};
+use hv_platform_model::{
+    bdf_for_datapath_role, StaticPlatformIR, DATAPATH_ROLE_IN, DATAPATH_ROLE_OUT,
+};
 use hv_types::PciBdf;
 
 use crate::error::{DatapathError, DatapathErrorKind};
@@ -18,9 +20,13 @@ pub struct E1000HostAttachPlan {
 }
 
 /// Builds host attach bindings from static platform PCI intent and host network plan.
-pub fn plan_e1000_host_attach(layout: &StaticPlatformIR) -> Result<E1000HostAttachPlan, DatapathError> {
-    let host_in_bdf = bdf_for_datapath_role(layout, DATAPATH_ROLE_IN).map_err(map_platform_error)?;
-    let host_out_bdf = bdf_for_datapath_role(layout, DATAPATH_ROLE_OUT).map_err(map_platform_error)?;
+pub fn plan_e1000_host_attach(
+    layout: &StaticPlatformIR,
+) -> Result<E1000HostAttachPlan, DatapathError> {
+    let host_in_bdf =
+        bdf_for_datapath_role(layout, DATAPATH_ROLE_IN).map_err(map_platform_error)?;
+    let host_out_bdf =
+        bdf_for_datapath_role(layout, DATAPATH_ROLE_OUT).map_err(map_platform_error)?;
     if host_in_bdf == host_out_bdf {
         return Err(DatapathError::new(
             DatapathErrorKind::InvalidInput,
