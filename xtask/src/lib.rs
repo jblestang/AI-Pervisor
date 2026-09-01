@@ -595,6 +595,9 @@ fn coverage_command_with(min_lines: u8, spawn: CoverageSpawnFn) -> i32 {
 type CoveragePassRunner = fn(&[&str]) -> bool;
 
 fn run_llvm_cov_pass(args: &[&str]) -> bool {
+    if args == ["--build-guests"] {
+        return build_guests::run_build_guests() == 0;
+    }
     ProcessCommand::new("cargo")
         .arg("llvm-cov")
         .args(args)
@@ -695,7 +698,7 @@ fn spawn_llvm_cov_summary_with(
     if !pass_runner(&["-p", "hv-hypervisor-efi", "--features", "datapath-runtime"]) {
         return Ok((String::new(), String::new(), false));
     }
-    if build_guests::run_build_guests() != 0 {
+    if !pass_runner(&["--build-guests"]) {
         return Ok((String::new(), String::new(), false));
     }
     if !pass_runner(&[
@@ -1811,6 +1814,7 @@ mod tests {
         std::fs::write(&source, b"mock-hypervisor").expect("write");
         let output = workspace.join("build/mock-copy-hypervisor.efi");
         let _ = std::fs::remove_file(&output);
+        std::fs::create_dir_all(output.parent().expect("parent")).expect("dir");
         assert_eq!(
             copy_hypervisor_efi_artifact(output.to_str().expect("path")),
             0

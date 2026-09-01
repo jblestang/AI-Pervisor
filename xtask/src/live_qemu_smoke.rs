@@ -536,7 +536,17 @@ mod tests {
     fn lock_live_qemu_workdir() -> MutexGuard<'static, ()> {
         LIVE_QEMU_WORKDIR_LOCK
             .lock()
-            .expect("live qemu workdir lock")
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn mock_locate_ovmf_firmware() -> Option<(PathBuf, PathBuf)> {
+        let dir = crate::workspace_root().join("target/mock-ovmf");
+        std::fs::create_dir_all(&dir).ok()?;
+        let code = dir.join("OVMF_CODE.fd");
+        let vars = dir.join("OVMF_VARS.fd");
+        std::fs::write(&code, b"mock-ovmf-code").ok()?;
+        std::fs::write(&vars, b"mock-ovmf-vars").ok()?;
+        Some((code, vars))
     }
 
     fn gate_d_relay_live_success_log() -> String {
@@ -700,9 +710,9 @@ mod tests {
             &LiveQemuSmokeOptions::default(),
             |_, _| 0,
             |_, _| 0,
-            locate_ovmf_firmware,
+            mock_locate_ovmf_firmware,
         );
-        assert_eq!(status, if live_qemu_hardware_ready() { 1 } else { 0 });
+        assert_eq!(status, 1);
     }
 
     #[test]
@@ -727,7 +737,7 @@ mod tests {
                 std::fs::write(&serial_log, gate_d_relay_live_success_log()).expect("serial log");
                 0
             },
-            locate_ovmf_firmware,
+            mock_locate_ovmf_firmware,
         );
         assert_eq!(status, 0);
     }
@@ -760,7 +770,7 @@ mod tests {
                 .expect("serial log");
                 0
             },
-            locate_ovmf_firmware,
+            mock_locate_ovmf_firmware,
         );
         assert_eq!(status, 0);
     }
@@ -791,7 +801,7 @@ mod tests {
                 .expect("serial log");
                 0
             },
-            locate_ovmf_firmware,
+            mock_locate_ovmf_firmware,
         );
         assert_eq!(status, 1);
     }
@@ -855,7 +865,7 @@ mod tests {
             &LiveQemuSmokeOptions::default(),
             |_, _| 0,
             |_, _| 0,
-            locate_ovmf_firmware,
+            mock_locate_ovmf_firmware,
         );
         assert_eq!(status, 1);
     }
@@ -882,7 +892,7 @@ mod tests {
                 std::fs::write(&serial_log, gate_d_relay_live_success_log()).expect("serial log");
                 124
             },
-            locate_ovmf_firmware,
+            mock_locate_ovmf_firmware,
         );
         assert_eq!(status, 0);
     }
@@ -903,7 +913,7 @@ mod tests {
             &LiveQemuSmokeOptions::default(),
             |_, _| 0,
             |_, _| 1,
-            locate_ovmf_firmware,
+            mock_locate_ovmf_firmware,
         );
         assert_eq!(status, 1);
     }
@@ -919,7 +929,7 @@ mod tests {
             &LiveQemuSmokeOptions::default(),
             |_, _| 1,
             |_, _| 0,
-            locate_ovmf_firmware,
+            mock_locate_ovmf_firmware,
         );
         assert_eq!(status, 1);
     }

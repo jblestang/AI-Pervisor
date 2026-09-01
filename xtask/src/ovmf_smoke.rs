@@ -39,6 +39,7 @@ pub fn run_ovmf_smoke_boot(
         build_first,
         run_build_boot_chain,
         run,
+        locate_ovmf_firmware,
     )
 }
 
@@ -49,6 +50,7 @@ fn run_ovmf_smoke_boot_with(
     build_first: bool,
     build_boot_chain: fn(&str, &str) -> i32,
     runner: fn(&str, &[&str]) -> i32,
+    locate_ovmf: fn() -> Option<(PathBuf, PathBuf)>,
 ) -> i32 {
     let workspace = crate::workspace_root();
     let boot_chain = workspace.join(boot_chain_dir);
@@ -67,7 +69,7 @@ fn run_ovmf_smoke_boot_with(
         return 1;
     }
 
-    let (ovmf_code, ovmf_vars_template) = match locate_ovmf_firmware() {
+    let (ovmf_code, ovmf_vars_template) = match locate_ovmf() {
         Some(paths) => paths,
         None => {
             eprintln!("OVMF firmware not found (install the ovmf package)");
@@ -233,7 +235,19 @@ mod tests {
     static OVMF_WORKDIR_LOCK: Mutex<()> = Mutex::new(());
 
     fn lock_ovmf_workdir() -> MutexGuard<'static, ()> {
-        OVMF_WORKDIR_LOCK.lock().expect("ovmf workdir lock")
+        OVMF_WORKDIR_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn mock_locate_ovmf_firmware() -> Option<(PathBuf, PathBuf)> {
+        let dir = crate::workspace_root().join("target/mock-ovmf");
+        std::fs::create_dir_all(&dir).ok()?;
+        let code = dir.join("OVMF_CODE.fd");
+        let vars = dir.join("OVMF_VARS.fd");
+        std::fs::write(&code, b"mock-ovmf-code").ok()?;
+        std::fs::write(&vars, b"mock-ovmf-vars").ok()?;
+        Some((code, vars))
     }
 
     #[test]
@@ -280,6 +294,7 @@ mod tests {
             false,
             |_, _| 0,
             |_, _| 0,
+            mock_locate_ovmf_firmware,
         );
         assert_eq!(status, 1);
     }
@@ -353,6 +368,7 @@ mod tests {
                 .expect("serial log");
                 0
             },
+            mock_locate_ovmf_firmware,
         );
         assert_eq!(status, 0);
     }
@@ -382,6 +398,7 @@ mod tests {
                 .expect("serial log");
                 0
             },
+            mock_locate_ovmf_firmware,
         );
         assert_eq!(status, 1);
     }
@@ -401,6 +418,7 @@ mod tests {
             false,
             |_, _| 0,
             |_, _| 0,
+            mock_locate_ovmf_firmware,
         );
         assert_eq!(status, 1);
     }
@@ -430,6 +448,7 @@ mod tests {
                 .expect("serial log");
                 124
             },
+            mock_locate_ovmf_firmware,
         );
         assert_eq!(status, 0);
     }
@@ -471,6 +490,7 @@ mod tests {
             true,
             |_, _| 1,
             |_, _| 0,
+            mock_locate_ovmf_firmware,
         );
         assert_eq!(status, 1);
     }
@@ -490,6 +510,7 @@ mod tests {
             false,
             |_, _| 0,
             |_, _| 1,
+            mock_locate_ovmf_firmware,
         );
         assert_eq!(status, 1);
     }
