@@ -1614,6 +1614,21 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
                     "e1000 MMIO BAR base mismatch between platform layout and planner",
                 ));
             }
+            if layout.host_network.enabled {
+                if let Some(host_interface) = layout
+                    .host_network
+                    .interfaces
+                    .iter()
+                    .find(|interface| interface.bdf == device.bdf)
+                {
+                    if host_interface.mmio_guest_phys != mmio_gpa {
+                        return Err(BootCheckError::new(
+                            BootCheckErrorKind::Platform,
+                            "e1000 MMIO BAR base mismatch between PCI layout and host network interface",
+                        ));
+                    }
+                }
+            }
             let state_page =
                 install_e1000_mmio_state_page(allocator).map_err(map_cpu_seam_error)?;
             set_ept_mapping_guest_writable(ept_tables, mmio_gpa, false)

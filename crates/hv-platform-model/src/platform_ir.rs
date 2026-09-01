@@ -93,6 +93,8 @@ pub struct HostNetworkInterface {
     pub pci_addr: String,
     /// QEMU netdev identifier.
     pub netdev_id: String,
+    /// Guest physical MMIO BAR base for the nested e1000 (from partition PCI device).
+    pub mmio_guest_phys: u64,
     /// Host tap interface when backend is `tap`.
     pub tap_ifname: Option<String>,
 }

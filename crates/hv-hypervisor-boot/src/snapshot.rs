@@ -19,7 +19,7 @@ use hv_config_model::{
 };
 use hv_platform_model::{
     HostNetworkInterface, HostNetworkPlan, PlannedGuestMemory, PlannedHypervisorReserve,
-    PlannedIpcMemory, PlannedPciDevice, StaticPlatformIR,
+    PlannedIpcMemory, PlannedPciDevice, StaticPlatformIR, validate_layout_host_network_coherence,
 };
 use hv_types::{
     ByteSize, HostPhysAddr, PciBdf, PciBus, PciDevice, PciFunction, PciSegment, VmId,
@@ -322,6 +322,7 @@ pub fn layout_snapshot_from_platform_ir(
         netdev_id_len: 0,
         reserved: 0,
         netdev_id: [0; LAYOUT_HOST_NETWORK_NETDEV_LEN],
+        mmio_guest_phys: 0,
     }; MAX_LAYOUT_HOST_NETWORK_INTERFACES];
     for (index, interface) in layout.host_network.interfaces.iter().enumerate() {
         if let Some(slot) = host_network_interfaces.get_mut(index) {
@@ -415,7 +416,10 @@ pub fn static_platform_ir_from_layout_snapshot(
             "layout snapshot host network interfaces out of bounds",
         ))?
     {
-        host_network_interfaces.push(host_network_from_layout_snapshot(interface)?);
+        host_network_interfaces.push(host_network_from_layout_snapshot(
+            interface,
+            layout.host_network_enabled != 0,
+        )?);
     }
     for interface in &mut host_network_interfaces {
         if let Some(guest) = guest_memory
@@ -426,7 +430,7 @@ pub fn static_platform_ir_from_layout_snapshot(
         }
     }
 
-    Ok(StaticPlatformIR {
+    let platform = StaticPlatformIR {
         platform_name: String::new(),
         guest_memory,
         ipc_memory,
@@ -440,7 +444,11 @@ pub fn static_platform_ir_from_layout_snapshot(
             backend: host_network_backend_from_snapshot(layout.host_network_backend),
             interfaces: host_network_interfaces,
         },
-    })
+    };
+    validate_layout_host_network_coherence(&platform).map_err(|err| {
+        BootCheckError::new(BootCheckErrorKind::Platform, err.message)
+    })?;
+    Ok(platform)
 }
 
 fn validate_layout_counts(layout: &LayoutSnapshot) -> Result<(), BootCheckError> {
@@ -536,6 +544,12 @@ fn layout_host_network_to_snapshot(
     )?;
     let (netdev_id_len, netdev_id) =
         encode_fixed_string::<LAYOUT_HOST_NETWORK_NETDEV_LEN>(&interface.netdev_id)?;
+    if interface.mmio_guest_phys == 0 {
+        return Err(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "host network interface missing MMIO BAR base",
+        ));
+    }
     Ok(LayoutHostNetworkSnapshot {
         vm_id: interface.vm_id.raw(),
         segment: interface.bdf.segment.raw(),
@@ -548,12 +562,20 @@ fn layout_host_network_to_snapshot(
         netdev_id_len,
         reserved: 0,
         netdev_id,
+        mmio_guest_phys: interface.mmio_guest_phys,
     })
 }
 
 fn host_network_from_layout_snapshot(
     interface: &LayoutHostNetworkSnapshot,
+    host_network_enabled: bool,
 ) -> Result<HostNetworkInterface, BootCheckError> {
+    if host_network_enabled && interface.mmio_guest_phys == 0 {
+        return Err(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "host network interface missing MMIO BAR base",
+        ));
+    }
     let tap_ifname = decode_fixed_string::<LAYOUT_HOST_NETWORK_IFNAME_LEN>(
         interface.tap_ifname_len,
         &interface.tap_ifname,
@@ -578,6 +600,7 @@ fn host_network_from_layout_snapshot(
         } else {
             Some(tap_ifname)
         },
+        mmio_guest_phys: interface.mmio_guest_phys,
     })
 }
 
@@ -862,6 +885,20 @@ mod tests {
                 .map(|device| (device.vm_id, device.kind.as_str(), device.mmio_guest_phys))
                 .collect::<Vec<_>>()
         );
+        assert_eq!(
+            restored
+                .host_network
+                .interfaces
+                .iter()
+                .map(|interface| (interface.bdf, interface.mmio_guest_phys))
+                .collect::<Vec<_>>(),
+            layout
+                .host_network
+                .interfaces
+                .iter()
+                .map(|interface| (interface.bdf, interface.mmio_guest_phys))
+                .collect::<Vec<_>>()
+        );
     }
 
     #[test]
@@ -879,6 +916,26 @@ mod tests {
         let mut layout_snapshot =
             layout_snapshot_from_platform_ir(&layout).expect("layout snapshot");
         layout_snapshot.hypervisor_reserve_bytes ^= 1;
+        assert!(static_platform_ir_from_layout_snapshot(&layout_snapshot, &requirements).is_err());
+    }
+
+    #[test]
+    fn static_platform_ir_from_layout_snapshot_rejects_incoherent_host_network_mmio() {
+        let yaml = include_str!("../../../configs/qemu.yaml");
+        let compiled = compile_config_from_str(yaml).expect("compile");
+        let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
+        let requirements = requirements_snapshot_from_platform(
+            &compiled.requirements,
+            compiled.digest.bytes,
+            layout.hypervisor_reserve.host_phys.raw(),
+            layout.hypervisor_reserve.size.bytes(),
+        )
+        .expect("requirements snapshot");
+        let mut layout_snapshot =
+            layout_snapshot_from_platform_ir(&layout).expect("layout snapshot");
+        if let Some(interface) = layout_snapshot.host_network_interfaces.first_mut() {
+            interface.mmio_guest_phys ^= 1;
+        }
         assert!(static_platform_ir_from_layout_snapshot(&layout_snapshot, &requirements).is_err());
     }
 }

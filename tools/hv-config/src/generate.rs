@@ -514,6 +514,10 @@ fn render_embedded_config_rs(
             "            netdev_id: {},\n",
             render_byte_array(&interface.netdev_id)
         ));
+        rendered.push_str(&format!(
+            "            mmio_guest_phys: {},\n",
+            interface.mmio_guest_phys
+        ));
         rendered.push_str("        },\n");
     }
     rendered.push_str("    ],\n");

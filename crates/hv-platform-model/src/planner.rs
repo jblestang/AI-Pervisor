@@ -1,8 +1,9 @@
 //! Deterministic host physical layout planner for static platform IR.
 
 use hv_config_model::StaticIntentIR;
-use hv_types::{align_up, HostPhysAddr};
+use hv_types::{align_up, HostPhysAddr, PciBdf};
 
+use crate::coherence::validate_layout_host_network_coherence;
 use crate::constants::{platform_phys_base, REGION_ALIGNMENT_BYTES};
 use crate::error::{PlatformError, PlatformErrorKind};
 use crate::platform_ir::{
@@ -69,14 +70,16 @@ pub fn plan_static_platform_ir(intent: &StaticIntentIR) -> Result<StaticPlatform
 
     let host_network = plan_host_network(intent)?;
 
-    Ok(StaticPlatformIR {
+    let layout = StaticPlatformIR {
         platform_name: intent.platform_name.clone(),
         guest_memory,
         ipc_memory,
         hypervisor_reserve,
         pci_devices,
         host_network,
-    })
+    };
+    validate_layout_host_network_coherence(&layout)?;
+    Ok(layout)
 }
 
 fn plan_host_network(intent: &StaticIntentIR) -> Result<HostNetworkPlan, PlatformError> {
@@ -99,6 +102,7 @@ fn plan_host_network(intent: &StaticIntentIR) -> Result<HostNetworkPlan, Platfor
             bdf: interface.bdf,
             pci_addr: interface.pci_addr.clone(),
             netdev_id: interface.netdev_id.clone(),
+            mmio_guest_phys: mmio_guest_phys_for_bdf(intent, interface.bdf)?,
             tap_ifname: interface.tap_ifname.clone(),
         });
     }
@@ -115,6 +119,21 @@ fn plan_host_network(intent: &StaticIntentIR) -> Result<HostNetworkPlan, Platfor
         backend: intent.qemu_plan.network.backend.clone(),
         interfaces,
     })
+}
+
+fn mmio_guest_phys_for_bdf(intent: &StaticIntentIR, bdf: PciBdf) -> Result<u64, PlatformError> {
+    intent
+        .pci_intent
+        .devices
+        .iter()
+        .find(|(device_bdf, _, kind, _, _)| *device_bdf == bdf && kind == "nic_e1000")
+        .map(|(_, _, _, _, mmio_guest_phys)| *mmio_guest_phys)
+        .ok_or_else(|| {
+            PlatformError::new(
+                PlatformErrorKind::Planning,
+                "host network interface BDF missing from PCI intent",
+            )
+        })
 }
 
 fn align_cursor(cursor: u64, alignment: usize) -> Result<u64, PlatformError> {
@@ -234,5 +253,19 @@ mod tests {
         let first = tap_names.first().expect("first tap");
         let second = tap_names.get(1).expect("second tap");
         assert_ne!(first, second);
+        let in_interface = planned
+            .host_network
+            .interfaces
+            .iter()
+            .find(|interface| interface.partition_id == "in")
+            .expect("in interface");
+        let out_interface = planned
+            .host_network
+            .interfaces
+            .iter()
+            .find(|interface| interface.partition_id == "out")
+            .expect("out interface");
+        assert_eq!(in_interface.mmio_guest_phys, 0xFEB0_0000);
+        assert_eq!(out_interface.mmio_guest_phys, 0xFEB2_0000);
     }
 }
