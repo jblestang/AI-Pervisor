@@ -4,7 +4,8 @@
 //! described in platform configuration. Nested guests own in→mid→out relay over IPC.
 
 use hv_platform_model::{
-    bdf_for_datapath_role, StaticPlatformIR, DATAPATH_ROLE_IN, DATAPATH_ROLE_OUT,
+    bdf_for_datapath_role, mmio_guest_phys_for_datapath_role, StaticPlatformIR, DATAPATH_ROLE_IN,
+    DATAPATH_ROLE_OUT,
 };
 use hv_types::PciBdf;
 
@@ -31,6 +32,16 @@ pub fn plan_e1000_host_attach(
         return Err(DatapathError::new(
             DatapathErrorKind::InvalidInput,
             "IN and OUT host NICs must use independent BDF bindings",
+        ));
+    }
+    let in_mmio =
+        mmio_guest_phys_for_datapath_role(layout, DATAPATH_ROLE_IN).map_err(map_platform_error)?;
+    let out_mmio =
+        mmio_guest_phys_for_datapath_role(layout, DATAPATH_ROLE_OUT).map_err(map_platform_error)?;
+    if in_mmio == out_mmio {
+        return Err(DatapathError::new(
+            DatapathErrorKind::InvalidInput,
+            "IN and OUT e1000 MMIO BAR bases must be independent",
         ));
     }
     if layout.host_network.enabled {
@@ -100,5 +111,12 @@ mod tests {
         let plan = plan_e1000_host_attach(&layout).expect("plan");
         assert_ne!(plan.host_in_bdf, plan.host_out_bdf);
         assert_eq!(layout.host_network.interfaces.len(), 2);
+        let in_mmio =
+            mmio_guest_phys_for_datapath_role(&layout, DATAPATH_ROLE_IN).expect("in mmio");
+        let out_mmio =
+            mmio_guest_phys_for_datapath_role(&layout, DATAPATH_ROLE_OUT).expect("out mmio");
+        assert_eq!(in_mmio, 0xFEB0_0000);
+        assert_eq!(out_mmio, 0xFEB2_0000);
+        assert_ne!(in_mmio, out_mmio);
     }
 }

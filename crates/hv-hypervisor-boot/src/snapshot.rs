@@ -306,7 +306,7 @@ pub fn layout_snapshot_from_platform_ir(
     }; MAX_LAYOUT_PCI_DEVICES];
     for (index, device) in layout.pci_devices.iter().enumerate() {
         if let Some(slot) = pci_devices.get_mut(index) {
-            *slot = layout_pci_to_snapshot(device);
+            *slot = layout_pci_to_snapshot(device)?;
         }
     }
 
@@ -490,8 +490,14 @@ fn validate_layout_reserve_matches_requirements(
     Ok(())
 }
 
-fn layout_pci_to_snapshot(device: &PlannedPciDevice) -> LayoutPciSnapshot {
-    LayoutPciSnapshot {
+fn layout_pci_to_snapshot(device: &PlannedPciDevice) -> Result<LayoutPciSnapshot, BootCheckError> {
+    let mmio_size_bytes = u32::try_from(device.mmio_size_bytes).map_err(|_| {
+        BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "pci device mmio size exceeds layout snapshot capacity",
+        )
+    })?;
+    Ok(LayoutPciSnapshot {
         vm_id: device.vm_id.raw(),
         segment: device.bdf.segment.raw(),
         bus: device.bdf.bus.raw(),
@@ -501,8 +507,8 @@ fn layout_pci_to_snapshot(device: &PlannedPciDevice) -> LayoutPciSnapshot {
         reserved: 0,
         device_kind: device_kind_to_snapshot(&device.kind),
         mmio_guest_phys: device.mmio_guest_phys,
-        mmio_size_bytes: u32::try_from(device.mmio_size_bytes).unwrap_or(0),
-    }
+        mmio_size_bytes,
+    })
 }
 
 fn planned_pci_from_layout_snapshot(device: &LayoutPciSnapshot) -> PlannedPciDevice {
@@ -848,12 +854,12 @@ mod tests {
             restored
                 .pci_devices
                 .iter()
-                .map(|device| (device.vm_id, device.kind.as_str()))
+                .map(|device| (device.vm_id, device.kind.as_str(), device.mmio_guest_phys))
                 .collect::<Vec<_>>(),
             layout
                 .pci_devices
                 .iter()
-                .map(|device| (device.vm_id, device.kind.as_str()))
+                .map(|device| (device.vm_id, device.kind.as_str(), device.mmio_guest_phys))
                 .collect::<Vec<_>>()
         );
     }

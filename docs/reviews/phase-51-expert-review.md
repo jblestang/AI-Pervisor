@@ -40,3 +40,12 @@ devices:
 - `cargo test --workspace`
 - `cargo clippy --all-targets --all-features`
 - `cargo xtask build-boot-chain --config configs/ovmf-smoke.yaml`
+
+## Review fixes
+
+- Semantic validation rejects zero, overlapping, and unaligned MMIO BAR windows
+- `mmio_guest_phys_for_vm_id` resolves `nic_e1000` devices only
+- `plan_e1000_host_attach` validates distinct IN/OUT MMIO bases
+- Gate D cross-checks platform PCI MMIO against planner lookup
+- Layout snapshot roundtrip preserves MMIO fields; size encoding fails closed
+- `RELAY_MEASUREMENT_PAGE_GUEST_PHYS` derived from reference out BAR constant

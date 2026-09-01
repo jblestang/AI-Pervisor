@@ -1598,9 +1598,22 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
             if device.kind != "nic_e1000" {
                 continue;
             }
-            let mmio_gpa = plan_e1000_mmio_guest_phys(layout, device.vm_id)
+            let mmio_gpa = device.mmio_guest_phys;
+            if mmio_gpa == 0 {
+                return Err(BootCheckError::new(
+                    BootCheckErrorKind::Platform,
+                    "e1000 device missing platform MMIO BAR base",
+                ));
+            }
+            let planned_mmio = plan_e1000_mmio_guest_phys(layout, device.vm_id)
                 .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?
                 .raw();
+            if mmio_gpa != planned_mmio {
+                return Err(BootCheckError::new(
+                    BootCheckErrorKind::Platform,
+                    "e1000 MMIO BAR base mismatch between platform layout and planner",
+                ));
+            }
             let state_page =
                 install_e1000_mmio_state_page(allocator).map_err(map_cpu_seam_error)?;
             set_ept_mapping_guest_writable(ept_tables, mmio_gpa, false)

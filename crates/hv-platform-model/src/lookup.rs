@@ -71,7 +71,7 @@ pub fn mmio_guest_phys_for_datapath_role(
     Ok(pci_device_for_datapath_role(layout, role)?.mmio_guest_phys)
 }
 
-/// Returns the MMIO guest physical base for a VM-owned PCI device.
+/// Returns the MMIO guest physical base for a VM-owned e1000 PCI device.
 pub fn mmio_guest_phys_for_vm_id(
     layout: &StaticPlatformIR,
     vm_id: VmId,
@@ -79,12 +79,12 @@ pub fn mmio_guest_phys_for_vm_id(
     layout
         .pci_devices
         .iter()
-        .find(|device| device.vm_id == vm_id)
+        .find(|device| device.vm_id == vm_id && device.kind == "nic_e1000")
         .map(|device| device.mmio_guest_phys)
         .ok_or_else(|| {
             PlatformError::new(
                 PlatformErrorKind::Planning,
-                "vm id not found in platform PCI layout",
+                "vm id has no e1000 device in platform PCI layout",
             )
         })
 }
