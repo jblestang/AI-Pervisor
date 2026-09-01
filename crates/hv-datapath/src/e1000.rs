@@ -85,4 +85,12 @@ mod tests {
         handle_e1000_mmio_write(&mut state, E1000_REG_TDT, 1).expect("write");
         assert!(state.tx_doorbell);
     }
+
+    #[test]
+    fn rdt_write_sets_rx_doorbell() {
+        let mut state = E1000MmioState::default();
+        handle_e1000_mmio_write(&mut state, E1000_REG_RDT, 2).expect("write");
+        assert!(state.rx_doorbell);
+        assert_eq!(state.rdt, 2);
+    }
 }

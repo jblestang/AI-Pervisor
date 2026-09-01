@@ -98,7 +98,8 @@ pub use vmexit_ipc_relay::{
 };
 #[cfg(feature = "datapath-guest-relay-measurement")]
 pub use vmexit_mmio_relay::{
-    handle_e1000_mmio_vmexit, is_e1000_mmio_write_violation, VmexitE1000MmioConfig,
+    handle_e1000_mmio_vmexit, initialize_e1000_mmio_guest_view, is_e1000_mmio_write_violation,
+    read_e1000_mmio_register, VmexitE1000MmioConfig,
 };
 #[cfg(feature = "datapath-guest-relay-measurement")]
 pub use vmexit_relay_counter::{

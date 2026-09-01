@@ -17,6 +17,7 @@ mod constants;
 mod datapath_benchmark;
 mod live_qemu_smoke;
 mod ovmf_smoke;
+mod qemu_network;
 
 use clap::{Parser, Subcommand};
 use constants::{
@@ -594,6 +595,9 @@ fn coverage_command_with(min_lines: u8, spawn: CoverageSpawnFn) -> i32 {
 type CoveragePassRunner = fn(&[&str]) -> bool;
 
 fn run_llvm_cov_pass(args: &[&str]) -> bool {
+    if args == ["--build-guests"] {
+        return build_guests::run_build_guests() == 0;
+    }
     ProcessCommand::new("cargo")
         .arg("llvm-cov")
         .args(args)
@@ -694,7 +698,7 @@ fn spawn_llvm_cov_summary_with(
     if !pass_runner(&["-p", "hv-hypervisor-efi", "--features", "datapath-runtime"]) {
         return Ok((String::new(), String::new(), false));
     }
-    if build_guests::run_build_guests() != 0 {
+    if !pass_runner(&["--build-guests"]) {
         return Ok((String::new(), String::new(), false));
     }
     if !pass_runner(&[
@@ -876,6 +880,7 @@ fn dispatch_task_with(task: TaskCommand, runner: fn(&str, &[&str]) -> i32) -> i3
             build,
             require_executed,
             no_skip,
+            no_host_net,
         } => run_live_qemu_smoke_with_options(
             &config,
             &boot_chain_dir,
@@ -884,6 +889,7 @@ fn dispatch_task_with(task: TaskCommand, runner: fn(&str, &[&str]) -> i32) -> i3
             &live_qemu_smoke::LiveQemuSmokeOptions {
                 require_executed,
                 no_skip,
+                no_host_net,
             },
         ),
         TaskCommand::DatapathBenchmark { config } => {
@@ -1002,6 +1008,9 @@ enum TaskCommandCli {
         /// Fail instead of skipping when KVM/VMX or the OVMF/KVM serial probe is unavailable.
         #[arg(long, default_value_t = false)]
         no_skip: bool,
+        /// Disable host-connected outer QEMU e1000/netdev wiring even when enabled in config.
+        #[arg(long, default_value_t = false)]
+        no_host_net: bool,
     },
     /// Run the host datapath throughput benchmark per docs/benchmark.md.
     DatapathBenchmark {
@@ -1071,6 +1080,7 @@ pub(crate) fn map_cli_command(command: TaskCommandCli) -> TaskCommand {
             no_build,
             require_executed,
             no_skip,
+            no_host_net,
         } => TaskCommand::LiveQemuSmoke {
             config,
             boot_chain_dir,
@@ -1078,6 +1088,7 @@ pub(crate) fn map_cli_command(command: TaskCommandCli) -> TaskCommand {
             build: !no_build,
             require_executed,
             no_skip,
+            no_host_net,
         },
         TaskCommandCli::DatapathBenchmark { config } => TaskCommand::DatapathBenchmark { config },
         TaskCommandCli::BuildGuests => TaskCommand::BuildGuests,
@@ -1173,6 +1184,8 @@ pub enum TaskCommand {
         require_executed: bool,
         /// Fail instead of skipping when KVM/VMX or the OVMF/KVM serial probe is unavailable.
         no_skip: bool,
+        /// Disable host-connected outer QEMU e1000/netdev wiring even when enabled in config.
+        no_host_net: bool,
     },
     /// Run the host datapath throughput benchmark per docs/benchmark.md.
     DatapathBenchmark {
@@ -1548,6 +1561,7 @@ mod tests {
             build: false,
             require_executed: false,
             no_skip: false,
+            no_host_net: false,
         });
         assert_eq!(
             smoke_status,
@@ -1702,6 +1716,7 @@ mod tests {
                 build: true,
                 require_executed: false,
                 no_skip: false,
+                no_host_net: false,
             }
         );
         assert_eq!(
@@ -1719,6 +1734,7 @@ mod tests {
                 build: true,
                 require_executed: true,
                 no_skip: true,
+                no_host_net: false,
             }
         );
     }
@@ -1798,6 +1814,7 @@ mod tests {
         std::fs::write(&source, b"mock-hypervisor").expect("write");
         let output = workspace.join("build/mock-copy-hypervisor.efi");
         let _ = std::fs::remove_file(&output);
+        std::fs::create_dir_all(output.parent().expect("parent")).expect("dir");
         assert_eq!(
             copy_hypervisor_efi_artifact(output.to_str().expect("path")),
             0

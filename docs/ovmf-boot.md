@@ -80,6 +80,16 @@ For a real experiment without validate-only mock proof, require in-VM executed m
 cargo xtask live-qemu-smoke --require-executed --no-skip --build
 ```
 
+When `configs/qemu.yaml` declares `qemu.network.enabled: true` (the default production config), live smoke attaches outer-QEMU e1000 devices at the contract BDFs with user-mode netdev backends (`net_in`, `net_out`). Pass `--no-host-net` to force the legacy `-net none` launch.
+
+```bash
+# Outer QEMU e1000 at 0000:00:03.0 / 0000:00:04.0 with user netdev (from config)
+cargo xtask live-qemu-smoke --build
+
+# Legacy launch without host-visible NICs
+cargo xtask live-qemu-smoke --no-host-net --build
+```
+
 The strict path runs an OVMF/KVM serial probe first; hosts where OVMF produces no serial output under KVM (common on broken nested-virt cloud VMs) fail fast instead of timing out with an empty log.
 
 On success the serial log includes Gate D guest relay live markers (`Gate D: guest source ELF installed…`, `Gate D: guest boot info installed…`, `Gate D: guest throughput target 200 Mbit/s met`, `hypervisor Gate D datapath guest throughput succeeded`) and at least one REAL_HW VMX marker (`REAL_HW: VMXON Executed`, `REAL_HW: EPT pointer Executed`, or `REAL_HW: VMLAUNCH Executed`). When live in-VM measurement completes (Phase 29+), the log also includes `Gate D: guest throughput measured under live VMX` and guest `GUEST: datapath relay benchmark complete`. With `--require-executed`, all three REAL_HW VMX markers plus `Gate D: guest source-tree code executed under VMX for all partitions` are required. Legacy `vmx-launch`-only firmware may still emit `hypervisor Gate C REAL_HW boot succeeded`.

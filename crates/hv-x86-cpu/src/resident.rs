@@ -431,6 +431,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "datapath-guest-relay-measurement")]
     fn install_ept_tables_resolves_measurement_page_mapping() {
         use hv_datapath::RELAY_MEASUREMENT_PAGE_GUEST_PHYS;
         use hv_ept::{append_ept_guest_mapping, resolve_guest_phys_to_host, EPT_PAGE_SIZE_BYTES};

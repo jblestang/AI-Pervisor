@@ -125,6 +125,55 @@ pub struct RawQemu {
     pub smp_cores: u32,
     /// Number of threads per core.
     pub smp_threads: u32,
+    /// Optional host networking plan for outer QEMU e1000 devices.
+    #[serde(default)]
+    pub network: RawQemuNetwork,
+}
+
+/// Host networking parameters for outer QEMU e1000 attachment.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RawQemuNetwork {
+    /// Whether live QEMU smoke attaches host-connected e1000 devices.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Netdev backend (`user` or `tap`).
+    #[serde(default = "default_qemu_network_backend")]
+    pub backend: String,
+    /// NIC instances keyed by datapath partition role.
+    #[serde(default)]
+    pub interfaces: Vec<RawQemuNetworkInterface>,
+}
+
+impl Default for RawQemuNetwork {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            backend: default_qemu_network_backend(),
+            interfaces: Vec::new(),
+        }
+    }
+}
+
+fn default_qemu_network_backend() -> String {
+    String::from("user")
+}
+
+/// One outer-QEMU e1000 interface declaration.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RawQemuNetworkInterface {
+    /// Owning partition id (`in` or `out`).
+    pub partition: String,
+    /// Expected PCI BDF in platform contract form.
+    pub bdf: String,
+    /// QEMU `-device` PCI slot address (for example `0x3`).
+    pub pci_addr: String,
+    /// QEMU `-netdev` identifier referenced by the e1000 device.
+    pub netdev_id: String,
+    /// Tap interface name when `backend` is `tap`.
+    #[serde(default)]
+    pub tap_ifname: Option<String>,
 }
 
 /// Raw partition definition.

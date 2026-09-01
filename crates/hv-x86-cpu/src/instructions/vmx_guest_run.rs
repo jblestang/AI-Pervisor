@@ -6,6 +6,30 @@ use crate::error::{CpuSeamError, CpuSeamErrorKind};
 #[cfg(all(
     target_arch = "x86_64",
     feature = "execute-instructions",
+    not(feature = "datapath-guest-relay-measurement"),
+    not(test),
+    not(coverage)
+))]
+#[allow(dead_code)]
+pub fn run_vmx_guest_until_halt(
+    vmcs_phys: u64,
+    _use_host_dispatch: bool,
+) -> Result<(), CpuSeamError> {
+    if !super::environment::live_execution_environment_ready() {
+        return Err(CpuSeamError::new(
+            CpuSeamErrorKind::Unavailable,
+            "VMX guest run loop unavailable in this environment",
+        ));
+    }
+    super::live_asm::vmptrld(vmcs_phys)?;
+    super::live_asm::vmlaunch_wait_for_hlt_exit()
+}
+
+/// Runs the current VMCS guest until it executes `HLT` and the exit stub returns.
+#[cfg(all(
+    target_arch = "x86_64",
+    feature = "execute-instructions",
+    feature = "datapath-guest-relay-measurement",
     not(test),
     not(coverage)
 ))]
@@ -21,6 +45,7 @@ pub fn run_vmx_guest_until_halt(
 #[cfg(all(
     target_arch = "x86_64",
     feature = "execute-instructions",
+    feature = "datapath-guest-relay-measurement",
     not(test),
     not(coverage)
 ))]

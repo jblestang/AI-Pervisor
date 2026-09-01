@@ -27,14 +27,8 @@ pub fn initialize_ipc_queue_backing(backing_host_phys: u64) -> Result<(), CpuSea
             "IPC relay backing host address must be non-zero",
         ));
     }
-    let required = queue_storage_bytes(REFERENCE_IPC_QUEUE_SLOTS, REFERENCE_IPC_SLOT_SIZE_BYTES)
+    let _required = queue_storage_bytes(REFERENCE_IPC_QUEUE_SLOTS, REFERENCE_IPC_SLOT_SIZE_BYTES)
         .map_err(map_datapath_error)?;
-    if required > usize::MAX {
-        return Err(CpuSeamError::new(
-            CpuSeamErrorKind::InvalidInput,
-            "IPC queue storage exceeds host addressable range",
-        ));
-    }
     write_u32_at(backing_host_phys, 8, REFERENCE_IPC_QUEUE_SLOTS)?;
     write_u32_at(backing_host_phys, 12, REFERENCE_IPC_SLOT_SIZE_BYTES)?;
     let slots = read_u32_at(backing_host_phys, 8)?;
@@ -125,8 +119,22 @@ fn relay_ipc_write(
             "IPC relay write size must be non-zero",
         ));
     }
+    let rax_bytes = guest_rax.to_le_bytes();
     let mut bytes = [0u8; 8];
-    bytes[..size].copy_from_slice(&guest_rax.to_le_bytes()[..size]);
+    bytes
+        .get_mut(..size)
+        .ok_or_else(|| {
+            CpuSeamError::new(
+                CpuSeamErrorKind::InvalidInput,
+                "IPC relay write size exceeds scratch buffer",
+            )
+        })?
+        .copy_from_slice(rax_bytes.get(..size).ok_or_else(|| {
+            CpuSeamError::new(
+                CpuSeamErrorKind::InvalidInput,
+                "IPC relay write size exceeds guest value width",
+            )
+        })?);
     let dest = backing_host_phys.saturating_add(offset);
     // SAFETY: caller guarantees the IPC backing range is hypervisor-writable.
     unsafe {
@@ -137,7 +145,19 @@ fn relay_ipc_write(
     unsafe {
         core::ptr::copy_nonoverlapping(dest as *const u8, read_back.as_mut_ptr(), size);
     }
-    if read_back[..size] != bytes[..size] {
+    let wrote = bytes.get(..size).ok_or_else(|| {
+        CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "IPC relay write size exceeds scratch buffer",
+        )
+    })?;
+    let read = read_back.get(..size).ok_or_else(|| {
+        CpuSeamError::new(
+            CpuSeamErrorKind::InvalidInput,
+            "IPC relay write size exceeds read-back buffer",
+        )
+    })?;
+    if read != wrote {
         return Err(CpuSeamError::new(
             CpuSeamErrorKind::InvalidInput,
             "IPC relay backing write read-back mismatch",

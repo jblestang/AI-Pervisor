@@ -799,8 +799,11 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
             );
             seam_inputs.push((vmcs_phys, vmcs_fields, launch_plan.vm_id));
         }
-        #[cfg(not(feature = "datapath-guest-live"))]
-        let relay_measurement_page_host_phys = None;
+        #[cfg(all(
+            not(feature = "datapath-guest-live"),
+            feature = "datapath-guest-relay-measurement"
+        ))]
+        let relay_measurement_page_host_phys: Option<u64> = None;
         partition_launches.push(PartitionGuestLaunchRecord {
             partition_id: launch_plan.partition_id.clone(),
             guest_entry_phys,
@@ -810,7 +813,10 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
                 disposition: hv_x86_cpu::CpuInstructionDisposition::SeamValidated,
                 guest_vm_id: launch_plan.vm_id,
             },
+            #[cfg(feature = "datapath-guest-live")]
             boot_info_guest_phys,
+            #[cfg(not(feature = "datapath-guest-live"))]
+            boot_info_guest_phys: None,
             #[cfg(feature = "datapath-guest-relay-measurement")]
             relay_measurement_page_host_phys,
         });
@@ -1624,6 +1630,11 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
                     state_host_phys: state_page.host_phys,
                 },
             ));
+            hv_x86_cpu::initialize_e1000_mmio_guest_view(
+                &hv_datapath::E1000MmioState::default(),
+                mmio_gpa,
+            )
+            .map_err(map_cpu_seam_error)?;
         }
         if e1000_by_vm.len() != expected_e1000_devices {
             return Err(BootCheckError::new(

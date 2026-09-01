@@ -8,7 +8,7 @@ use crate::error::{ConfigError, ConfigErrorKind};
 use crate::pci::parse_bdf;
 use crate::raw::{
     RawConfig, RawDeviceKind, RawDeviceRole, RawFeatureLevel, RawGuestImage, RawIpcChannel,
-    RawPartition, RawPlatformRequirements, RawQemu, RawSmtPolicy,
+    RawPartition, RawPlatformRequirements, RawQemu, RawQemuNetwork, RawSmtPolicy,
 };
 use hv_types::{ByteSize, Gibibyte, IpcChannelId, Mebibyte, PciBdf, VmId};
 
@@ -226,6 +226,34 @@ pub struct NormalizedQemu {
     pub smp_cores: u32,
     /// Thread count per core.
     pub smp_threads: u32,
+    /// Host networking plan for outer QEMU.
+    pub network: NormalizedQemuNetwork,
+}
+
+/// Normalized host networking plan for outer QEMU e1000 devices.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NormalizedQemuNetwork {
+    /// Whether live smoke attaches e1000/netdev pairs.
+    pub enabled: bool,
+    /// Netdev backend (`user` or `tap`).
+    pub backend: String,
+    /// Declared e1000 interfaces sorted by BDF.
+    pub interfaces: Vec<NormalizedQemuNetworkInterface>,
+}
+
+/// One normalized outer-QEMU e1000 interface.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NormalizedQemuNetworkInterface {
+    /// Owning partition id.
+    pub partition: String,
+    /// Expected PCI BDF.
+    pub bdf: String,
+    /// QEMU PCI slot address for `-device ... addr=`.
+    pub pci_addr: String,
+    /// QEMU `-netdev` identifier.
+    pub netdev_id: String,
+    /// Tap interface name when using the tap backend.
+    pub tap_ifname: Option<String>,
 }
 
 /// Normalizes a validated raw configuration into canonical form.
@@ -415,6 +443,33 @@ fn normalize_qemu(raw: &RawQemu) -> Result<NormalizedQemu, ConfigError> {
         smp_sockets: raw.smp_sockets,
         smp_cores: raw.smp_cores,
         smp_threads: raw.smp_threads,
+        network: normalize_qemu_network(&raw.network)?,
+    })
+}
+
+fn normalize_qemu_network(raw: &RawQemuNetwork) -> Result<NormalizedQemuNetwork, ConfigError> {
+    let mut interfaces = raw
+        .interfaces
+        .iter()
+        .map(|interface| {
+            crate::pci::parse_bdf(&interface.bdf).map_err(|err| {
+                ConfigError::new(ConfigErrorKind::Semantic, err.to_string())
+                    .with_path(format!("qemu.network.interfaces.{}", interface.bdf))
+            })?;
+            Ok(NormalizedQemuNetworkInterface {
+                partition: interface.partition.clone(),
+                bdf: interface.bdf.clone(),
+                pci_addr: interface.pci_addr.clone(),
+                netdev_id: interface.netdev_id.clone(),
+                tap_ifname: interface.tap_ifname.clone(),
+            })
+        })
+        .collect::<Result<Vec<_>, ConfigError>>()?;
+    interfaces.sort_by(|left, right| left.bdf.cmp(&right.bdf));
+    Ok(NormalizedQemuNetwork {
+        enabled: raw.enabled,
+        backend: raw.backend.clone(),
+        interfaces,
     })
 }
 

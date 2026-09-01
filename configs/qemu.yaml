@@ -32,6 +32,18 @@ qemu:
   smp_sockets: 1
   smp_cores: 4
   smp_threads: 1
+  network:
+    enabled: true
+    backend: user
+    interfaces:
+      - partition: in
+        bdf: "0000:00:03.0"
+        pci_addr: "0x3"
+        netdev_id: net_in
+      - partition: out
+        bdf: "0000:00:04.0"
+        pci_addr: "0x4"
+        netdev_id: net_out
 
 partitions:
   - id: in

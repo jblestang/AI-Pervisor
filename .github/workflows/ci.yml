@@ -12,7 +12,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.85.0
-          components: rustfmt, clippy
+          components: rustfmt, clippy, llvm-tools-preview
+      - name: install qemu and ovmf for smoke harness tests
+        run: sudo apt-get update && sudo apt-get install -y qemu-system-x86 ovmf
+      - name: install cargo-llvm-cov
+        run: cargo install cargo-llvm-cov --locked --version 0.6.21
       - name: fmt
         run: cargo fmt --all -- --check
       - name: clippy
@@ -48,7 +52,7 @@ jobs:
       - name: build efi loader
         run: cargo xtask build-efi
       - name: build boot chain
-        run: cargo xtask build-boot-chain
+        run: cargo xtask build-boot-chain --config configs/ovmf-smoke.yaml
       - name: install ovmf and qemu
         run: sudo apt-get update && sudo apt-get install -y qemu-system-x86 ovmf
       - name: ovmf smoke boot

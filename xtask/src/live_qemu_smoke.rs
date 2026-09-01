@@ -31,6 +31,8 @@ pub struct LiveQemuSmokeOptions {
     pub require_executed: bool,
     /// Fail instead of skipping when KVM/VMX or the OVMF/KVM probe is unavailable.
     pub no_skip: bool,
+    /// Disable host-connected outer QEMU e1000/netdev wiring even when enabled in config.
+    pub no_host_net: bool,
 }
 
 impl LiveQemuSmokeOptions {
@@ -39,6 +41,7 @@ impl LiveQemuSmokeOptions {
         Self {
             require_executed: true,
             no_skip: true,
+            no_host_net: false,
         }
     }
 }
@@ -98,7 +101,9 @@ pub fn evaluate_gate_d_guest_relay_strict_real_hw_smoke(log: &str) -> Result<(),
         GATE_D_GUEST_EXECUTION_MARKER,
     ] {
         if !log.contains(marker) {
-            return Err(format!("serial log missing strict REAL_HW marker: {marker}"));
+            return Err(format!(
+                "serial log missing strict REAL_HW marker: {marker}"
+            ));
         }
     }
     Ok(())
@@ -264,10 +269,10 @@ pub fn run_live_qemu_smoke_with_options(
     options: &LiveQemuSmokeOptions,
 ) -> i32 {
     if options.require_executed || options.no_skip {
-        if !live_qemu_hardware_ready() {
-            return report_live_qemu_skip(options);
-        }
-        if !live_qemu_kvm_ovmf_serial_ready_with(run, locate_ovmf_firmware) {
+        if !live_qemu_strict_hardware_ready() {
+            if !live_qemu_hardware_ready() {
+                return report_live_qemu_skip(options);
+            }
             if options.no_skip {
                 eprintln!(
                     "live-qemu-smoke failed: OVMF produced no serial output under KVM (nested virt may be broken on this host)"
@@ -293,6 +298,7 @@ pub fn run_live_qemu_smoke_with_options(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_live_qemu_smoke_with(
     config_path: &str,
     boot_chain_dir: &str,
@@ -363,34 +369,49 @@ fn run_live_qemu_smoke_with(
 
     let cpu_arg = format!("{LIVE_QEMU_CPU},kvm=on");
 
-    let status = runner(
-        "timeout",
-        &[
-            &timeout,
-            "qemu-system-x86_64",
-            "-machine",
-            LIVE_QEMU_MACHINE,
-            "-cpu",
-            &cpu_arg,
-            "-smp",
-            SMOKE_GUEST_SMP,
-            "-m",
-            SMOKE_GUEST_MEMORY_MIB,
-            "-display",
-            "none",
-            "-serial",
-            &serial_arg,
-            "-net",
-            "none",
-            "-no-reboot",
-            "-drive",
-            &code_drive,
-            "-drive",
-            &vars_drive,
-            "-drive",
-            &esp_drive,
-        ],
-    );
+    let mut owned_qemu_args: Vec<String> = vec![
+        "-machine".into(),
+        LIVE_QEMU_MACHINE.into(),
+        "-cpu".into(),
+        cpu_arg,
+        "-smp".into(),
+        SMOKE_GUEST_SMP.into(),
+        "-m".into(),
+        SMOKE_GUEST_MEMORY_MIB.into(),
+        "-display".into(),
+        "none".into(),
+        "-serial".into(),
+        serial_arg,
+        "-no-reboot".into(),
+        "-drive".into(),
+        code_drive,
+        "-drive".into(),
+        vars_drive,
+        "-drive".into(),
+        esp_drive,
+    ];
+    if options.no_host_net {
+        owned_qemu_args.push("-net".into());
+        owned_qemu_args.push("none".into());
+    } else if crate::qemu_network::qemu_network_enabled_in_config(config_path) {
+        match crate::qemu_network::plan_qemu_network_from_config(config_path) {
+            Ok(plan) => owned_qemu_args.extend(plan.args),
+            Err(err) => {
+                eprintln!("failed to plan host network for live QEMU smoke: {err}");
+                return 1;
+            }
+        }
+    } else {
+        owned_qemu_args.push("-net".into());
+        owned_qemu_args.push("none".into());
+    }
+
+    let mut timeout_args: Vec<String> = vec![timeout];
+    timeout_args.push("qemu-system-x86_64".into());
+    timeout_args.extend(owned_qemu_args);
+    let runner_args: Vec<&str> = timeout_args.iter().map(String::as_str).collect();
+
+    let status = runner("timeout", &runner_args);
 
     if status != 0 && status != 124 {
         eprintln!("live QEMU smoke boot exited with status {status}");
@@ -408,7 +429,11 @@ fn run_live_qemu_smoke_with(
         }
     };
 
-    if let Err(message) = evaluate_live_qemu_smoke_serial_with(&log, options) {
+    if let Err(message) = if options.require_executed || options.no_skip || options.no_host_net {
+        evaluate_live_qemu_smoke_serial_with(&log, options)
+    } else {
+        evaluate_live_qemu_smoke_serial(&log)
+    } {
         eprintln!("live QEMU smoke boot failed: {message}");
         eprintln!("serial log: {}", serial_log.display());
         return 1;
@@ -419,7 +444,9 @@ fn run_live_qemu_smoke_with(
             "live QEMU smoke boot succeeded (Gate D guest relay executed under live VMX without validate-only mocks)"
         );
     } else {
-        eprintln!("live QEMU smoke boot succeeded (Gate D guest relay live verified under KVM/OVMF)");
+        eprintln!(
+            "live QEMU smoke boot succeeded (Gate D guest relay live verified under KVM/OVMF)"
+        );
     }
     0
 }
@@ -509,7 +536,17 @@ mod tests {
     fn lock_live_qemu_workdir() -> MutexGuard<'static, ()> {
         LIVE_QEMU_WORKDIR_LOCK
             .lock()
-            .expect("live qemu workdir lock")
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn mock_locate_ovmf_firmware() -> Option<(PathBuf, PathBuf)> {
+        let dir = crate::workspace_root().join("target/mock-ovmf");
+        std::fs::create_dir_all(&dir).ok()?;
+        let code = dir.join("OVMF_CODE.fd");
+        let vars = dir.join("OVMF_VARS.fd");
+        std::fs::write(&code, b"mock-ovmf-code").ok()?;
+        std::fs::write(&vars, b"mock-ovmf-vars").ok()?;
+        Some((code, vars))
     }
 
     fn gate_d_relay_live_success_log() -> String {
@@ -673,9 +710,9 @@ mod tests {
             &LiveQemuSmokeOptions::default(),
             |_, _| 0,
             |_, _| 0,
-            locate_ovmf_firmware,
+            mock_locate_ovmf_firmware,
         );
-        assert_eq!(status, if live_qemu_hardware_ready() { 1 } else { 0 });
+        assert_eq!(status, 1);
     }
 
     #[test]
@@ -700,7 +737,7 @@ mod tests {
                 std::fs::write(&serial_log, gate_d_relay_live_success_log()).expect("serial log");
                 0
             },
-            locate_ovmf_firmware,
+            mock_locate_ovmf_firmware,
         );
         assert_eq!(status, 0);
     }
@@ -733,7 +770,7 @@ mod tests {
                 .expect("serial log");
                 0
             },
-            locate_ovmf_firmware,
+            mock_locate_ovmf_firmware,
         );
         assert_eq!(status, 0);
     }
@@ -764,7 +801,7 @@ mod tests {
                 .expect("serial log");
                 0
             },
-            locate_ovmf_firmware,
+            mock_locate_ovmf_firmware,
         );
         assert_eq!(status, 1);
     }
@@ -828,7 +865,7 @@ mod tests {
             &LiveQemuSmokeOptions::default(),
             |_, _| 0,
             |_, _| 0,
-            locate_ovmf_firmware,
+            mock_locate_ovmf_firmware,
         );
         assert_eq!(status, 1);
     }
@@ -855,7 +892,7 @@ mod tests {
                 std::fs::write(&serial_log, gate_d_relay_live_success_log()).expect("serial log");
                 124
             },
-            locate_ovmf_firmware,
+            mock_locate_ovmf_firmware,
         );
         assert_eq!(status, 0);
     }
@@ -876,7 +913,7 @@ mod tests {
             &LiveQemuSmokeOptions::default(),
             |_, _| 0,
             |_, _| 1,
-            locate_ovmf_firmware,
+            mock_locate_ovmf_firmware,
         );
         assert_eq!(status, 1);
     }
@@ -892,7 +929,7 @@ mod tests {
             &LiveQemuSmokeOptions::default(),
             |_, _| 1,
             |_, _| 0,
-            locate_ovmf_firmware,
+            mock_locate_ovmf_firmware,
         );
         assert_eq!(status, 1);
     }
@@ -935,7 +972,10 @@ mod tests {
 
     #[test]
     fn evaluate_gate_d_guest_relay_executed_smoke_accepts_strict_markers() {
-        assert!(evaluate_gate_d_guest_relay_executed_smoke(&gate_d_relay_executed_success_log()).is_ok());
+        assert!(
+            evaluate_gate_d_guest_relay_executed_smoke(&gate_d_relay_executed_success_log())
+                .is_ok()
+        );
         assert!(evaluate_live_qemu_smoke_serial_with(
             &gate_d_relay_executed_success_log(),
             &LiveQemuSmokeOptions::without_mocks(),
