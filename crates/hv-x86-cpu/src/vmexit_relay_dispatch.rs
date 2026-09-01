@@ -24,6 +24,8 @@ pub struct VmexitRelayDispatchConfig {
 /// Gate D VM-exit relay dispatch plan across all partitions.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VmexitRelayDispatchPlan {
+    /// VM id for the out partition whose measurement page is counted on VM-exits.
+    pub measurement_vm_id: VmId,
     /// Hypervisor measurement page counter config for the out partition.
     pub measurement: VmexitRelayCounterConfig,
     /// Trapped IPC relay configs keyed by VM id.
@@ -35,8 +37,7 @@ pub struct VmexitRelayDispatchPlan {
 impl VmexitRelayDispatchPlan {
     /// Builds the per-partition dispatch config for one launch.
     pub fn config_for_vm(&self, vm_id: VmId) -> VmexitRelayDispatchConfig {
-        let measurement = if vm_id == crate::guest_relay_measurement::GUEST_RELAY_MEASUREMENT_VM_ID
-        {
+        let measurement = if vm_id == self.measurement_vm_id {
             Some(self.measurement)
         } else {
             None

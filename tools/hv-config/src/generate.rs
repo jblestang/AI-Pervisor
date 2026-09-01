@@ -127,15 +127,16 @@ fn render_ipc_map(compiled: &hv_config_model::CompiledConfig) -> String {
 
 fn render_pci_map(compiled: &hv_config_model::CompiledConfig) -> String {
     let mut out = String::new();
-    for (bdf, vm_id, kind) in &compiled.intent.pci_intent.devices {
+    for (bdf, vm_id, kind, role) in &compiled.intent.pci_intent.devices {
         out.push_str(&format!(
-            "bdf={:04x}:{:02x}:{:02x}.{} vm_id={} kind={}\n",
+            "bdf={:04x}:{:02x}:{:02x}.{} vm_id={} kind={} role={}\n",
             bdf.segment.raw(),
             bdf.bus.raw(),
             bdf.device.raw(),
             bdf.function.raw(),
             vm_id.raw(),
             kind,
+            role.as_deref().unwrap_or("-"),
         ));
     }
     out

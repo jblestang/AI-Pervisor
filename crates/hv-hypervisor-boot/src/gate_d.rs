@@ -4,7 +4,7 @@ use hv_boot_abi::{LayoutSnapshot, RequirementsSnapshot};
 use hv_config_model::PlatformRequirements;
 use hv_datapath::{plan_datapath_for_vm_id, DatapathPartitionPlan};
 use hv_guest_boot::{build_guest_boot_infos_all_partitions, GuestBootInfoView};
-use hv_platform_model::{PlatformWarning, StaticPlatformIR, ValidatedPlatform};
+use hv_platform_model::{vm_id_for_datapath_out, PlatformWarning, StaticPlatformIR, ValidatedPlatform};
 use hv_types::{VmId, SHA256_DIGEST_BYTES};
 use hv_x86_cpu::PageAllocator;
 
@@ -668,6 +668,10 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
     #[cfg(not(feature = "datapath-guest-relay-measurement"))]
     let relay_measurement_install: Option<(u64, u64)> = None;
 
+    #[cfg(feature = "datapath-guest-relay-measurement")]
+    let out_vm_id = vm_id_for_datapath_out(layout)
+        .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
+
     let mut partition_launches = alloc::vec::Vec::with_capacity(launch_plans.len());
     let mut seam_inputs = alloc::vec::Vec::with_capacity(launch_plans.len());
     let mut elf_images_installed = 0u32;
@@ -703,9 +707,8 @@ pub(crate) fn init_gate_d_datapath_guests_from_validated<A: PageAllocator>(
             let (install_blob, relay_measurement_page_host_phys) = {
                 use hv_guest_abi::parse_guest_boot_info_relay_measurement;
                 use hv_guest_boot::patch_relay_measurement_page_gpa;
-                use hv_x86_cpu::GUEST_RELAY_MEASUREMENT_VM_ID;
 
-                if launch_plan.vm_id == GUEST_RELAY_MEASUREMENT_VM_ID {
+                if launch_plan.vm_id == out_vm_id {
                     let (page_host_phys, measurement_page_gpa) = relay_measurement_install
                         .ok_or_else(|| {
                             BootCheckError::new(
@@ -1484,13 +1487,15 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
         use hv_x86_cpu::{
             initialize_ipc_queue_backing, install_e1000_mmio_state_page,
             run_ept_pointer_reload_cpu_seam_batch, VmexitE1000MmioConfig, VmexitIpcRelayConfig,
-            VmexitRelayCounterConfig, VmexitRelayDispatchPlan, GUEST_RELAY_MEASUREMENT_VM_ID,
+            VmexitRelayCounterConfig, VmexitRelayDispatchPlan,
         };
 
+        let out_vm_id = vm_id_for_datapath_out(layout)
+            .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
         let measurement_page_host_phys = guests
             .partition_launches
             .iter()
-            .find(|record| record.vm_id == GUEST_RELAY_MEASUREMENT_VM_ID)
+            .find(|record| record.vm_id == out_vm_id)
             .and_then(|record| record.relay_measurement_page_host_phys);
         let measurement_page_gpa = plan_relay_measurement_page_gpa(layout)
             .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
@@ -1700,6 +1705,7 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
                 .map_err(map_cpu_seam_error)?;
         }
         Some(VmexitRelayDispatchPlan {
+            measurement_vm_id: out_vm_id,
             measurement: VmexitRelayCounterConfig {
                 measurement_page_host_phys: host_phys,
                 measurement_page_gpa,
@@ -1885,8 +1891,11 @@ pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAlloca
         use hv_x86_cpu::{
             measure_in_vm_relay_frames_from_boot_infos,
             read_relay_measurement_extension_from_installed_boot_info,
-            GuestBootInfoMeasurementSite, GUEST_RELAY_MEASUREMENT_VM_ID,
+            GuestBootInfoMeasurementSite,
         };
+
+        let out_vm_id = vm_id_for_datapath_out(layout)
+            .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
 
         let guests = &execution.live.sources.runtime.benchmark.guests;
         let partition_boot_infos = &guests.malicious.live.foundation.partition_boot_infos;
@@ -1950,7 +1959,7 @@ pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAlloca
         let measurement_page_host_phys = guests
             .partition_launches
             .iter()
-            .find(|record| record.vm_id == GUEST_RELAY_MEASUREMENT_VM_ID)
+            .find(|record| record.vm_id == out_vm_id)
             .and_then(|record| record.relay_measurement_page_host_phys);
         if measurement_page_host_phys.is_none() {
             return Err(BootCheckError::new(
@@ -1964,6 +1973,7 @@ pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAlloca
             &execution.execution_seam,
             &ept_tables,
             &sites,
+            out_vm_id,
             out_ipc_consumer_guest_phys,
             measurement_page_host_phys,
             expected_relay_frames,
@@ -1974,7 +1984,7 @@ pub(crate) fn init_gate_d_datapath_guest_throughput_from_validated<A: PageAlloca
         {
             let out_site = sites
                 .iter()
-                .find(|site| site.vm_id == GUEST_RELAY_MEASUREMENT_VM_ID)
+                .find(|site| site.vm_id == out_vm_id)
                 .ok_or_else(|| {
                     BootCheckError::new(
                         BootCheckErrorKind::Platform,

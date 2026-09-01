@@ -3,19 +3,23 @@
 use alloc::string::String;
 
 use hv_boot_abi::{
-    ExpectedPciSnapshot, LayoutGuestRegionSnapshot, LayoutIpcRegionSnapshot, LayoutPciSnapshot,
-    LayoutSnapshot, RequirementsSnapshot, FEATURE_DISABLED, FEATURE_OPTIONAL, FEATURE_PREFERRED,
-    FEATURE_REQUIRED, LAYOUT_DEVICE_KIND_NIC_E1000, MAX_LAYOUT_GUEST_REGIONS,
-    MAX_LAYOUT_IPC_REGIONS, MAX_LAYOUT_PCI_DEVICES, MAX_REQUIREMENTS_PAGE_SIZES,
-    MAX_REQUIREMENTS_PCI_DEVICES, REQUIREMENTS_ARCH_X86_64, SMT_POLICY_ALLOW_CROSS_PARTITION,
-    SMT_POLICY_DISABLED, SMT_POLICY_EXCLUSIVE_CORE, SMT_POLICY_SAME_PARTITION_SIBLINGS,
+    ExpectedPciSnapshot, LayoutGuestRegionSnapshot, LayoutHostNetworkSnapshot,
+    LayoutIpcRegionSnapshot, LayoutPciSnapshot, LayoutSnapshot, RequirementsSnapshot,
+    FEATURE_DISABLED, FEATURE_OPTIONAL, FEATURE_PREFERRED, FEATURE_REQUIRED,
+    LAYOUT_DEVICE_KIND_NIC_E1000, LAYOUT_DEVICE_ROLE_DATAPATH_IN, LAYOUT_DEVICE_ROLE_DATAPATH_OUT,
+    LAYOUT_DEVICE_ROLE_NONE, LAYOUT_HOST_NETWORK_BACKEND_TAP, LAYOUT_HOST_NETWORK_BACKEND_USER,
+    LAYOUT_HOST_NETWORK_IFNAME_LEN, LAYOUT_HOST_NETWORK_NETDEV_LEN, MAX_LAYOUT_GUEST_REGIONS,
+    MAX_LAYOUT_HOST_NETWORK_INTERFACES, MAX_LAYOUT_IPC_REGIONS, MAX_LAYOUT_PARTITION_ID_LEN,
+    MAX_LAYOUT_PCI_DEVICES, MAX_REQUIREMENTS_PAGE_SIZES, MAX_REQUIREMENTS_PCI_DEVICES,
+    REQUIREMENTS_ARCH_X86_64, SMT_POLICY_ALLOW_CROSS_PARTITION, SMT_POLICY_DISABLED,
+    SMT_POLICY_EXCLUSIVE_CORE, SMT_POLICY_SAME_PARTITION_SIBLINGS,
 };
 use hv_config_model::{
     ExpectedPciDevice, FeatureRequirement, PageSizeSet, PlatformRequirements, SmtPolicy,
 };
 use hv_platform_model::{
-    PlannedGuestMemory, PlannedHypervisorReserve, PlannedIpcMemory, PlannedPciDevice,
-    StaticPlatformIR,
+    HostNetworkInterface, HostNetworkPlan, PlannedGuestMemory, PlannedHypervisorReserve,
+    PlannedIpcMemory, PlannedPciDevice, StaticPlatformIR,
 };
 use hv_types::{
     ByteSize, HostPhysAddr, PciBdf, PciBus, PciDevice, PciFunction, PciSegment, VmId,
@@ -241,18 +245,30 @@ pub fn layout_snapshot_from_platform_ir(
             "pci device count exceeds layout snapshot capacity",
         ));
     }
+    if layout.host_network.interfaces.len() > MAX_LAYOUT_HOST_NETWORK_INTERFACES {
+        return Err(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "host network interface count exceeds layout snapshot capacity",
+        ));
+    }
 
     let mut guest_regions = [LayoutGuestRegionSnapshot {
         vm_id: 0,
         host_phys: 0,
         size_bytes: 0,
+        partition_id_len: 0,
+        partition_id: [0; MAX_LAYOUT_PARTITION_ID_LEN],
     }; MAX_LAYOUT_GUEST_REGIONS];
     for (index, region) in layout.guest_memory.iter().enumerate() {
         if let Some(slot) = guest_regions.get_mut(index) {
+            let (partition_id_len, partition_id) =
+                encode_fixed_string::<MAX_LAYOUT_PARTITION_ID_LEN>(&region.partition_id)?;
             *slot = LayoutGuestRegionSnapshot {
                 vm_id: region.vm_id.raw(),
                 host_phys: region.host_phys.raw(),
                 size_bytes: region.size.bytes(),
+                partition_id_len,
+                partition_id,
             };
         }
     }
@@ -282,11 +298,32 @@ pub fn layout_snapshot_from_platform_ir(
         bus: 0,
         device: 0,
         function: 0,
+        device_role: LAYOUT_DEVICE_ROLE_NONE,
+        reserved: 0,
         device_kind: 0,
     }; MAX_LAYOUT_PCI_DEVICES];
     for (index, device) in layout.pci_devices.iter().enumerate() {
         if let Some(slot) = pci_devices.get_mut(index) {
             *slot = layout_pci_to_snapshot(device);
+        }
+    }
+
+    let mut host_network_interfaces = [LayoutHostNetworkSnapshot {
+        vm_id: 0,
+        segment: 0,
+        bus: 0,
+        device: 0,
+        function: 0,
+        backend: LAYOUT_HOST_NETWORK_BACKEND_USER,
+        tap_ifname_len: 0,
+        tap_ifname: [0; LAYOUT_HOST_NETWORK_IFNAME_LEN],
+        netdev_id_len: 0,
+        reserved: 0,
+        netdev_id: [0; LAYOUT_HOST_NETWORK_NETDEV_LEN],
+    }; MAX_LAYOUT_HOST_NETWORK_INTERFACES];
+    for (index, interface) in layout.host_network.interfaces.iter().enumerate() {
+        if let Some(slot) = host_network_interfaces.get_mut(index) {
+            *slot = layout_host_network_to_snapshot(interface, &layout.host_network.backend)?;
         }
     }
 
@@ -299,6 +336,11 @@ pub fn layout_snapshot_from_platform_ir(
         pci_devices,
         hypervisor_reserve_phys: layout.hypervisor_reserve.host_phys.raw(),
         hypervisor_reserve_bytes: layout.hypervisor_reserve.size.bytes(),
+        host_network_enabled: u8::from(layout.host_network.enabled),
+        host_network_backend: host_network_backend_to_snapshot(&layout.host_network.backend),
+        host_network_reserved: [0; 2],
+        host_network_interface_count: layout.host_network.interfaces.len() as u32,
+        host_network_interfaces,
     })
 }
 
@@ -320,7 +362,10 @@ pub fn static_platform_ir_from_layout_snapshot(
         ))?
     {
         guest_memory.push(PlannedGuestMemory {
-            partition_id: String::new(),
+            partition_id: decode_fixed_string::<MAX_LAYOUT_PARTITION_ID_LEN>(
+                region.partition_id_len,
+                &region.partition_id,
+            )?,
             vm_id: VmId::new(region.vm_id),
             host_phys: HostPhysAddr::new(region.host_phys),
             size: ByteSize::new(region.size_bytes),
@@ -358,6 +403,27 @@ pub fn static_platform_ir_from_layout_snapshot(
         pci_devices.push(planned_pci_from_layout_snapshot(device));
     }
 
+    let mut host_network_interfaces =
+        alloc::vec::Vec::with_capacity(layout.host_network_interface_count as usize);
+    for interface in layout
+        .host_network_interfaces
+        .get(0..layout.host_network_interface_count as usize)
+        .ok_or(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "layout snapshot host network interfaces out of bounds",
+        ))?
+    {
+        host_network_interfaces.push(host_network_from_layout_snapshot(interface)?);
+    }
+    for interface in &mut host_network_interfaces {
+        if let Some(guest) = guest_memory
+            .iter()
+            .find(|guest| guest.vm_id == interface.vm_id)
+        {
+            interface.partition_id = guest.partition_id.clone();
+        }
+    }
+
     Ok(StaticPlatformIR {
         platform_name: String::new(),
         guest_memory,
@@ -367,6 +433,11 @@ pub fn static_platform_ir_from_layout_snapshot(
             size: ByteSize::new(layout.hypervisor_reserve_bytes),
         },
         pci_devices,
+        host_network: HostNetworkPlan {
+            enabled: layout.host_network_enabled != 0,
+            backend: host_network_backend_from_snapshot(layout.host_network_backend),
+            interfaces: host_network_interfaces,
+        },
     })
 }
 
@@ -387,6 +458,12 @@ fn validate_layout_counts(layout: &LayoutSnapshot) -> Result<(), BootCheckError>
         return Err(BootCheckError::new(
             BootCheckErrorKind::Platform,
             "layout snapshot pci device count exceeds maximum",
+        ));
+    }
+    if layout.host_network_interface_count as usize > MAX_LAYOUT_HOST_NETWORK_INTERFACES {
+        return Err(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "layout snapshot host network interface count exceeds maximum",
         ));
     }
     Ok(())
@@ -418,6 +495,8 @@ fn layout_pci_to_snapshot(device: &PlannedPciDevice) -> LayoutPciSnapshot {
         bus: device.bdf.bus.raw(),
         device: device.bdf.device.raw(),
         function: device.bdf.function.raw(),
+        device_role: device_role_to_snapshot(device.role.as_deref()),
+        reserved: 0,
         device_kind: device_kind_to_snapshot(&device.kind),
     }
 }
@@ -432,6 +511,128 @@ fn planned_pci_from_layout_snapshot(device: &LayoutPciSnapshot) -> PlannedPciDev
         ),
         vm_id: VmId::new(device.vm_id),
         kind: device_kind_from_snapshot(device.device_kind),
+        role: device_role_from_snapshot(device.device_role),
+    }
+}
+
+fn layout_host_network_to_snapshot(
+    interface: &HostNetworkInterface,
+    backend: &str,
+) -> Result<LayoutHostNetworkSnapshot, BootCheckError> {
+    let (tap_ifname_len, tap_ifname) = encode_fixed_string::<LAYOUT_HOST_NETWORK_IFNAME_LEN>(
+        interface.tap_ifname.as_deref().unwrap_or_default(),
+    )?;
+    let (netdev_id_len, netdev_id) =
+        encode_fixed_string::<LAYOUT_HOST_NETWORK_NETDEV_LEN>(&interface.netdev_id)?;
+    Ok(LayoutHostNetworkSnapshot {
+        vm_id: interface.vm_id.raw(),
+        segment: interface.bdf.segment.raw(),
+        bus: interface.bdf.bus.raw(),
+        device: interface.bdf.device.raw(),
+        function: interface.bdf.function.raw(),
+        backend: host_network_backend_to_snapshot(backend),
+        tap_ifname_len,
+        tap_ifname,
+        netdev_id_len,
+        reserved: 0,
+        netdev_id,
+    })
+}
+
+fn host_network_from_layout_snapshot(
+    interface: &LayoutHostNetworkSnapshot,
+) -> Result<HostNetworkInterface, BootCheckError> {
+    let tap_ifname = decode_fixed_string::<LAYOUT_HOST_NETWORK_IFNAME_LEN>(
+        interface.tap_ifname_len,
+        &interface.tap_ifname,
+    )?;
+    let netdev_id = decode_fixed_string::<LAYOUT_HOST_NETWORK_NETDEV_LEN>(
+        interface.netdev_id_len,
+        &interface.netdev_id,
+    )?;
+    Ok(HostNetworkInterface {
+        partition_id: String::new(),
+        vm_id: VmId::new(interface.vm_id),
+        bdf: PciBdf::new(
+            PciSegment::new(interface.segment),
+            PciBus::new(interface.bus),
+            PciDevice::new(interface.device),
+            PciFunction::new(interface.function),
+        ),
+        pci_addr: String::new(),
+        netdev_id,
+        tap_ifname: if tap_ifname.is_empty() {
+            None
+        } else {
+            Some(tap_ifname)
+        },
+    })
+}
+
+fn encode_fixed_string<const N: usize>(value: &str) -> Result<(u8, [u8; N]), BootCheckError> {
+    if value.len() > N {
+        return Err(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "layout snapshot string exceeds fixed capacity",
+        ));
+    }
+    let mut out = [0u8; N];
+    if let Some(slice) = out.get_mut(0..value.len()) {
+        slice.copy_from_slice(value.as_bytes());
+    }
+    Ok((value.len() as u8, out))
+}
+
+fn decode_fixed_string<const N: usize>(len: u8, bytes: &[u8; N]) -> Result<String, BootCheckError> {
+    if usize::from(len) > N {
+        return Err(BootCheckError::new(
+            BootCheckErrorKind::Platform,
+            "layout snapshot string length out of bounds",
+        ));
+    }
+    let slice = bytes.get(0..usize::from(len)).ok_or(BootCheckError::new(
+        BootCheckErrorKind::Platform,
+        "layout snapshot string unreadable",
+    ))?;
+    core::str::from_utf8(slice)
+        .map(String::from)
+        .map_err(|_| {
+            BootCheckError::new(
+                BootCheckErrorKind::Platform,
+                "layout snapshot string is not valid UTF-8",
+            )
+        })
+}
+
+fn device_role_to_snapshot(role: Option<&str>) -> u8 {
+    match role {
+        Some(hv_platform_model::DATAPATH_ROLE_IN) => LAYOUT_DEVICE_ROLE_DATAPATH_IN,
+        Some(hv_platform_model::DATAPATH_ROLE_OUT) => LAYOUT_DEVICE_ROLE_DATAPATH_OUT,
+        _ => LAYOUT_DEVICE_ROLE_NONE,
+    }
+}
+
+fn device_role_from_snapshot(role: u8) -> Option<String> {
+    match role {
+        LAYOUT_DEVICE_ROLE_DATAPATH_IN => Some(String::from(hv_platform_model::DATAPATH_ROLE_IN)),
+        LAYOUT_DEVICE_ROLE_DATAPATH_OUT => Some(String::from(hv_platform_model::DATAPATH_ROLE_OUT)),
+        _ => None,
+    }
+}
+
+fn host_network_backend_to_snapshot(backend: &str) -> u8 {
+    if backend == "tap" {
+        LAYOUT_HOST_NETWORK_BACKEND_TAP
+    } else {
+        LAYOUT_HOST_NETWORK_BACKEND_USER
+    }
+}
+
+fn host_network_backend_from_snapshot(backend: u8) -> String {
+    if backend == LAYOUT_HOST_NETWORK_BACKEND_TAP {
+        String::from("tap")
+    } else {
+        String::from("user")
     }
 }
 

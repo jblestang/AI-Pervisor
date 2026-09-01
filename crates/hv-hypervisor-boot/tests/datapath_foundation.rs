@@ -20,8 +20,8 @@ use hv_observation_types::{
     CPUID_480_EBX_PREEMPTION_TIMER_BIT, CPUID_480_ECX_EPT_BIT, CPUID_480_ECX_VPID_BIT,
     CPUID_80000007_EDX_INVARIANT_TSC_BIT,
 };
-use hv_platform_model::plan_static_platform_ir;
-use hv_types::{PciBdf, PciBus, PciDevice, PciFunction, PciSegment, VmId};
+use hv_platform_model::{plan_static_platform_ir, vm_id_for_partition_id};
+use hv_types::{PciBdf, PciBus, PciDevice, PciFunction, PciSegment};
 use hv_x86_cpu::{CpuInstructionDisposition, MockPageAllocator};
 
 fn reference_handoff_snapshot_and_layout() -> (
@@ -86,7 +86,10 @@ fn reference_handoff_snapshot_and_layout() -> (
     (transfer, snapshot, layout)
 }
 
-fn assert_datapath_foundation_validate_only(result: &GateDDatapathFoundationResult) {
+fn assert_datapath_foundation_validate_only(
+    result: &GateDDatapathFoundationResult,
+    layout: &hv_platform_model::StaticPlatformIR,
+) {
     assert!(!result.vmx_launch.real_hw.live.live_environment_ready);
     assert!(result.vmx_launch.real_hw.vmcs_phys.is_some());
     assert!(result.vmx_launch.guest_entry_phys.is_some());
@@ -101,10 +104,14 @@ fn assert_datapath_foundation_validate_only(result: &GateDDatapathFoundationResu
     assert_eq!(result.partition_boot_infos.len(), 3);
     assert_eq!(result.datapath_plans.len(), 3);
 
+    let in_vm = vm_id_for_partition_id(layout, "in").expect("in vm");
+    let mid_vm = vm_id_for_partition_id(layout, "mid").expect("mid vm");
+    let out_vm = vm_id_for_partition_id(layout, "out").expect("out vm");
+
     let in_blob = result
         .partition_boot_infos
         .iter()
-        .find(|(vm_id, _)| *vm_id == VmId::new(0))
+        .find(|(vm_id, _)| *vm_id == in_vm)
         .map(|(_, blob)| blob.as_slice())
         .expect("in blob");
     let in_view = GuestBootInfoView::parse(in_blob).expect("parse in");
@@ -118,7 +125,7 @@ fn assert_datapath_foundation_validate_only(result: &GateDDatapathFoundationResu
     let mid_blob = result
         .partition_boot_infos
         .iter()
-        .find(|(vm_id, _)| *vm_id == VmId::new(1))
+        .find(|(vm_id, _)| *vm_id == mid_vm)
         .map(|(_, blob)| blob.as_slice())
         .expect("mid blob");
     let mid_view = GuestBootInfoView::parse(mid_blob).expect("parse mid");
@@ -128,7 +135,7 @@ fn assert_datapath_foundation_validate_only(result: &GateDDatapathFoundationResu
     let out_blob = result
         .partition_boot_infos
         .iter()
-        .find(|(vm_id, _)| *vm_id == VmId::new(2))
+        .find(|(vm_id, _)| *vm_id == out_vm)
         .map(|(_, blob)| blob.as_slice())
         .expect("out blob");
     let out_view = GuestBootInfoView::parse(out_blob).expect("parse out");
@@ -151,7 +158,7 @@ fn boot_from_transfer_and_init_gate_d_datapath_foundation_accepts_reference_tran
         &mut allocator,
     )
     .expect("datapath foundation");
-    assert_datapath_foundation_validate_only(&result);
+    assert_datapath_foundation_validate_only(&result, &layout);
 }
 
 #[test]
@@ -167,5 +174,5 @@ fn boot_from_transfer_and_init_gate_d_datapath_foundation_from_snapshots_accepts
         &mut allocator,
     )
     .expect("datapath foundation snapshots");
-    assert_datapath_foundation_validate_only(&result);
+    assert_datapath_foundation_validate_only(&result, &layout);
 }

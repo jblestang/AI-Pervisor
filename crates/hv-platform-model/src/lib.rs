@@ -12,6 +12,7 @@
 #[macro_use]
 extern crate alloc;
 
+mod lookup;
 mod constants;
 mod cpuid_constants;
 mod error;
@@ -34,9 +35,14 @@ pub use hv_observation_types::{
 };
 pub use observe::observe_platform;
 pub use observed::ObservedPlatform;
+pub use lookup::{
+    bdf_for_datapath_role, pci_device_for_datapath_role, vm_id_for_datapath_in,
+    vm_id_for_datapath_mid, vm_id_for_datapath_out, vm_id_for_partition_id, DATAPATH_ROLE_IN,
+    DATAPATH_ROLE_OUT,
+};
 pub use platform_ir::{
-    PlannedGuestMemory, PlannedHypervisorReserve, PlannedIpcMemory, PlannedPciDevice,
-    StaticPlatformIR,
+    HostNetworkInterface, HostNetworkPlan, PlannedGuestMemory, PlannedHypervisorReserve,
+    PlannedIpcMemory, PlannedPciDevice, StaticPlatformIR,
 };
 pub use validate::validate_platform;
 pub use validated::ValidatedPlatform;

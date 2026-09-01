@@ -15,9 +15,6 @@ use crate::vmexit_relay_counter::{
     read_relay_measurement_page_frames, validate_vmexit_relay_frame_count,
 };
 
-/// VM id for the reference `out` partition whose counter reflects delivered frames.
-pub const GUEST_RELAY_MEASUREMENT_VM_ID: VmId = VmId::new(2);
-
 /// IPC queue header tail offset (delivered frame count) in bytes.
 const IPC_QUEUE_TAIL_OFFSET: usize = 4;
 
@@ -327,13 +324,14 @@ pub fn measure_in_vm_relay_frames_from_boot_infos(
     execution_seam: &DatapathGuestExecutionCpuSeamOutcome,
     ept_tables: &EptProgrammedTables,
     sites: &[GuestBootInfoMeasurementSite],
+    out_vm_id: VmId,
     out_ipc_consumer_guest_phys: u64,
     measurement_page_host_phys: Option<u64>,
     expected_frames: u64,
 ) -> Result<InVmRelayMeasurement, CpuSeamError> {
     let out_site = sites
         .iter()
-        .find(|site| site.vm_id == GUEST_RELAY_MEASUREMENT_VM_ID)
+        .find(|site| site.vm_id == out_vm_id)
         .ok_or_else(|| {
             CpuSeamError::new(
                 CpuSeamErrorKind::InvalidInput,
@@ -560,6 +558,7 @@ mod tests {
             &execution,
             &sample_ept(),
             &[site],
+            site.vm_id,
             0x2000,
             None,
             64

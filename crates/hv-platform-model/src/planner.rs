@@ -6,8 +6,8 @@ use hv_types::{align_up, HostPhysAddr};
 use crate::constants::{platform_phys_base, REGION_ALIGNMENT_BYTES};
 use crate::error::{PlatformError, PlatformErrorKind};
 use crate::platform_ir::{
-    PlannedGuestMemory, PlannedHypervisorReserve, PlannedIpcMemory, PlannedPciDevice,
-    StaticPlatformIR,
+    HostNetworkInterface, HostNetworkPlan, PlannedGuestMemory, PlannedHypervisorReserve,
+    PlannedIpcMemory, PlannedPciDevice, StaticPlatformIR,
 };
 
 /// Plans static platform IR with resolved host physical addresses from intent IR.
@@ -56,13 +56,16 @@ pub fn plan_static_platform_ir(intent: &StaticIntentIR) -> Result<StaticPlatform
     let _ = advance_cursor(cursor, reserve_size.bytes())?;
 
     let mut pci_devices = Vec::new();
-    for (bdf, vm_id, kind) in &intent.pci_intent.devices {
+    for (bdf, vm_id, kind, role) in &intent.pci_intent.devices {
         pci_devices.push(PlannedPciDevice {
             bdf: *bdf,
             vm_id: *vm_id,
             kind: kind.clone(),
+            role: role.clone(),
         });
     }
+
+    let host_network = plan_host_network(intent)?;
 
     Ok(StaticPlatformIR {
         platform_name: intent.platform_name.clone(),
@@ -70,6 +73,45 @@ pub fn plan_static_platform_ir(intent: &StaticIntentIR) -> Result<StaticPlatform
         ipc_memory,
         hypervisor_reserve,
         pci_devices,
+        host_network,
+    })
+}
+
+fn plan_host_network(intent: &StaticIntentIR) -> Result<HostNetworkPlan, PlatformError> {
+    let mut interfaces = Vec::new();
+    for interface in &intent.qemu_plan.network.interfaces {
+        let vm_id = intent
+            .partitions
+            .iter()
+            .find(|partition| partition.id == interface.partition)
+            .map(|partition| partition.vm_id)
+            .ok_or_else(|| {
+                PlatformError::new(
+                    PlatformErrorKind::Planning,
+                    "host network interface references unknown partition",
+                )
+            })?;
+        interfaces.push(HostNetworkInterface {
+            partition_id: interface.partition.clone(),
+            vm_id,
+            bdf: interface.bdf,
+            pci_addr: interface.pci_addr.clone(),
+            netdev_id: interface.netdev_id.clone(),
+            tap_ifname: interface.tap_ifname.clone(),
+        });
+    }
+    interfaces.sort_by_key(|interface| {
+        (
+            interface.bdf.segment.raw(),
+            interface.bdf.bus.raw(),
+            interface.bdf.device.raw(),
+            interface.bdf.function.raw(),
+        )
+    });
+    Ok(HostNetworkPlan {
+        enabled: intent.qemu_plan.network.enabled,
+        backend: intent.qemu_plan.network.backend.clone(),
+        interfaces,
     })
 }
 
@@ -111,6 +153,7 @@ mod tests {
         assert_eq!(planned.guest_memory.len(), 3);
         assert_eq!(planned.ipc_memory.len(), 2);
         assert_eq!(planned.pci_devices.len(), 2);
+        assert_eq!(planned.host_network.interfaces.len(), 2);
 
         let mut regions = Vec::new();
         for region in &planned.guest_memory {
@@ -170,5 +213,24 @@ mod tests {
             .map(|region| region.channel_id.raw())
             .collect::<Vec<_>>();
         assert_eq!(channel_ids, vec![0, 1]);
+    }
+
+    #[test]
+    fn host_network_interfaces_are_independent() {
+        let yaml = include_str!("../../../configs/qemu.yaml");
+        let compiled = compile_config_from_str(yaml).expect("compile");
+        let planned = plan_static_platform_ir(&compiled.intent).expect("plan");
+        assert!(planned.host_network.enabled);
+        assert_eq!(planned.host_network.interfaces.len(), 2);
+        let tap_names = planned
+            .host_network
+            .interfaces
+            .iter()
+            .filter_map(|interface| interface.tap_ifname.as_deref())
+            .collect::<Vec<_>>();
+        assert_eq!(tap_names.len(), 2);
+        let first = tap_names.first().expect("first tap");
+        let second = tap_names.get(1).expect("second tap");
+        assert_ne!(first, second);
     }
 }
