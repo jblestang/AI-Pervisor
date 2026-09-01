@@ -19,7 +19,7 @@ use hv_observation_types::{
 };
 use hv_platform_model::plan_static_platform_ir;
 use hv_types::{PciBdf, PciBus, PciDevice, PciFunction, PciSegment};
-use hv_x86_cpu::MockPageAllocator;
+use hv_x86_cpu::{CpuInstructionDisposition, MockPageAllocator};
 
 fn reference_handoff_snapshot_and_layout() -> (
     Vec<u8>,
