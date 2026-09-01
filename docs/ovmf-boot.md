@@ -80,14 +80,23 @@ For a real experiment without validate-only mock proof, require in-VM executed m
 cargo xtask live-qemu-smoke --require-executed --no-skip --build
 ```
 
-When `configs/qemu.yaml` declares `qemu.network.enabled: true` (the default production config), live smoke attaches outer-QEMU e1000 devices at the contract BDFs with user-mode netdev backends (`net_in`, `net_out`). Pass `--no-host-net` to force the legacy `-net none` launch.
+When `configs/qemu.yaml` declares `qemu.network.enabled: true` (the default production config), live smoke attaches outer-QEMU e1000 devices at the contract BDFs on **independent host tap interfaces** (`hvdp-in0` for IN, `hvdp-out0` for OUT). IN and OUT are not bridged together; MID forwards between them over IPC only. Pass `--no-host-net` to force the legacy `-net none` launch.
 
 ```bash
-# Outer QEMU e1000 at 0000:00:03.0 / 0000:00:04.0 with user netdev (from config)
+# Outer QEMU e1000 at 0000:00:03.0 / 0000:00:04.0 on separate tap netdevs (from config)
 cargo xtask live-qemu-smoke --build
 
 # Legacy launch without host-visible NICs
 cargo xtask live-qemu-smoke --no-host-net --build
+```
+
+Create the tap interfaces on the host before launching (example):
+
+```bash
+sudo ip tuntap add dev hvdp-in0 mode tap user "$USER"
+sudo ip tuntap add dev hvdp-out0 mode tap user "$USER"
+sudo ip link set hvdp-in0 up
+sudo ip link set hvdp-out0 up
 ```
 
 The strict path runs an OVMF/KVM serial probe first; hosts where OVMF produces no serial output under KVM (common on broken nested-virt cloud VMs) fail fast instead of timing out with an empty log.

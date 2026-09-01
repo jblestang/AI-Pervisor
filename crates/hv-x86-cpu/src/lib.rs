@@ -25,6 +25,7 @@ mod error;
 #[cfg(feature = "datapath-guest-relay-measurement")]
 mod guest_relay_measurement;
 mod instructions;
+mod pci_config;
 mod resident;
 mod resident_backends;
 mod seams;
@@ -60,11 +61,13 @@ pub use instructions::{
     read_timestamp_counter, read_vmx_basic_msr, vmx_revision_from_basic_msr, VtdEnableIntent,
     IA32_VMX_BASIC,
 };
+pub use pci_config::{pci_bdf_from_parts, pci_config_read32, read_pci_bar0_mmio};
 #[cfg(feature = "datapath-guests")]
 pub use resident::install_guest_elf;
 #[cfg(feature = "datapath-guest-relay-measurement")]
 pub use resident::{
-    install_e1000_mmio_state_page, install_relay_measurement_page, E1000MmioStatePageInstall,
+    install_e1000_host_attach_state_page, install_e1000_mmio_state_page,
+    install_relay_measurement_page, E1000HostAttachStatePageInstall, E1000MmioStatePageInstall,
     RelayMeasurementPageInstall,
 };
 pub use resident::{
@@ -99,7 +102,7 @@ pub use vmexit_ipc_relay::{
 #[cfg(feature = "datapath-guest-relay-measurement")]
 pub use vmexit_mmio_relay::{
     handle_e1000_mmio_vmexit, initialize_e1000_mmio_guest_view, is_e1000_mmio_write_violation,
-    read_e1000_mmio_register, VmexitE1000MmioConfig,
+    read_e1000_mmio_register, VmexitE1000HostAttachRole, VmexitE1000MmioConfig,
 };
 #[cfg(feature = "datapath-guest-relay-measurement")]
 pub use vmexit_relay_counter::{

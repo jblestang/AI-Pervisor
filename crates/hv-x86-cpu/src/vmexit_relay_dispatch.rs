@@ -4,7 +4,9 @@ use hv_types::VmId;
 
 use crate::error::{CpuSeamError, CpuSeamErrorKind};
 use crate::vmexit_ipc_relay::{handle_ipc_vmexit, VmexitIpcRelayConfig};
-use crate::vmexit_mmio_relay::{handle_e1000_mmio_vmexit, VmexitE1000MmioConfig};
+use crate::vmexit_mmio_relay::{
+    handle_e1000_mmio_vmexit, VmexitE1000HostAttachRole, VmexitE1000MmioConfig,
+};
 use crate::vmexit_relay_counter::{
     handle_relay_frame_vmexit, read_relay_measurement_page_frames, VmexitRelayCounterConfig,
     VM_EXIT_REASON_EPT_VIOLATION,
@@ -217,6 +219,9 @@ mod tests {
             e1000_mmio: Some(VmexitE1000MmioConfig {
                 mmio_guest_phys: 0xFEB0_0000,
                 state_host_phys: 0x8000,
+                attach_host_phys: 0,
+                ipc_backing_host_phys: 0,
+                host_attach_role: VmexitE1000HostAttachRole::Disabled,
             }),
         };
         assert!(config.requires_host_dispatch());
@@ -251,6 +256,9 @@ mod tests {
             e1000_mmio: Some(VmexitE1000MmioConfig {
                 mmio_guest_phys: 0xFEB0_0000,
                 state_host_phys: 0x8000,
+                attach_host_phys: 0,
+                ipc_backing_host_phys: 0,
+                host_attach_role: VmexitE1000HostAttachRole::Disabled,
             }),
         };
         assert!(handle_relay_dispatch_vmexit(

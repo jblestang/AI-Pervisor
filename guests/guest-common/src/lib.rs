@@ -6,6 +6,7 @@
 mod boot;
 mod e1000;
 mod ipc;
+mod l2;
 mod layout;
 mod relay;
 mod serial;
@@ -76,7 +77,8 @@ fn run_in(layout: &layout::ResolvedLayout) {
         e1000::tx_doorbell(mmio);
     }
     if let Some(queue) = layout.ipc_producer {
-        ipc::enqueue(queue, SYNTHETIC_FRAME_PAYLOAD);
+        let frame = l2::reference_l2_frame_bytes();
+        ipc::enqueue(queue, &frame);
     }
 }
 
@@ -95,11 +97,8 @@ fn run_out(layout: &layout::ResolvedLayout) -> bool {
     if let Some(queue) = layout.ipc_consumer {
         let mut buffer = [0u8; layout::REFERENCE_SLOT_SIZE as usize];
         if let Some(len) = ipc::dequeue(queue, &mut buffer) {
-            if len == SYNTHETIC_FRAME_PAYLOAD.len() {
-                let matched = buffer
-                    .get(0..len)
-                    .is_some_and(|payload| payload == SYNTHETIC_FRAME_PAYLOAD);
-                if matched {
+            if let Some(payload) = buffer.get(0..len) {
+                if l2::is_reference_l2_frame(payload) {
                     if let Some(mmio) = layout.e1000_mmio {
                         e1000::rx_advance(mmio);
                     }

@@ -86,21 +86,19 @@ mod tests {
     }
 
     #[test]
-    fn plan_qemu_network_builds_user_backend_devices_for_reference_config() {
+    fn plan_qemu_network_builds_independent_tap_devices_for_reference_config() {
         let plan = plan_qemu_network_from_config("configs/qemu.yaml").expect("plan");
         assert_eq!(plan.args.len(), 4);
-        assert!(plan
-            .args
-            .iter()
-            .any(|arg| arg.contains("-netdev user,id=net_in")));
+        assert!(plan.args.iter().any(|arg| {
+            arg.contains("-netdev tap,id=net_in,ifname=hvdp-in0,script=no,downscript=no")
+        }));
         assert!(plan
             .args
             .iter()
             .any(|arg| arg.contains("-device e1000,netdev=net_in,bus=pcie.0,addr=0x3")));
-        assert!(plan
-            .args
-            .iter()
-            .any(|arg| arg.contains("-netdev user,id=net_out")));
+        assert!(plan.args.iter().any(|arg| {
+            arg.contains("-netdev tap,id=net_out,ifname=hvdp-out0,script=no,downscript=no")
+        }));
         assert!(plan
             .args
             .iter()

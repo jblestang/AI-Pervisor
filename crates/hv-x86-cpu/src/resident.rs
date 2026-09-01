@@ -299,6 +299,47 @@ pub struct E1000MmioStatePageInstall {
     pub host_phys: u64,
 }
 
+/// Installed hypervisor-owned e1000 host attach state page.
+#[cfg(feature = "datapath-guest-relay-measurement")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct E1000HostAttachStatePageInstall {
+    /// Host physical base of the attach state page.
+    pub host_phys: u64,
+}
+
+/// Allocates and initializes independent host IN/OUT attach state.
+#[cfg(feature = "datapath-guest-relay-measurement")]
+pub fn install_e1000_host_attach_state_page<A: PageAllocator>(
+    allocator: &mut A,
+    plan: &hv_datapath::E1000HostAttachPlan,
+) -> Result<E1000HostAttachStatePageInstall, CpuSeamError> {
+    use hv_datapath::{encode_host_attach_state, initialize_host_attach_state, HostNicRole};
+    use hv_ept::EPT_PAGE_SIZE_BYTES;
+
+    let state = {
+        let mut state = initialize_host_attach_state(plan);
+        #[cfg(all(feature = "execute-instructions", not(test)))]
+        {
+            use crate::pci_config::read_pci_bar0_mmio;
+            if let Ok(bar0) = read_pci_bar0_mmio(plan.host_in.bdf) {
+                hv_datapath::apply_discovered_host_bar0(&mut state, HostNicRole::HostIn, bar0);
+            }
+            if let Ok(bar0) = read_pci_bar0_mmio(plan.host_out.bdf) {
+                hv_datapath::apply_discovered_host_bar0(&mut state, HostNicRole::HostOut, bar0);
+            }
+        }
+        state
+    };
+    let size = EPT_PAGE_SIZE_BYTES as usize;
+    let host_phys = allocator.allocate_pages(size, VMXON_REGION_ALIGNMENT_BYTES)?;
+    let mut page = alloc::vec![0u8; size];
+    encode_host_attach_state(&state, &mut page).map_err(|err| {
+        CpuSeamError::new(CpuSeamErrorKind::InvalidInput, err.message)
+    })?;
+    allocator.copy_to_pages(host_phys, &page)?;
+    Ok(E1000HostAttachStatePageInstall { host_phys })
+}
+
 /// Allocates and initializes a hypervisor-owned e1000 MMIO emulation state page.
 #[cfg(feature = "datapath-guest-relay-measurement")]
 pub fn install_e1000_mmio_state_page<A: PageAllocator>(
