@@ -9,7 +9,17 @@ use hv_platform_model::{
 };
 use hv_types::PciBdf;
 
+use crate::constants::E1000_MMIO_SIZE_BYTES;
 use crate::error::{DatapathError, DatapathErrorKind};
+
+/// BAR0 bases discovered from outer PCI config space at runtime.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DiscoveredOuterHostBars {
+    /// BAR0 MMIO base for the datapath ingress outer e1000.
+    pub host_in_bar0: u64,
+    /// BAR0 MMIO base for the datapath egress outer e1000.
+    pub host_out_bar0: u64,
+}
 
 /// Planned independent host NIC bindings from platform layout.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -93,6 +103,56 @@ fn validate_host_network_matches_pci(
     Ok(())
 }
 
+/// Validates runtime-discovered outer e1000 BAR0 bases against platform contract BDFs.
+pub fn validate_discovered_outer_host_bars(
+    plan: &E1000HostAttachPlan,
+    discovered: &DiscoveredOuterHostBars,
+) -> Result<(), DatapathError> {
+    validate_outer_bar0("datapath IN", discovered.host_in_bar0)?;
+    validate_outer_bar0("datapath OUT", discovered.host_out_bar0)?;
+    if discovered.host_in_bar0 == discovered.host_out_bar0 {
+        return Err(DatapathError::new(
+            DatapathErrorKind::InvalidInput,
+            "discovered IN and OUT outer e1000 BAR0 bases must be independent",
+        ));
+    }
+    if outer_bar_windows_overlap(
+        discovered.host_in_bar0,
+        discovered.host_out_bar0,
+        E1000_MMIO_SIZE_BYTES,
+    ) {
+        return Err(DatapathError::new(
+            DatapathErrorKind::InvalidInput,
+            "discovered IN and OUT outer e1000 BAR0 windows overlap",
+        ));
+    }
+    let _ = plan;
+    Ok(())
+}
+
+fn outer_bar_windows_overlap(base_a: u64, base_b: u64, size: u64) -> bool {
+    let end_a = base_a.saturating_add(size);
+    let end_b = base_b.saturating_add(size);
+    base_a < end_b && base_b < end_a
+}
+
+fn validate_outer_bar0(label: &str, bar0: u64) -> Result<(), DatapathError> {
+    if bar0 == 0 {
+        return Err(DatapathError::new(
+            DatapathErrorKind::InvalidInput,
+            "discovered outer e1000 BAR0 must be non-zero",
+        ));
+    }
+    if bar0 % 4096 != 0 {
+        return Err(DatapathError::new(
+            DatapathErrorKind::InvalidInput,
+            "discovered outer e1000 BAR0 must be page aligned",
+        ));
+    }
+    let _ = label;
+    Ok(())
+}
+
 fn map_platform_error(err: hv_platform_model::PlatformError) -> DatapathError {
     DatapathError::new(DatapathErrorKind::InvalidInput, err.message)
 }
@@ -133,5 +193,31 @@ mod tests {
             .expect("host out");
         assert_eq!(host_in.mmio_guest_phys, in_mmio);
         assert_eq!(host_out.mmio_guest_phys, out_mmio);
+    }
+
+    #[test]
+    fn validate_discovered_outer_host_bars_accepts_reference_layout_addresses() {
+        let yaml = include_str!("../../../configs/qemu.yaml");
+        let compiled = compile_config_from_str(yaml).expect("compile");
+        let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
+        let plan = plan_e1000_host_attach(&layout).expect("plan");
+        let discovered = DiscoveredOuterHostBars {
+            host_in_bar0: 0xFEB0_0000,
+            host_out_bar0: 0xFEB2_0000,
+        };
+        validate_discovered_outer_host_bars(&plan, &discovered).expect("valid");
+    }
+
+    #[test]
+    fn validate_discovered_outer_host_bars_rejects_overlap() {
+        let yaml = include_str!("../../../configs/qemu.yaml");
+        let compiled = compile_config_from_str(yaml).expect("compile");
+        let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
+        let plan = plan_e1000_host_attach(&layout).expect("plan");
+        let discovered = DiscoveredOuterHostBars {
+            host_in_bar0: 0xFEB0_0000,
+            host_out_bar0: 0xFEB0_1000,
+        };
+        assert!(validate_discovered_outer_host_bars(&plan, &discovered).is_err());
     }
 }

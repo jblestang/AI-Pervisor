@@ -25,6 +25,7 @@ mod error;
 #[cfg(feature = "datapath-guest-relay-measurement")]
 mod guest_relay_measurement;
 mod instructions;
+mod pci_config;
 mod resident;
 mod resident_backends;
 mod seams;
@@ -59,6 +60,10 @@ pub use instructions::{
     last_vtd_enable_intent, live_execution_environment_ready, live_execution_runtime_enabled,
     read_timestamp_counter, read_vmx_basic_msr, vmx_revision_from_basic_msr, VtdEnableIntent,
     IA32_VMX_BASIC,
+};
+pub use pci_config::{
+    decode_bar0_mmio_from_config_dwords, is_e1000_vendor_device, read_pci_bar0_mmio,
+    pci_config_read32, E1000_PCI_DEVICE_ID, E1000_PCI_VENDOR_ID,
 };
 #[cfg(feature = "datapath-guests")]
 pub use resident::install_guest_elf;
