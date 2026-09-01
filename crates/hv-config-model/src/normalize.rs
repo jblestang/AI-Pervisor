@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{ConfigError, ConfigErrorKind};
-use crate::pci::parse_bdf;
+use crate::pci::{parse_bdf, parse_guest_phys};
 use crate::raw::{
     RawConfig, RawDeviceKind, RawDeviceRole, RawFeatureLevel, RawGuestImage, RawIpcChannel,
     RawPartition, RawPlatformRequirements, RawQemu, RawQemuNetwork, RawSmtPolicy,
@@ -125,6 +125,8 @@ pub struct NormalizedDevice {
     pub kind: NormalizedDeviceKind,
     /// Parsed PCI BDF.
     pub bdf: PciBdf,
+    /// Guest physical base for the device MMIO BAR.
+    pub mmio_guest_phys: u64,
     /// Optional datapath role.
     pub role: Option<NormalizedDeviceRole>,
 }
@@ -332,11 +334,18 @@ fn normalize_partition(
             let bdf = parse_bdf(&device.bdf).map_err(|err| {
                 err.with_path(format!("partitions[id={}].devices.bdf", partition.id))
             })?;
+            let mmio_guest_phys = parse_guest_phys(&device.mmio_guest_phys).map_err(|err| {
+                err.with_path(format!(
+                    "partitions[id={}].devices.mmio_guest_phys",
+                    partition.id
+                ))
+            })?;
             Ok(NormalizedDevice {
                 kind: match device.kind {
                     RawDeviceKind::NicE1000 => NormalizedDeviceKind::NicE1000,
                 },
                 bdf,
+                mmio_guest_phys,
                 role: device.role.map(|role| match role {
                     RawDeviceRole::DatapathIn => NormalizedDeviceRole::DatapathIn,
                     RawDeviceRole::DatapathOut => NormalizedDeviceRole::DatapathOut,

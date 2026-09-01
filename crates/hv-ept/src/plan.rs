@@ -56,7 +56,7 @@ pub fn plan_ept_init(
     }
     for device in &layout.pci_devices {
         if device.kind == "nic_e1000" {
-            let guest_phys = plan_e1000_mmio_guest_phys(device.vm_id)
+            let guest_phys = plan_e1000_mmio_guest_phys(layout, device.vm_id)
                 .map_err(|_| planning_error("failed to plan e1000 mmio guest mapping"))?;
             let host_phys = HostPhysAddr::new(guest_phys.raw());
             push_identity_mapping(

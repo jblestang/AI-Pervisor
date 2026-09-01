@@ -52,6 +52,8 @@ pub struct PciDeviceIntent {
     pub kind: String,
     /// PCI BDF.
     pub bdf: PciBdf,
+    /// Guest physical base for the device MMIO BAR.
+    pub mmio_guest_phys: u64,
     /// Optional datapath role.
     pub role: Option<String>,
 }
@@ -103,7 +105,7 @@ pub struct MemoryLayoutIntent {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PciOwnershipIntent {
     /// Device ownership records sorted by BDF.
-    pub devices: Vec<(PciBdf, VmId, String, Option<String>)>,
+    pub devices: Vec<(PciBdf, VmId, String, Option<String>, u64)>,
 }
 
 /// Boot intent for guest images.
@@ -251,10 +253,11 @@ pub fn static_intent_ir(
                 partition.vm_id,
                 device.kind.as_str().to_string(),
                 device.role.map(|role| role.as_str().to_string()),
+                device.mmio_guest_phys,
             ));
         }
     }
-    pci_devices.sort_by_key(|(bdf, _, _, _)| {
+    pci_devices.sort_by_key(|(bdf, _, _, _, _)| {
         (
             bdf.segment.raw(),
             bdf.bus.raw(),
@@ -356,6 +359,7 @@ fn partition_intent(partition: &NormalizedPartition) -> PartitionIntent {
             .map(|device| PciDeviceIntent {
                 kind: device.kind.as_str().to_string(),
                 bdf: device.bdf,
+                mmio_guest_phys: device.mmio_guest_phys,
                 role: device.role.map(|role| role.as_str().to_string()),
             })
             .collect(),

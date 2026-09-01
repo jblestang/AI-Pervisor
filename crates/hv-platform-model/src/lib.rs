@@ -34,9 +34,9 @@ pub use hv_observation_types::{
     CPUID_480_ECX_VPID_BIT, CPUID_80000007_EDX_INVARIANT_TSC_BIT,
 };
 pub use lookup::{
-    bdf_for_datapath_role, pci_device_for_datapath_role, vm_id_for_datapath_in,
-    vm_id_for_datapath_mid, vm_id_for_datapath_out, vm_id_for_partition_id, DATAPATH_ROLE_IN,
-    DATAPATH_ROLE_OUT,
+    bdf_for_datapath_role, mmio_guest_phys_for_datapath_role, mmio_guest_phys_for_vm_id,
+    pci_device_for_datapath_role, vm_id_for_datapath_in, vm_id_for_datapath_mid,
+    vm_id_for_datapath_out, vm_id_for_partition_id, DATAPATH_ROLE_IN, DATAPATH_ROLE_OUT,
 };
 pub use observe::observe_platform;
 pub use observed::ObservedPlatform;

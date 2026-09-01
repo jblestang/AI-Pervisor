@@ -1598,7 +1598,7 @@ pub(crate) fn init_gate_d_datapath_guest_execution_from_validated<A: PageAllocat
             if device.kind != "nic_e1000" {
                 continue;
             }
-            let mmio_gpa = plan_e1000_mmio_guest_phys(device.vm_id)
+            let mmio_gpa = plan_e1000_mmio_guest_phys(layout, device.vm_id)
                 .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?
                 .raw();
             let state_page =

@@ -31,6 +31,7 @@
 | 27 | D | Sustained guest relay live (`datapath-guest-relay-live`); 64-frame guest loops + live throughput wiring |
 | 28 | D | KVM Gate D smoke (`build-boot-chain-live` + `live-qemu-smoke`); embed guests, assert Gate D relay-live serial markers |
 | 29 | D | In-VM guest relay frame measurement (`datapath-guest-relay-measurement`); boot-info counters, throughput `Executed`, measurement smoke |
+| 51 | D | PCI BAR MMIO guest phys from platform config (`mmio_guest_phys`); layout snapshot + planner lookups replace vm-id stride |
 
 Phases 0–3 complete Gate A. Phase 4 begins Gate B with host-side platform validation and deterministic layout planning.
 

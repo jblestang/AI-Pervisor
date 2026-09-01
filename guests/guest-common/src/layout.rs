@@ -83,7 +83,7 @@ impl ResolvedLayout {
     /// Reference layout for OUT (vm id 2).
     pub const fn reference_out() -> Self {
         Self {
-            e1000_mmio: Some(GuestPhysAddr::new(0xFEB1_0000)),
+            e1000_mmio: Some(GuestPhysAddr::new(0xFEB2_0000)),
             ipc_producer: None,
             ipc_consumer: Some(IpcQueueMapping {
                 guest_phys: GuestPhysAddr::new(0x0000_0002_0084_0000),

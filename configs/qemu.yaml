@@ -57,6 +57,7 @@ partitions:
       - kind: nic_e1000
         bdf: "0000:00:03.0"
         role: datapath_in
+        mmio_guest_phys: "0xFEB00000"
 
   - id: mid
     vcpus: 1
@@ -74,6 +75,7 @@ partitions:
       - kind: nic_e1000
         bdf: "0000:00:04.0"
         role: datapath_out
+        mmio_guest_phys: "0xFEB20000"
 
 ipc_channels:
   - id: chan_a

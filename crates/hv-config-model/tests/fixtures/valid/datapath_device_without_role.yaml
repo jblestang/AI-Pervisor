@@ -35,6 +35,7 @@ partitions:
       physical_cores: [0]
     devices:
       - kind: nic_e1000
+        mmio_guest_phys: "0xFEB00000"
         bdf: "0000:00:03.0"
         role: datapath_in
   - id: mid
@@ -45,6 +46,7 @@ partitions:
     devices:
       - kind: nic_e1000
         bdf: "0000:00:05.0"
+        mmio_guest_phys: "0xFEB50000"
   - id: out
     vcpus: 1
     memory_gib: 1
@@ -52,6 +54,7 @@ partitions:
       physical_cores: [2]
     devices:
       - kind: nic_e1000
+        mmio_guest_phys: "0xFEB20000"
         bdf: "0000:00:04.0"
         role: datapath_out
 ipc_channels:

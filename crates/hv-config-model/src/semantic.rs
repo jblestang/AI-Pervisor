@@ -3,7 +3,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::error::{ConfigError, ConfigErrorKind, ConfigWarning, WarningKind};
-use crate::pci::parse_bdf;
+use crate::pci::{parse_bdf, parse_guest_phys};
 use crate::raw::{RawConfig, RawDeviceRole, RawSmtPolicy};
 use hv_types::{PciBdf, SHA256_HEX_LEN};
 
@@ -52,6 +52,22 @@ pub fn validate_semantics(raw: &RawConfig) -> Result<Vec<ConfigWarning>, ConfigE
             let bdf = parse_bdf(&device.bdf).map_err(|err| {
                 err.with_path(format!("partitions[id={}].devices.bdf", partition.id))
             })?;
+            let mmio_guest_phys = parse_guest_phys(&device.mmio_guest_phys).map_err(|err| {
+                err.with_path(format!(
+                    "partitions[id={}].devices.mmio_guest_phys",
+                    partition.id
+                ))
+            })?;
+            if mmio_guest_phys % 4096 != 0 {
+                return Err(ConfigError::new(
+                    ConfigErrorKind::Semantic,
+                    "device mmio_guest_phys must be page aligned",
+                )
+                .with_path(format!(
+                    "partitions[id={}].devices.mmio_guest_phys",
+                    partition.id
+                )));
+            }
             if let Some(existing) = bdf_owner.insert(bdf, partition.id.clone()) {
                 return Err(ConfigError::new(
                     ConfigErrorKind::Semantic,

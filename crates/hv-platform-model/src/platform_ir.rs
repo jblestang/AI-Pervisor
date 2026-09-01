@@ -72,6 +72,10 @@ pub struct PlannedPciDevice {
     pub vm_id: VmId,
     /// Device kind string.
     pub kind: String,
+    /// Guest physical base for the device MMIO BAR.
+    pub mmio_guest_phys: u64,
+    /// MMIO window size in bytes.
+    pub mmio_size_bytes: u64,
     /// Optional datapath role (`datapath_in`, `datapath_out`, ...).
     pub role: Option<String>,
 }

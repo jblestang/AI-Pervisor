@@ -598,6 +598,7 @@ fn run_test_pass(args: &[&str]) -> bool {
     ProcessCommand::new("cargo")
         .arg("test")
         .args(args)
+        .env("RUSTFLAGS", "--cfg=coverage")
         .status()
         .map(|status| status.success())
         .unwrap_or(false)

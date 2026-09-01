@@ -301,6 +301,8 @@ pub fn layout_snapshot_from_platform_ir(
         device_role: LAYOUT_DEVICE_ROLE_NONE,
         reserved: 0,
         device_kind: 0,
+        mmio_guest_phys: 0,
+        mmio_size_bytes: 0,
     }; MAX_LAYOUT_PCI_DEVICES];
     for (index, device) in layout.pci_devices.iter().enumerate() {
         if let Some(slot) = pci_devices.get_mut(index) {
@@ -498,6 +500,8 @@ fn layout_pci_to_snapshot(device: &PlannedPciDevice) -> LayoutPciSnapshot {
         device_role: device_role_to_snapshot(device.role.as_deref()),
         reserved: 0,
         device_kind: device_kind_to_snapshot(&device.kind),
+        mmio_guest_phys: device.mmio_guest_phys,
+        mmio_size_bytes: u32::try_from(device.mmio_size_bytes).unwrap_or(0),
     }
 }
 
@@ -511,6 +515,8 @@ fn planned_pci_from_layout_snapshot(device: &LayoutPciSnapshot) -> PlannedPciDev
         ),
         vm_id: VmId::new(device.vm_id),
         kind: device_kind_from_snapshot(device.device_kind),
+        mmio_guest_phys: device.mmio_guest_phys,
+        mmio_size_bytes: u64::from(device.mmio_size_bytes),
         role: device_role_from_snapshot(device.device_role),
     }
 }
