@@ -3,8 +3,8 @@
 use core::mem::size_of;
 
 use hv_datapath::{
-    handle_e1000_mmio_read, handle_e1000_mmio_write, E1000MmioState, E1000_REG_RDH, E1000_REG_RDT,
-    E1000_REG_TDH, E1000_REG_TDT, E1000_MMIO_SIZE_BYTES,
+    handle_e1000_mmio_read, handle_e1000_mmio_write, E1000MmioState, E1000_MMIO_SIZE_BYTES,
+    E1000_REG_RDH, E1000_REG_RDT, E1000_REG_TDH, E1000_REG_TDT,
 };
 
 use crate::error::{CpuSeamError, CpuSeamErrorKind};
@@ -107,16 +107,20 @@ fn mirror_e1000_mmio_guest_view(
 }
 
 fn mirror_u32_at(base: u64, offset: u64, value: u64) -> Result<(), CpuSeamError> {
-    let address = base
-        .checked_add(offset)
-        .ok_or_else(|| {
-            CpuSeamError::new(CpuSeamErrorKind::InvalidInput, "e1000 MMIO mirror overflow")
-        })? as *mut u32;
+    let address = base.checked_add(offset).ok_or_else(|| {
+        CpuSeamError::new(CpuSeamErrorKind::InvalidInput, "e1000 MMIO mirror overflow")
+    })? as *mut u32;
     // SAFETY: caller guarantees the identity-mapped MMIO GPA is writable host memory.
     unsafe {
-        core::ptr::write_volatile(address, u32::try_from(value).map_err(|_| {
-            CpuSeamError::new(CpuSeamErrorKind::InvalidInput, "e1000 MMIO mirror value overflow")
-        })?);
+        core::ptr::write_volatile(
+            address,
+            u32::try_from(value).map_err(|_| {
+                CpuSeamError::new(
+                    CpuSeamErrorKind::InvalidInput,
+                    "e1000 MMIO mirror value overflow",
+                )
+            })?,
+        );
     }
     Ok(())
 }
@@ -227,7 +231,8 @@ mod tests {
         let state = read_mmio_state(state_host).expect("read");
         assert!(state.tx_doorbell);
         assert_eq!(state.tdt, 7);
-        let mirrored = unsafe { core::ptr::read_volatile((mmio_guest_phys + E1000_REG_TDT) as *const u32) };
+        let mirrored =
+            unsafe { core::ptr::read_volatile((mmio_guest_phys + E1000_REG_TDT) as *const u32) };
         assert_eq!(mirrored, 7);
     }
 
@@ -236,8 +241,10 @@ mod tests {
         let mut page = [0u8; 64];
         let state_host = page.as_mut_ptr() as u64;
         let config = sample_config(state_host, 0xFEB0_0000);
-        let mut state = E1000MmioState::default();
-        state.rdt = 9;
+        let state = E1000MmioState {
+            rdt: 9,
+            ..Default::default()
+        };
         write_mmio_state(state_host, &state).expect("write");
         assert_eq!(
             read_e1000_mmio_register(&config, E1000_REG_RDT).expect("read"),

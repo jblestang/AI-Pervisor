@@ -15,7 +15,8 @@ pub fn plan_qemu_network_from_config(config_path: &str) -> Result<QemuNetworkPla
     let path = workspace.join(config_path);
     let yaml = fs::read_to_string(&path)
         .map_err(|err| format!("failed to read config {}: {err}", path.display()))?;
-    let compiled = hv_config_model::compile_config_from_str(&yaml).map_err(|err| err.to_string())?;
+    let compiled =
+        hv_config_model::compile_config_from_str(&yaml).map_err(|err| err.to_string())?;
     let network = &compiled.normalized.qemu.network;
     if !network.enabled {
         return Ok(QemuNetworkPlan::default());
