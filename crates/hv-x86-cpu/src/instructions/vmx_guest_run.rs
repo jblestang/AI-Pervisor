@@ -69,6 +69,8 @@ fn run_vmx_guest_vmexit_dispatch_loop(
     dispatch_config: crate::vmexit_relay_dispatch::VmexitRelayDispatchConfig,
 ) -> Result<crate::vmexit_relay_dispatch::VmexitRelayDispatchOutcome, CpuSeamError> {
     use super::live_asm::{vmlaunch_to_host, vmread, vmresume_to_host, vmwrite};
+    use crate::vmexit_ipc_relay::{ipc_write_size_from_instruction_len, VMCS_GUEST_RAX};
+    use crate::vmexit_relay_counter::VMCS_VM_EXIT_INSTRUCTION_LEN;
     use crate::vmexit_relay_counter::{
         VMCS_EXIT_QUALIFICATION, VMCS_GUEST_PHYSICAL_ADDRESS, VMCS_VM_EXIT_REASON,
         VM_EXIT_REASON_HLT,
@@ -86,14 +88,22 @@ fn run_vmx_guest_vmexit_dispatch_loop(
         }
         let guest_phys = vmread(VMCS_GUEST_PHYSICAL_ADDRESS)?;
         let exit_qualification = vmread(VMCS_EXIT_QUALIFICATION)?;
+        let guest_rax = vmread(VMCS_GUEST_RAX)?;
+        let instruction_len = vmread(VMCS_VM_EXIT_INSTRUCTION_LEN)? & 0xF;
+        let write_size = ipc_write_size_from_instruction_len(instruction_len);
         let step = handle_relay_dispatch_vmexit(
             exit_reason as u32,
             guest_phys,
             exit_qualification,
+            guest_rax,
+            write_size,
             &dispatch_config,
         )?;
-        if step.relay_frames > 0 || step.mmio_relay_events > 0 {
+        if step.relay_frames > 0 || step.ipc_relay_events > 0 || step.mmio_relay_events > 0 {
             outcome.relay_frames = outcome.relay_frames.saturating_add(step.relay_frames);
+            outcome.ipc_relay_events = outcome
+                .ipc_relay_events
+                .saturating_add(step.ipc_relay_events);
             outcome.mmio_relay_events = outcome
                 .mmio_relay_events
                 .saturating_add(step.mmio_relay_events);
