@@ -56,11 +56,13 @@ pub fn plan_static_platform_ir(intent: &StaticIntentIR) -> Result<StaticPlatform
     let _ = advance_cursor(cursor, reserve_size.bytes())?;
 
     let mut pci_devices = Vec::new();
-    for (bdf, vm_id, kind, role) in &intent.pci_intent.devices {
+    for (bdf, vm_id, kind, role, mmio_guest_phys) in &intent.pci_intent.devices {
         pci_devices.push(PlannedPciDevice {
             bdf: *bdf,
             vm_id: *vm_id,
             kind: kind.clone(),
+            mmio_guest_phys: *mmio_guest_phys,
+            mmio_size_bytes: 0x20_000,
             role: role.clone(),
         });
     }

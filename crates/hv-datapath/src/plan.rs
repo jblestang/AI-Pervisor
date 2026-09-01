@@ -11,9 +11,7 @@ use hv_guest_abi::{
 use hv_platform_model::{vm_id_for_datapath_out, PlannedGuestMemory, StaticPlatformIR};
 use hv_types::{GuestPhysAddr, VmId};
 
-use crate::constants::{
-    E1000_MMIO_GUEST_PHYS_BASE, E1000_MMIO_GUEST_PHYS_STRIDE, E1000_MMIO_SIZE_BYTES,
-};
+use crate::constants::E1000_MMIO_SIZE_BYTES;
 use crate::error::{DatapathError, DatapathErrorKind};
 
 /// Per-partition datapath view derived from static platform layout.
@@ -107,7 +105,7 @@ fn plan_datapath_for_guest(
         }
         device_regions.push(GuestDeviceRegion {
             kind: GuestDeviceKind::NicE1000,
-            mmio_guest_phys: plan_e1000_mmio_guest_phys(guest.vm_id)?,
+            mmio_guest_phys: plan_e1000_mmio_guest_phys(layout, guest.vm_id)?,
             mmio_size: E1000_MMIO_SIZE_BYTES,
         });
     }
@@ -135,31 +133,27 @@ fn ipc_role_for_vm(
     }
 }
 
-/// Plans the guest physical base for an e1000 MMIO window.
-pub fn plan_e1000_mmio_guest_phys(vm_id: VmId) -> Result<GuestPhysAddr, DatapathError> {
-    let offset = u64::from(vm_id.raw())
-        .checked_mul(E1000_MMIO_GUEST_PHYS_STRIDE)
-        .ok_or_else(|| {
-            DatapathError::new(
-                DatapathErrorKind::InvalidInput,
-                "e1000 mmio guest phys offset overflow",
-            )
-        })?;
-    let base = E1000_MMIO_GUEST_PHYS_BASE
-        .checked_add(offset)
-        .ok_or_else(|| {
-            DatapathError::new(
-                DatapathErrorKind::InvalidInput,
-                "e1000 mmio guest phys base overflow",
-            )
-        })?;
+/// Plans the guest physical base for an e1000 MMIO window from platform PCI layout.
+pub fn plan_e1000_mmio_guest_phys(
+    layout: &StaticPlatformIR,
+    vm_id: VmId,
+) -> Result<GuestPhysAddr, DatapathError> {
+    use hv_platform_model::mmio_guest_phys_for_vm_id;
+    let base = mmio_guest_phys_for_vm_id(layout, vm_id).map_err(map_platform_error)?;
     Ok(GuestPhysAddr::new(base))
 }
 
 /// Returns the out-partition relay measurement page guest physical address.
-pub fn plan_relay_measurement_page_gpa(_layout: &StaticPlatformIR) -> Result<u64, DatapathError> {
-    use crate::constants::RELAY_MEASUREMENT_PAGE_GUEST_PHYS;
-    Ok(RELAY_MEASUREMENT_PAGE_GUEST_PHYS)
+pub fn plan_relay_measurement_page_gpa(layout: &StaticPlatformIR) -> Result<u64, DatapathError> {
+    use hv_platform_model::{mmio_guest_phys_for_datapath_role, DATAPATH_ROLE_OUT};
+    let out_mmio =
+        mmio_guest_phys_for_datapath_role(layout, DATAPATH_ROLE_OUT).map_err(map_platform_error)?;
+    out_mmio.checked_add(E1000_MMIO_SIZE_BYTES).ok_or_else(|| {
+        DatapathError::new(
+            DatapathErrorKind::InvalidInput,
+            "relay measurement page guest phys overflow",
+        )
+    })
 }
 
 /// Returns the out-partition IPC consumer queue guest physical address.
@@ -291,26 +285,29 @@ mod tests {
 
     #[test]
     fn relay_measurement_page_gpa_does_not_overlap_e1000_mmio() {
-        use crate::constants::{
-            E1000_MMIO_GUEST_PHYS_BASE, E1000_MMIO_GUEST_PHYS_STRIDE, E1000_MMIO_SIZE_BYTES,
-            RELAY_MEASUREMENT_PAGE_BYTES, RELAY_MEASUREMENT_PAGE_GUEST_PHYS,
-        };
-        use hv_types::VmId;
+        use crate::constants::{E1000_MMIO_SIZE_BYTES, RELAY_MEASUREMENT_PAGE_BYTES};
+        use hv_config_model::compile_config_from_str;
+        use hv_platform_model::plan_static_platform_ir;
 
-        let measurement_end = RELAY_MEASUREMENT_PAGE_GUEST_PHYS
+        let yaml = include_str!("../../../configs/qemu.yaml");
+        let compiled = compile_config_from_str(yaml).expect("compile");
+        let layout = plan_static_platform_ir(&compiled.intent).expect("plan");
+        let measurement_base = plan_relay_measurement_page_gpa(&layout).expect("measurement gpa");
+        let measurement_end = measurement_base
             .checked_add(RELAY_MEASUREMENT_PAGE_BYTES)
             .expect("measurement end");
-        for vm_id_raw in 0..3u32 {
-            let vm_id = VmId::new(vm_id_raw);
-            let mmio_base = E1000_MMIO_GUEST_PHYS_BASE
-                .checked_add(u64::from(vm_id.raw()) * E1000_MMIO_GUEST_PHYS_STRIDE)
-                .expect("mmio base");
+        for device in &layout.pci_devices {
+            if device.kind != "nic_e1000" {
+                continue;
+            }
+            let mmio_base = device.mmio_guest_phys;
             let mmio_end = mmio_base
                 .checked_add(E1000_MMIO_SIZE_BYTES)
                 .expect("mmio end");
             assert!(
-                measurement_end <= mmio_base || RELAY_MEASUREMENT_PAGE_GUEST_PHYS >= mmio_end,
-                "measurement page overlaps e1000 mmio for vm {vm_id:?}"
+                measurement_end <= mmio_base || measurement_base >= mmio_end,
+                "measurement page overlaps e1000 mmio for vm {:?}",
+                device.vm_id
             );
         }
     }

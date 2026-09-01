@@ -3,6 +3,27 @@
 use crate::error::{ConfigError, ConfigErrorKind};
 use hv_types::{PciBdf, PciBus, PciDevice, PciFunction, PciSegment};
 
+/// Parses a guest physical address from `0x...` or plain hex form.
+pub fn parse_guest_phys(input: &str) -> Result<u64, ConfigError> {
+    let trimmed = input.trim();
+    let hex = trimmed
+        .strip_prefix("0x")
+        .or_else(|| trimmed.strip_prefix("0X"))
+        .unwrap_or(trimmed);
+    if hex.is_empty() {
+        return Err(ConfigError::new(
+            ConfigErrorKind::Syntax,
+            format!("invalid guest physical address '{input}'"),
+        ));
+    }
+    u64::from_str_radix(hex, 16).map_err(|_| {
+        ConfigError::new(
+            ConfigErrorKind::Syntax,
+            format!("invalid hex guest physical address '{input}'"),
+        )
+    })
+}
+
 /// Parses a PCI BDF string in `SSSS:BB:DD.F` or `BB:DD.F` form.
 pub fn parse_bdf(input: &str) -> Result<PciBdf, ConfigError> {
     let trimmed = input.trim();
@@ -83,6 +104,16 @@ fn parse_u16(value: &str, field: &str) -> Result<u16, ConfigError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_guest_phys_accepts_prefixed_and_plain_hex() {
+        assert_eq!(
+            parse_guest_phys("0xFEB00000").expect("prefixed"),
+            0xFEB0_0000
+        );
+        assert_eq!(parse_guest_phys("feb20000").expect("plain"), 0xFEB2_0000);
+        assert!(parse_guest_phys("").is_err());
+    }
 
     #[test]
     fn parse_short_form() {

@@ -208,6 +208,8 @@ pub struct RawDevice {
     pub kind: RawDeviceKind,
     /// PCI BDF in `SSSS:BB:DD.F` or `BB:DD.F` form.
     pub bdf: String,
+    /// Guest physical base for the device MMIO BAR.
+    pub mmio_guest_phys: String,
     /// Optional datapath role marker.
     #[serde(default)]
     pub role: Option<RawDeviceRole>,

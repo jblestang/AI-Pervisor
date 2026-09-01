@@ -127,9 +127,9 @@ fn render_ipc_map(compiled: &hv_config_model::CompiledConfig) -> String {
 
 fn render_pci_map(compiled: &hv_config_model::CompiledConfig) -> String {
     let mut out = String::new();
-    for (bdf, vm_id, kind, role) in &compiled.intent.pci_intent.devices {
+    for (bdf, vm_id, kind, role, mmio_guest_phys) in &compiled.intent.pci_intent.devices {
         out.push_str(&format!(
-            "bdf={:04x}:{:02x}:{:02x}.{} vm_id={} kind={} role={}\n",
+            "bdf={:04x}:{:02x}:{:02x}.{} vm_id={} kind={} role={} mmio_guest_phys={:#x}\n",
             bdf.segment.raw(),
             bdf.bus.raw(),
             bdf.device.raw(),
@@ -137,6 +137,7 @@ fn render_pci_map(compiled: &hv_config_model::CompiledConfig) -> String {
             vm_id.raw(),
             kind,
             role.as_deref().unwrap_or("-"),
+            mmio_guest_phys,
         ));
     }
     out
@@ -452,6 +453,14 @@ fn render_embedded_config_rs(
             "            device_kind: {},\n",
             device.device_kind
         ));
+        rendered.push_str(&format!(
+            "            mmio_guest_phys: {},\n",
+            device.mmio_guest_phys
+        ));
+        rendered.push_str(&format!(
+            "            mmio_size_bytes: {},\n",
+            device.mmio_size_bytes
+        ));
         rendered.push_str("        },\n");
     }
     rendered.push_str("    ],\n");
@@ -543,7 +552,8 @@ mod tests {
         assert!(rendered.contains("partition_id_len"));
         assert!(rendered.contains("device_role"));
         assert!(rendered.contains("host_network_enabled"));
-        assert!(rendered.contains("host_network_interfaces"));
+        assert!(rendered.contains("mmio_guest_phys"));
+        assert!(rendered.contains("mmio_size_bytes"));
     }
 
     #[test]

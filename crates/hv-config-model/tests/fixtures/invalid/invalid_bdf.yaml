@@ -36,6 +36,7 @@ partitions:
     devices:
       - kind: nic_e1000
         bdf: "not-a-bdf"
+        mmio_guest_phys: "0xFEB00000"
 ipc_channels: []
 boot:
   guest_images:

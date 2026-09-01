@@ -98,6 +98,10 @@ pub struct LayoutPciSnapshot {
     pub reserved: u8,
     /// Compact device kind discriminator.
     pub device_kind: u32,
+    /// Guest physical base for the device MMIO BAR.
+    pub mmio_guest_phys: u64,
+    /// MMIO window size in bytes.
+    pub mmio_size_bytes: u32,
 }
 
 /// One outer host network interface stored in a layout snapshot.
@@ -171,7 +175,7 @@ mod tests {
         assert_eq!(size_of::<PlannedRegionSnapshot>(), 16);
         assert_eq!(size_of::<LayoutGuestRegionSnapshot>(), 40);
         assert_eq!(size_of::<LayoutIpcRegionSnapshot>(), 32);
-        assert_eq!(size_of::<LayoutPciSnapshot>(), 16);
+        assert_eq!(size_of::<LayoutPciSnapshot>(), 32);
         assert_eq!(size_of::<LayoutHostNetworkSnapshot>(), 48);
         assert_eq!(align_of::<LayoutSnapshot>(), 8);
         assert!(size_of::<LayoutSnapshot>() > size_of::<LayoutGuestRegionSnapshot>());

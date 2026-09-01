@@ -35,8 +35,10 @@ partitions:
       physical_cores: [0]
     devices:
       - kind: nic_e1000
+        mmio_guest_phys: "0xFEB20000"
         bdf: "0000:00:04.0"
       - kind: nic_e1000
+        mmio_guest_phys: "0xFEB00000"
         bdf: "0000:00:03.0"
 ipc_channels: []
 boot:

@@ -63,6 +63,32 @@ pub fn vm_id_for_datapath_out(layout: &StaticPlatformIR) -> Result<VmId, Platfor
     Ok(pci_device_for_datapath_role(layout, DATAPATH_ROLE_OUT)?.vm_id)
 }
 
+/// Returns the MMIO guest physical base for a datapath role.
+pub fn mmio_guest_phys_for_datapath_role(
+    layout: &StaticPlatformIR,
+    role: &str,
+) -> Result<u64, PlatformError> {
+    Ok(pci_device_for_datapath_role(layout, role)?.mmio_guest_phys)
+}
+
+/// Returns the MMIO guest physical base for a VM-owned e1000 PCI device.
+pub fn mmio_guest_phys_for_vm_id(
+    layout: &StaticPlatformIR,
+    vm_id: VmId,
+) -> Result<u64, PlatformError> {
+    layout
+        .pci_devices
+        .iter()
+        .find(|device| device.vm_id == vm_id && device.kind == "nic_e1000")
+        .map(|device| device.mmio_guest_phys)
+        .ok_or_else(|| {
+            PlatformError::new(
+                PlatformErrorKind::Planning,
+                "vm id has no e1000 device in platform PCI layout",
+            )
+        })
+}
+
 /// Returns the VM id for the relay partition between datapath IN and OUT.
 pub fn vm_id_for_datapath_mid(
     layout: &StaticPlatformIR,

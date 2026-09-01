@@ -58,7 +58,7 @@ pub use normalize::{normalize, NormalizedConfig, NormalizedSmtPolicy};
 #[cfg(feature = "std")]
 pub use parse::{load_raw_from_path, load_raw_from_str};
 #[cfg(feature = "std")]
-pub use pci::parse_bdf;
+pub use pci::{parse_bdf, parse_guest_phys};
 #[cfg(feature = "std")]
 pub use pipeline::{
     compile_config, compile_config_from_path, compile_config_from_str, CompiledConfig,

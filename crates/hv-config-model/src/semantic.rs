@@ -3,9 +3,12 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::error::{ConfigError, ConfigErrorKind, ConfigWarning, WarningKind};
-use crate::pci::parse_bdf;
+use crate::pci::{parse_bdf, parse_guest_phys};
 use crate::raw::{RawConfig, RawDeviceRole, RawSmtPolicy};
 use hv_types::{PciBdf, SHA256_HEX_LEN};
+
+/// Intel e1000 MMIO BAR size used for overlap validation.
+const NIC_E1000_MMIO_BYTES: u64 = 0x20_000;
 
 /// Validates semantic constraints and returns non-fatal warnings.
 pub fn validate_semantics(raw: &RawConfig) -> Result<Vec<ConfigWarning>, ConfigError> {
@@ -13,6 +16,7 @@ pub fn validate_semantics(raw: &RawConfig) -> Result<Vec<ConfigWarning>, ConfigE
     let mut partition_ids = HashSet::new();
     let mut bdf_owner: HashMap<PciBdf, String> = HashMap::new();
     let mut core_owner: HashMap<u32, String> = HashMap::new();
+    let mut mmio_regions: Vec<(u64, u64, String)> = Vec::new();
 
     for partition in &raw.partitions {
         if !partition_ids.insert(partition.id.clone()) {
@@ -52,6 +56,60 @@ pub fn validate_semantics(raw: &RawConfig) -> Result<Vec<ConfigWarning>, ConfigE
             let bdf = parse_bdf(&device.bdf).map_err(|err| {
                 err.with_path(format!("partitions[id={}].devices.bdf", partition.id))
             })?;
+            let mmio_guest_phys = parse_guest_phys(&device.mmio_guest_phys).map_err(|err| {
+                err.with_path(format!(
+                    "partitions[id={}].devices.mmio_guest_phys",
+                    partition.id
+                ))
+            })?;
+            if mmio_guest_phys == 0 {
+                return Err(ConfigError::new(
+                    ConfigErrorKind::Semantic,
+                    "device mmio_guest_phys must be non-zero",
+                )
+                .with_path(format!(
+                    "partitions[id={}].devices.mmio_guest_phys",
+                    partition.id
+                )));
+            }
+            let mmio_end = mmio_guest_phys
+                .checked_add(NIC_E1000_MMIO_BYTES)
+                .ok_or_else(|| {
+                    ConfigError::new(
+                        ConfigErrorKind::Semantic,
+                        "device mmio_guest_phys window overflow",
+                    )
+                    .with_path(format!(
+                        "partitions[id={}].devices.mmio_guest_phys",
+                        partition.id
+                    ))
+                })?;
+            for (existing_base, existing_end, existing_owner) in &mmio_regions {
+                if mmio_guest_phys < *existing_end && mmio_end > *existing_base {
+                    return Err(ConfigError::new(
+                        ConfigErrorKind::Semantic,
+                        format!(
+                            "device mmio_guest_phys overlaps '{existing_owner}' and '{}'",
+                            partition.id
+                        ),
+                    )
+                    .with_path(format!(
+                        "partitions[id={}].devices.mmio_guest_phys",
+                        partition.id
+                    )));
+                }
+            }
+            mmio_regions.push((mmio_guest_phys, mmio_end, partition.id.clone()));
+            if mmio_guest_phys % 4096 != 0 {
+                return Err(ConfigError::new(
+                    ConfigErrorKind::Semantic,
+                    "device mmio_guest_phys must be page aligned",
+                )
+                .with_path(format!(
+                    "partitions[id={}].devices.mmio_guest_phys",
+                    partition.id
+                )));
+            }
             if let Some(existing) = bdf_owner.insert(bdf, partition.id.clone()) {
                 return Err(ConfigError::new(
                     ConfigErrorKind::Semantic,
