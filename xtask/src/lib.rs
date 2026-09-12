@@ -150,6 +150,11 @@ pub fn run_live_qemu_smoke(
     live_qemu_smoke::run_live_qemu_smoke(config_path, boot_chain_dir, timeout_secs, build_first)
 }
 
+/// Validates host readiness for REAL_HW live QEMU smoke without launching a full boot.
+pub fn run_live_qemu_preflight(config_path: &str, run_kvm_probe: bool) -> i32 {
+    live_qemu_smoke::run_live_qemu_preflight(config_path, run_kvm_probe)
+}
+
 /// Creates and brings up host tap interfaces declared in the config host network plan.
 pub fn run_setup_host_net_taps(config_path: &str) -> i32 {
     match host_net_taps::setup_host_net_taps(config_path) {
@@ -928,6 +933,10 @@ fn dispatch_task_with(task: TaskCommand, runner: fn(&str, &[&str]) -> i32) -> i3
         TaskCommand::ConfigValidate { path } => run_config_validate(&path),
         TaskCommand::ConfigGenerate { path, output } => run_config_generate(&path, &output),
         TaskCommand::SetupHostNetTaps { config } => run_setup_host_net_taps(&config),
+        TaskCommand::LiveQemuPreflight {
+            config,
+            run_kvm_probe,
+        } => run_live_qemu_preflight(&config, run_kvm_probe),
     }
 }
 
@@ -1042,6 +1051,15 @@ enum TaskCommandCli {
         #[arg(long, default_value = DEFAULT_EFI_CONFIG_PATH)]
         config: String,
     },
+    /// Check KVM, VMX, OVMF, QEMU, and host taps before live REAL_HW smoke.
+    LiveQemuPreflight {
+        /// Path to YAML configuration used for host network tap checks.
+        #[arg(long, default_value = DEFAULT_EFI_CONFIG_PATH)]
+        config: String,
+        /// Run the OVMF/KVM serial probe (slower; requires working nested virt).
+        #[arg(long, default_value_t = false)]
+        run_kvm_probe: bool,
+    },
     /// Run the host datapath throughput benchmark per docs/benchmark.md.
     DatapathBenchmark {
         /// Path to YAML configuration used to plan the reference datapath.
@@ -1121,6 +1139,13 @@ pub(crate) fn map_cli_command(command: TaskCommandCli) -> TaskCommand {
             no_host_net,
         },
         TaskCommandCli::SetupHostNetTaps { config } => TaskCommand::SetupHostNetTaps { config },
+        TaskCommandCli::LiveQemuPreflight {
+            config,
+            run_kvm_probe,
+        } => TaskCommand::LiveQemuPreflight {
+            config,
+            run_kvm_probe,
+        },
         TaskCommandCli::DatapathBenchmark { config } => TaskCommand::DatapathBenchmark { config },
         TaskCommandCli::BuildGuests => TaskCommand::BuildGuests,
         TaskCommandCli::DatapathLiveBenchmark { config } => {
@@ -1222,6 +1247,13 @@ pub enum TaskCommand {
     SetupHostNetTaps {
         /// Path to YAML configuration describing host network taps.
         config: String,
+    },
+    /// Check KVM, VMX, OVMF, QEMU, and host taps before live REAL_HW smoke.
+    LiveQemuPreflight {
+        /// Path to YAML configuration used for host network tap checks.
+        config: String,
+        /// Run the OVMF/KVM serial probe (slower; requires working nested virt).
+        run_kvm_probe: bool,
     },
     /// Run the host datapath throughput benchmark per docs/benchmark.md.
     DatapathBenchmark {
@@ -1777,6 +1809,13 @@ mod tests {
             parse_task_command(["xtask", "setup-host-net-taps"]).expect("parse setup taps"),
             TaskCommand::SetupHostNetTaps {
                 config: String::from(DEFAULT_EFI_CONFIG_PATH),
+            }
+        );
+        assert_eq!(
+            parse_task_command(["xtask", "live-qemu-preflight"]).expect("parse preflight"),
+            TaskCommand::LiveQemuPreflight {
+                config: String::from(DEFAULT_EFI_CONFIG_PATH),
+                run_kvm_probe: false,
             }
         );
     }

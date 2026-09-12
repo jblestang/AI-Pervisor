@@ -113,6 +113,13 @@ On success the serial log includes Gate D guest relay live markers (`Gate D: gue
 
 ## QEMU test machine quick start
 
+Validate the host before building or booting (fast; add `--run-kvm-probe` to exercise nested OVMF serial):
+
+```bash
+cargo xtask live-qemu-preflight
+cargo xtask live-qemu-preflight --run-kvm-probe
+```
+
 On a host with `/dev/kvm`, VMX, nested virt, OVMF, and QEMU installed:
 
 ```bash
