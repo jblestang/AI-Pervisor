@@ -61,7 +61,8 @@ pub use hv_hypervisor_boot::{
     GATE_D_GUEST_SOURCE_ELF_MARKER, GATE_D_GUEST_THROUGHPUT_EXECUTED_MARKER,
     GATE_D_GUEST_THROUGHPUT_MARKER, GATE_D_GUEST_THROUGHPUT_TARGET_MET_MARKER,
     GATE_D_IPC_FORWARD_MARKER, GATE_D_IPC_INTEGRITY_MARKER, GATE_D_MULTI_VMLAUNCH_MARKER,
-    REAL_HW_BOOT_SUCCESS_MARKER, REAL_HW_EPT_EXECUTED_MARKER, REAL_HW_VMLAUNCH_EXECUTED_MARKER,
+    REAL_HW_BOOT_SUCCESS_MARKER, REAL_HW_EPT_EXECUTED_MARKER,
+    REAL_HW_OUTER_HOST_BAR0_DISCOVERED_MARKER, REAL_HW_VMLAUNCH_EXECUTED_MARKER,
     REAL_HW_VMXON_EXECUTED_MARKER,
 };
 
@@ -190,6 +191,8 @@ pub struct DatapathGuestExecutionBootMarkers {
     pub guest_code_executed: bool,
     /// Whether guest datapath runtime disposition reflects live execution.
     pub runtime_disposition_executed: bool,
+    /// Whether outer host e1000 BAR0 was discovered from PCI config space.
+    pub outer_host_bar0_discovered: bool,
 }
 
 /// Gate D datapath guest throughput boot outcome markers for serial-log verification.
@@ -688,6 +691,7 @@ fn boot_hypervisor_from_transfer_datapath_guest_execution_markers(
             == CpuInstructionDisposition::Executed,
         runtime_disposition_executed: result.live.sources.runtime.runtime.disposition
             == DatapathRuntimeDisposition::Executed,
+        outer_host_bar0_discovered: result.outer_host_bar0_discovered,
     }
 }
 

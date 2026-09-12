@@ -63,6 +63,8 @@ pub fn plan_qemu_network_from_config(config_path: &str) -> Result<QemuNetworkPla
             "-device e1000,netdev={},bus=pcie.0,addr={}",
             interface.netdev_id, interface.pci_addr
         ));
+        // Outer BAR pinning via fixed-bars/pci-bars requires newer QEMU; discovery validates
+        // runtime BAR placement against platform contract BDFs under REAL_HW.
     }
     Ok(QemuNetworkPlan { args })
 }

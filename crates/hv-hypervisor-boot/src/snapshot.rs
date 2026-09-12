@@ -18,8 +18,9 @@ use hv_config_model::{
     ExpectedPciDevice, FeatureRequirement, PageSizeSet, PlatformRequirements, SmtPolicy,
 };
 use hv_platform_model::{
-    HostNetworkInterface, HostNetworkPlan, PlannedGuestMemory, PlannedHypervisorReserve,
-    PlannedIpcMemory, PlannedPciDevice, StaticPlatformIR, validate_layout_host_network_coherence,
+    validate_layout_host_network_coherence, HostNetworkInterface, HostNetworkPlan,
+    PlannedGuestMemory, PlannedHypervisorReserve, PlannedIpcMemory, PlannedPciDevice,
+    StaticPlatformIR,
 };
 use hv_types::{
     ByteSize, HostPhysAddr, PciBdf, PciBus, PciDevice, PciFunction, PciSegment, VmId,
@@ -445,9 +446,8 @@ pub fn static_platform_ir_from_layout_snapshot(
             interfaces: host_network_interfaces,
         },
     };
-    validate_layout_host_network_coherence(&platform).map_err(|err| {
-        BootCheckError::new(BootCheckErrorKind::Platform, err.message)
-    })?;
+    validate_layout_host_network_coherence(&platform)
+        .map_err(|err| BootCheckError::new(BootCheckErrorKind::Platform, err.message))?;
     Ok(platform)
 }
 
