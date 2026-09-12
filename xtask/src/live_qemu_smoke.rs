@@ -262,6 +262,128 @@ pub fn live_qemu_strict_hardware_ready() -> bool {
     live_qemu_hardware_ready() && live_qemu_kvm_ovmf_serial_ready()
 }
 
+/// One row in the live QEMU environment preflight report.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LiveQemuPreflightCheck {
+    /// Short check name printed in the preflight table.
+    pub name: &'static str,
+    /// Whether the check passed.
+    pub ok: bool,
+    /// Human-readable detail when failed or for paths/versions.
+    pub detail: String,
+}
+
+/// Collects host readiness checks for REAL_HW live QEMU smoke.
+pub fn collect_live_qemu_preflight_checks(
+    config_path: &str,
+    run_kvm_probe: bool,
+) -> Vec<LiveQemuPreflightCheck> {
+    let mut checks = Vec::new();
+    let kvm = kvm_device_available();
+    checks.push(LiveQemuPreflightCheck {
+        name: "kvm",
+        ok: kvm,
+        detail: if kvm {
+            String::from("/dev/kvm present")
+        } else {
+            String::from("/dev/kvm missing (enable KVM module and nested virt)")
+        },
+    });
+    let vmx = host_vmx_available();
+    checks.push(LiveQemuPreflightCheck {
+        name: "vmx",
+        ok: vmx,
+        detail: if vmx {
+            String::from("VMX flag present in /proc/cpuinfo")
+        } else {
+            String::from("VMX not detected on this host")
+        },
+    });
+    let qemu = command_exists("qemu-system-x86_64");
+    checks.push(LiveQemuPreflightCheck {
+        name: "qemu",
+        ok: qemu,
+        detail: if qemu {
+            String::from("qemu-system-x86_64 on PATH")
+        } else {
+            String::from("qemu-system-x86_64 not found")
+        },
+    });
+    let timeout_cmd = command_exists("timeout");
+    checks.push(LiveQemuPreflightCheck {
+        name: "timeout",
+        ok: timeout_cmd,
+        detail: if timeout_cmd {
+            String::from("timeout on PATH")
+        } else {
+            String::from("timeout not found (coreutils)")
+        },
+    });
+    let ovmf = locate_ovmf_firmware();
+    checks.push(LiveQemuPreflightCheck {
+        name: "ovmf",
+        ok: ovmf.is_some(),
+        detail: match ovmf {
+            Some((code, vars)) => format!("OVMF code {} vars {}", code.display(), vars.display()),
+            None => String::from("OVMF firmware not found (install ovmf package)"),
+        },
+    });
+    let host_net = crate::qemu_network::qemu_network_enabled_in_config(config_path);
+    if host_net {
+        match crate::host_net_taps::ensure_host_net_taps_ready(config_path) {
+            Ok(()) => checks.push(LiveQemuPreflightCheck {
+                name: "host_taps",
+                ok: true,
+                detail: String::from("required tap interfaces present"),
+            }),
+            Err(err) => checks.push(LiveQemuPreflightCheck {
+                name: "host_taps",
+                ok: false,
+                detail: err,
+            }),
+        }
+    } else {
+        checks.push(LiveQemuPreflightCheck {
+            name: "host_taps",
+            ok: true,
+            detail: String::from("skipped (host network disabled in config)"),
+        });
+    }
+    if run_kvm_probe {
+        let probe_ok = live_qemu_kvm_ovmf_serial_ready();
+        checks.push(LiveQemuPreflightCheck {
+            name: "kvm_ovmf_probe",
+            ok: probe_ok,
+            detail: if probe_ok {
+                String::from("OVMF serial output under nested KVM")
+            } else {
+                String::from("OVMF/KVM probe failed (nested virt or serial broken)")
+            },
+        });
+    }
+    checks
+}
+
+/// Prints preflight results and returns 0 when all checks pass.
+pub fn run_live_qemu_preflight(config_path: &str, run_kvm_probe: bool) -> i32 {
+    let checks = collect_live_qemu_preflight_checks(config_path, run_kvm_probe);
+    let mut failed = false;
+    for check in &checks {
+        let status = if check.ok { "ok" } else { "FAIL" };
+        eprintln!("[{status}] {} — {}", check.name, check.detail);
+        if !check.ok {
+            failed = true;
+        }
+    }
+    if failed {
+        eprintln!("live-qemu-preflight failed: fix the items above before live-qemu-smoke");
+        1
+    } else {
+        eprintln!("live-qemu-preflight passed: host ready for cargo xtask live-qemu-smoke");
+        0
+    }
+}
+
 fn report_live_qemu_skip(options: &LiveQemuSmokeOptions) -> i32 {
     if options.no_skip {
         eprintln!("live-qemu-smoke failed: KVM nested virt, host VMX, or OVMF/KVM serial probe unavailable");
@@ -738,6 +860,24 @@ mod tests {
     #[test]
     fn live_qemu_hardware_ready_is_boolean() {
         let _ = live_qemu_hardware_ready();
+    }
+
+    #[test]
+    fn collect_live_qemu_preflight_includes_core_checks() {
+        let checks = collect_live_qemu_preflight_checks("configs/ovmf-smoke.yaml", false);
+        let names: Vec<_> = checks.iter().map(|check| check.name).collect();
+        assert!(names.contains(&"kvm"));
+        assert!(names.contains(&"vmx"));
+        assert!(names.contains(&"qemu"));
+        assert!(names.contains(&"ovmf"));
+        assert!(names.contains(&"host_taps"));
+        assert!(!names.contains(&"kvm_ovmf_probe"));
+    }
+
+    #[test]
+    fn collect_live_qemu_preflight_optional_probe() {
+        let checks = collect_live_qemu_preflight_checks("configs/qemu.yaml", true);
+        assert!(checks.iter().any(|check| check.name == "kvm_ovmf_probe"));
     }
 
     #[test]
