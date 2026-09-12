@@ -99,9 +99,30 @@ sudo ip link set hvdp-in0 up
 sudo ip link set hvdp-out0 up
 ```
 
+Or use the xtask helper (requires privileges to create taps; skips interfaces that already exist):
+
+```bash
+cargo xtask setup-host-net-taps
+```
+
+`live-qemu-smoke` preflights tap presence when host networking is enabled and fails fast with a pointer to `setup-host-net-taps` if `hvdp-in0` / `hvdp-out0` are missing. Pass `--no-host-net` to skip host NIC wiring and the tap preflight.
+
 The strict path runs an OVMF/KVM serial probe first; hosts where OVMF produces no serial output under KVM (common on broken nested-virt cloud VMs) fail fast instead of timing out with an empty log.
 
-On success the serial log includes Gate D guest relay live markers (`Gate D: guest source ELF installed…`, `Gate D: guest boot info installed…`, `Gate D: guest throughput target 200 Mbit/s met`, `hypervisor Gate D datapath guest throughput succeeded`) and at least one REAL_HW VMX marker (`REAL_HW: VMXON Executed`, `REAL_HW: EPT pointer Executed`, or `REAL_HW: VMLAUNCH Executed`). When live in-VM measurement completes (Phase 29+), the log also includes `Gate D: guest throughput measured under live VMX` and guest `GUEST: datapath relay benchmark complete`. With `--require-executed`, all three REAL_HW VMX markers plus `Gate D: guest source-tree code executed under VMX for all partitions` are required. Legacy `vmx-launch`-only firmware may still emit `hypervisor Gate C REAL_HW boot succeeded`.
+On success the serial log includes Gate D guest relay live markers (`Gate D: guest source ELF installed…`, `Gate D: guest boot info installed…`, `Gate D: guest throughput target 200 Mbit/s met`, `hypervisor Gate D datapath guest throughput succeeded`) and at least one REAL_HW VMX marker (`REAL_HW: VMXON Executed`, `REAL_HW: EPT pointer Executed`, or `REAL_HW: VMLAUNCH Executed`). When host networking is enabled under REAL_HW, the log also includes `REAL_HW: outer host e1000 BAR0 discovered` after PCI config-space reads at the contract IN/OUT BDFs (Phase 53). When live in-VM measurement completes (Phase 29+), the log also includes `Gate D: guest throughput measured under live VMX` and guest `GUEST: datapath relay benchmark complete`. With `--require-executed`, all three REAL_HW VMX markers plus `Gate D: guest source-tree code executed under VMX for all partitions` are required. Legacy `vmx-launch`-only firmware may still emit `hypervisor Gate C REAL_HW boot succeeded`.
+
+## QEMU test machine quick start
+
+On a host with `/dev/kvm`, VMX, nested virt, OVMF, and QEMU installed:
+
+```bash
+cargo xtask setup-host-net-taps          # once; creates hvdp-in0 / hvdp-out0
+cargo xtask build-guests
+cargo xtask build-boot-chain-live
+cargo xtask live-qemu-smoke --require-executed --no-skip --build
+```
+
+The strict path verifies outer e1000 BAR0 discovery, Gate D guest relay execution under live VMX, and the full REAL_HW marker set. Use `--no-host-net` on hosts without tap privileges or when testing without outer NICs.
 
 ## PCI enumeration limits (Phase 8)
 
