@@ -1,0 +1,21 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/demo-config",
+    "xtask",
+    "hv",
+    "guest-wan",
+    "guest-lan",
+    "ring",
+    "isolation",
+    "pci-vf",
+]
+
+[workspace.package]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+version = "0.1.0"
+
+[profile.release]
+lto = true
+codegen-units = 1

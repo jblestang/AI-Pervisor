@@ -1,0 +1,5 @@
+# Pin compatible with current lab image; Verus may require a newer nightly later.
+[toolchain]
+channel = "1.83.0"
+targets = ["x86_64-unknown-none"]
+components = ["rustfmt", "clippy"]

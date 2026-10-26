@@ -1,0 +1,12 @@
+[package]
+name = "demo-config"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "TOML demo configuration loader for the hypervisor spike"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+# Pin below crates.io latest: newer indexmap/toml need Rust ≥1.85.
+toml = "=0.8.23"
+thiserror = "1"

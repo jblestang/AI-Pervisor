@@ -1,0 +1,12 @@
+[package]
+name = "guest-wan"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "WAN edge guest (placeholder)"
+
+[[bin]]
+name = "guest-wan"
+path = "src/main.rs"
+
+[dependencies]

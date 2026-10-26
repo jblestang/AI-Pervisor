@@ -1,0 +1,16 @@
+/target/
+**/*.rs.bk
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local lab secrets / machine-specific demonstrator config
+/config/demo.toml
+
+# Tooling outputs
+/target/bench-report.json
+/coverage/
+*.profraw
+*.profdata
+lcov.info

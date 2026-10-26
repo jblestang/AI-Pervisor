@@ -1,0 +1,36 @@
+# Checked-in template for the hypervisor spike demonstrator.
+# Copy to config/demo.toml (gitignored) and adjust for your lab.
+# Env overrides: HV_DEMO_CONFIG, HV_VF_BACKEND, HV_WAN_VF_BDF, HV_LAN_VF_BDF
+
+[lab]
+qemu_bin = "qemu-system-x86_64"
+memory_mb = 4096
+smp = 4
+enable_iommu = true
+
+[datapath]
+backend = "sriov"          # "sriov" | "inject"
+allow_inject_fallback = false
+wan_vf_bdf = "0000:01:10.0"  # required if backend=sriov
+lan_vf_bdf = "0000:01:10.1"
+
+[guests]
+wan_memory_mb = 128
+lan_memory_mb = 128
+wan_vcpus = 1
+lan_vcpus = 1
+
+[ring]
+capacity_pow2 = 1024
+frame_capacity = 2048
+
+[bench]
+frame_size = 64
+duration_secs = 30
+bidirectional = true
+target_gbps = 1.0
+
+[paths]
+hv_image = "target/x86_64-unknown-none/release/hv"
+guest_wan_image = "target/x86_64-unknown-none/release/guest-wan"
+guest_lan_image = "target/x86_64-unknown-none/release/guest-lan"

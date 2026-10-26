@@ -1,0 +1,8 @@
+[package]
+name = "pci-vf"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "NIC backend trait: Sriov | Inject (placeholder)"
+
+[dependencies]
