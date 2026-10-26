@@ -1,33 +1,34 @@
-# Verus toolchain status (Task 2)
+# Verus toolchain status
 
 ## Workspace pin
 
-`rust-toolchain.toml` pins **Rust 1.83.0** (lab image / freestanding target baseline from Task 1).
+`rust-toolchain.toml` pins **Rust 1.99.1**, matching Verus release `0.2026.10.26` (`required rust toolchain 1.99.1-x86_64-unknown-linux-gnu`).
 
-## Latest Verus release probed
+## Verus release alignment
 
 | Item | Value |
 |------|-------|
 | Release | `release/0.2026.10.26.d17fbd0` |
 | Asset | `verus-0.2026.10.26.d17fbd0-x86-linux.zip` |
 | Required rustc | **1.99.1-x86_64-unknown-linux-gnu** |
+| Workspace pin | **1.99.1** |
 
-Running the release `verus` binary against this workspace fails immediately:
+`cargo xtask verify` invokes Verus on annotated crates (`ring`) when `VERUS_BIN` or `verus` on `PATH` is set. Soft-skips (exit 0) when:
 
-```text
-verus: required rust toolchain 1.99.1-x86_64-unknown-linux-gnu not found
-```
+- the Verus binary is missing, or
+- Verus reports a rustup/toolchain mismatch, or
+- the crate still uses attribute stubs without `vstd` / `verus_builtin` (Task 8)
 
-**Blocker:** current Verus cannot verify crates while the workspace stays on the pinned **1.83.0** channel. Bumping the pin (or maintaining a dual-toolchain verify path) is deferred to a later task once the lab image and freestanding builds are validated on a newer rustc.
+Other Verus failures hard-fail.
 
-## What Task 2 delivers instead
+## Current proof status (`ring`)
 
-- `ring` implements the SPSC ABI with host tests (`cargo test -p ring`).
-- Proof intent is captured in-source via `requires!` / `ensures!` stubs in `ring/src/verus_stub.rs` that compile without Verus / without a `verus` Cargo feature.
-- `cargo xtask verify` is wired to invoke Verus on `ring` when a usable `verus` binary is present (`VERUS_BIN` or `PATH`). If Verus is missing or reports a toolchain mismatch against the workspace pin, verify **soft-skips** (exit 0) and prints a pointer to this document.
+- Host tests: `cargo test -p ring`.
+- In-source proof intent uses `requires!` / `ensures!` stubs in `ring/src/verus_stub.rs` so the crate builds without a Verus Cargo feature.
+- Real `verus!` / `vstd` contracts and hard-fail CI on proof errors remain for Task 8 (`[package.metadata.verus] verify = true`).
 
-## Enabling real verification later
+## Enabling full verification
 
-1. Align `rust-toolchain.toml` with a Verus-supported channel (or install that channel beside the pin for verify-only).
-2. Replace stubs with real `verus!` / `vstd` contracts (`[package.metadata.verus] verify = true`).
+1. Install Verus release binaries; set `VERUS_BIN` or put `verus` on `PATH`.
+2. Replace stubs with real `verus!` / `vstd` contracts; set `verify = true` in `ring/Cargo.toml`.
 3. Re-run `cargo xtask verify` and require a hard failure on proof errors (Task 8).

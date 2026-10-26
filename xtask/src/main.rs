@@ -176,14 +176,27 @@ fn cmd_verify(root: &Path) -> ExitCode {
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
         let combined = format!("{stdout}{stderr}");
-        if !output.status.success()
-            || combined.contains("required rust toolchain")
-            || combined.contains("rustup not found")
-        {
-            eprintln!("xtask verify: Verus could not verify `{pkg}` under pin {channel}");
+        let toolchain_mismatch = combined.contains("required rust toolchain")
+            || combined.contains("rustup not found");
+        // Stubs compile without vstd; real verus!/vstd contracts land in Task 8.
+        let stubs_only = combined.contains("verus_builtin")
+            || combined.contains("use vstd::prelude");
+        if toolchain_mismatch {
+            eprintln!("xtask verify: Verus toolchain mismatch under pin {channel}");
             eprint!("{combined}");
-            eprintln!("xtask verify: soft-skip — see docs/VERUS.md (toolchain blocker)");
+            eprintln!("xtask verify: soft-skip — see docs/VERUS.md");
             return ExitCode::SUCCESS;
+        }
+        if stubs_only {
+            eprintln!("xtask verify: `{pkg}` still uses Verus attribute stubs (no vstd yet)");
+            eprint!("{combined}");
+            eprintln!("xtask verify: soft-skip — see docs/VERUS.md (Task 8: real proofs)");
+            return ExitCode::SUCCESS;
+        }
+        if !output.status.success() {
+            eprintln!("xtask verify: Verus failed on `{pkg}`");
+            eprint!("{combined}");
+            return ExitCode::FAILURE;
         }
         print!("{combined}");
         println!("xtask verify: {pkg}: ok");
