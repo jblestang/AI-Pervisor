@@ -1,8 +1,7 @@
 //! Memory region / permission model for EPT intent and guest debug asserts.
 //!
-//! Safe logic is annotated with Verus-oriented `requires!` / `ensures!` stubs
-//! (see [`verus_stub`]). Real Verus verification is driven by
-//! `cargo xtask verify` when the Verus toolchain is available.
+//! Exec path uses [`verus_stub`] annotations; machine-checked lemmas live in
+//! [`proofs`] (`cargo xtask verify` / `cargo verus verify -p isolation`).
 //!
 //! Overlapping region inserts are rejected (`IsolationFault::Overlap`) so
 //! private WAN/LAN claims cannot coexist in one map (SWR-004).
@@ -11,6 +10,7 @@
 
 extern crate alloc;
 
+mod proofs;
 mod verus_stub;
 
 use alloc::vec::Vec;

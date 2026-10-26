@@ -44,6 +44,17 @@ impl SriovNic {
     pub fn bdf(&self) -> &str {
         &self.bdf
     }
+
+    /// Host-only: construct a handle without sysfs probe to exercise the
+    /// pre-MMIO stub `NicBackend` path (empty RX / refuse TX) until VF BARs
+    /// are mapped. Not used by freestanding guests (`std` feature off).
+    #[cfg(feature = "std")]
+    pub fn stub_pre_mmio(bdf: &str) -> Self {
+        Self {
+            bdf: String::from(bdf),
+            _mmio_reserved: (),
+        }
+    }
 }
 
 impl NicBackend for SriovNic {
@@ -66,6 +77,10 @@ impl NicBackend for SriovNic {
 ///
 /// On host (`std`), checks sysfs PCI path. Under `no_std` (guests), always
 /// reports absent — guests receive an already-selected backend via boot info.
+///
+/// Host tests may set `HV_TEST_VF_SYSFS_ROOT` to a temporary directory that
+/// mirrors `/sys/bus/pci/devices/<bdf>` so the real probe path runs without lab
+/// hardware (not a NicBackend mock).
 fn probe_vf_present(bdf: &str) -> bool {
     #[cfg(feature = "std")]
     {
@@ -80,7 +95,11 @@ fn probe_vf_present(bdf: &str) -> bool {
 
 #[cfg(feature = "std")]
 fn probe_vf_sysfs(bdf: &str) -> bool {
-    // Canonical sysfs PCI device node; present iff the kernel enumerated the BDF.
-    let path = std::path::PathBuf::from(alloc::format!("/sys/bus/pci/devices/{bdf}"));
+    let root = std::env::var_os("HV_TEST_VF_SYSFS_ROOT")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from("/sys/bus/pci/devices"));
+    // Canonical sysfs PCI device node; present iff the kernel enumerated the BDF
+    // (or a host-test tree created the same layout under HV_TEST_VF_SYSFS_ROOT).
+    let path = root.join(bdf);
     path.exists()
 }

@@ -11,7 +11,7 @@ Normative design: system SSDD §8; Verus covers safe `isolation` / `ring` models
 |------|--------|
 | List every intentional `unsafe` | This document + source `SAFETY:` comments |
 | No silent TCB growth | New `unsafe` in datapath requires an entry here |
-| Coverage exclusions | Only files listed below may be omit-listed in `xtask/coverage-allowlist.toml` (Task 8) |
+| Coverage exclusions | Only files listed below may be omit-listed in `xtask/coverage-allowlist.toml` (Task 8 — each exclusion needs a one-line justification; see that file) |
 
 ## Inventory
 

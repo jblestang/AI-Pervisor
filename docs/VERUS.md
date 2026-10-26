@@ -12,24 +12,45 @@
 | Asset | `verus-0.2026.10.26.d17fbd0-x86-linux.zip` |
 | Required rustc | **1.99.1-x86_64-unknown-linux-gnu** |
 | Workspace pin | **1.99.1** |
+| `vstd` crate | `=0.0.0-2026-10-25-0158` (workspace dep) |
 
-`cargo xtask verify` invokes Verus on annotated crates (`ring`, `isolation`) when `VERUS_BIN` or `verus` on `PATH` is set. Soft-skips (exit 0) when:
+## Install (agent / lab)
 
-- the Verus binary is missing, or
-- Verus reports a rustup/toolchain mismatch, or
-- the crate still uses attribute stubs without `vstd` / `verus_builtin` (Task 8)
+```bash
+# Example local unpack matching xtask fallbacks:
+mkdir -p "$HOME/verus" && cd /tmp
+curl -sL -o verus.zip \
+  "https://github.com/verus-lang/verus/releases/download/release/0.2026.10.26.d17fbd0/verus-0.2026.10.26.d17fbd0-x86-linux.zip"
+unzip -oq verus.zip -d "$HOME/verus"
+export PATH="$HOME/verus/verus-x86-linux:$PATH"
+# optional: VERUS_BIN, VERUS_HOME, CARGO_VERUS
+```
 
-Other Verus failures hard-fail.
+`cargo xtask verify` prefers `cargo verus verify -p <crate>` when `cargo-verus` is resolvable via `CARGO_VERUS`, `VERUS_BIN`’s directory, `VERUS_HOME`, `PATH`, or `$HOME/verus/verus-x86-linux/`.
 
-## Current proof status (`ring`, `isolation`)
+## Soft-skip vs hard-fail
 
-- Host tests: `cargo test -p ring`, `cargo test -p isolation`.
-- In-source proof intent uses `requires!` / `ensures!` stubs in each crate’s `src/verus_stub.rs` so the crates build without a Verus Cargo feature.
-- `isolation` exposes `Region` / `MemoryMap::check_access` with overlap rejection for private WAN/LAN claims.
-- Real `verus!` / `vstd` contracts and hard-fail CI on proof errors remain for Task 8 (`[package.metadata.verus] verify = true`).
+| Condition | Behavior |
+|-----------|----------|
+| `cargo-verus` / Verus missing | **soft-skip** (exit 0) + message pointing here |
+| Toolchain / edition mismatch reported by Verus | **soft-skip** (exit 0) |
+| Proof error on an annotated crate | **hard-fail** (exit ≠ 0) |
 
-## Enabling full verification
+## Annotated crates (Task 8)
 
-1. Install Verus release binaries; set `VERUS_BIN` or put `verus` on `PATH`.
-2. Replace stubs with real `verus!` / `vstd` contracts; set `verify = true` in annotated crates’ `Cargo.toml`.
-3. Re-run `cargo xtask verify` and require a hard failure on proof errors (Task 8).
+| Crate | `[package.metadata.verus] verify` | Proofs |
+|-------|-----------------------------------|--------|
+| `ring` | `true` | `ring/src/proofs.rs` — pow2 / mask lemmas (`lemma_mask_bounded`, …) |
+| `isolation` | `true` | `isolation/src/proofs.rs` — perms subset + range overlap/containment |
+
+Exec datapath keeps `verus_stub` `requires!` / `ensures!` notes so freestanding/`cargo test` builds stay free of Verus cfg. Machine-checked content is the `verus!` modules above (ghost-erased under ordinary `cargo build`).
+
+`pci-vf` / `guest-common` retain stub intent only (`verify = false`) until their exec APIs grow full `verus!` contracts.
+
+## Commands
+
+```bash
+cargo xtask verify                 # preferred gate
+cargo verus verify -p ring         # direct
+cargo verus verify -p isolation
+```

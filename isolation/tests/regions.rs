@@ -43,6 +43,45 @@ fn lan_guest_map() -> MemoryMap {
 }
 
 #[test]
+fn perms_empty_bits_and_bitor_assign() {
+    let empty = Perms::empty();
+    assert_eq!(empty.bits(), 0);
+    let mut p = Perms::READ;
+    p |= Perms::WRITE;
+    assert!(p.contains(Perms::READ | Perms::WRITE));
+    assert_eq!(p.bits(), (Perms::READ | Perms::WRITE).bits());
+}
+
+#[test]
+fn contains_range_empty_len_and_overflow() {
+    let r = Region {
+        base: 0x1000,
+        size: 0x100,
+        perms: Perms::READ,
+    };
+    assert!(r.contains_range(0x1050, 0));
+    assert!(!r.contains_range(0x2000, 0));
+    assert!(!r.contains_range(u64::MAX - 8, 64));
+
+    let bad = Region {
+        base: u64::MAX - 8,
+        size: 64,
+        perms: Perms::READ,
+    };
+    assert!(bad.end().is_none());
+    assert!(!bad.contains_range(u64::MAX - 8, 1));
+    assert!(!bad.contains_range(u64::MAX - 8, 0));
+}
+
+#[test]
+fn memory_map_regions_accessor() {
+    let mut map = MemoryMap::new();
+    map.insert(wan_private()).unwrap();
+    assert_eq!(map.regions().len(), 1);
+    assert_eq!(map.regions()[0].base, wan_private().base);
+}
+
+#[test]
 fn wan_allows_own_private_and_shared_ring() {
     let map = wan_guest_map();
     map.check_access(0x0010_0000, 64, Perms::READ | Perms::WRITE)

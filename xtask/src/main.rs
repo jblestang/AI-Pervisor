@@ -1,5 +1,6 @@
 //! Hypervisor spike developer CLI (`cargo xtask …`).
 
+mod coverage;
 mod qemu;
 
 use std::env;
@@ -34,7 +35,7 @@ enum Cmd {
     Smoke,
     /// E2E bench @ 64 B (wired in a later task).
     Bench,
-    /// Coverage gate (wired in a later task).
+    /// Line-coverage gate (≥90% on declared crates; see `coverage-allowlist.toml`).
     Coverage,
     /// Attach GDB stub (wired in a later task).
     Gdb,
@@ -112,15 +113,61 @@ fn cmd_build(root: &Path) -> ExitCode {
 
 fn resolve_verus_bin() -> Option<PathBuf> {
     if let Ok(p) = env::var("VERUS_BIN") {
-        let path = PathBuf::from(p);
-        if path.is_file() {
-            return Some(path);
+        if !p.trim().is_empty() {
+            let path = PathBuf::from(p);
+            if path.is_file() {
+                return Some(path);
+            }
+            eprintln!("VERUS_BIN set but not a file: {}", path.display());
         }
-        eprintln!("VERUS_BIN set but not a file: {}", path.display());
+    }
+    if let Ok(home) = env::var("VERUS_HOME") {
+        let home = PathBuf::from(home);
+        let candidate = home.join("verus");
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+        // Unpacked release layout: $VERUS_HOME/verus-x86-linux/verus
+        let nested = home.join("verus-x86-linux/verus");
+        if nested.is_file() {
+            return Some(nested);
+        }
     }
     if let Ok(path_var) = env::var("PATH") {
         for dir in env::split_paths(&path_var) {
             let candidate = dir.join("verus");
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    // Common local install used by spike agents.
+    let home_fallback = PathBuf::from(env::var_os("HOME").unwrap_or_default())
+        .join("verus/verus-x86-linux/verus");
+    if home_fallback.is_file() {
+        return Some(home_fallback);
+    }
+    None
+}
+
+fn resolve_cargo_verus() -> Option<PathBuf> {
+    if let Ok(p) = env::var("CARGO_VERUS") {
+        let path = PathBuf::from(p);
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+    if let Some(verus) = resolve_verus_bin() {
+        if let Some(dir) = verus.parent() {
+            let candidate = dir.join("cargo-verus");
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    if let Ok(path_var) = env::var("PATH") {
+        for dir in env::split_paths(&path_var) {
+            let candidate = dir.join("cargo-verus");
             if candidate.is_file() {
                 return Some(candidate);
             }
@@ -150,33 +197,42 @@ fn workspace_rust_channel(root: &Path) -> String {
 
 fn cmd_verify(root: &Path) -> ExitCode {
     let channel = workspace_rust_channel(root);
-    let Some(verus) = resolve_verus_bin() else {
+    let Some(cargo_verus) = resolve_cargo_verus() else {
         eprintln!(
-            "xtask verify: Verus binary not found (set VERUS_BIN or install `verus` on PATH)."
+            "xtask verify: cargo-verus not found (set CARGO_VERUS / VERUS_BIN / VERUS_HOME, \
+             or install Verus release 0.2026.10.26 on PATH)."
         );
         eprintln!(
-            "xtask verify: soft-skip — workspace pin is Rust {channel}; see docs/VERUS.md"
+            "xtask verify: soft-skip — need Verus matching Rust {channel}; see docs/VERUS.md"
         );
-        eprintln!("xtask verify: annotated crates (stubs compile without Verus): {VERIFY_CRATES:?}");
+        eprintln!("xtask verify: annotated crates: {VERIFY_CRATES:?}");
         return ExitCode::SUCCESS;
     };
 
-    println!("xtask verify: using {}", verus.display());
-    for pkg in VERIFY_CRATES {
-        let lib = root.join(pkg).join("src/lib.rs");
-        if !lib.is_file() {
-            eprintln!("xtask verify: missing {}", lib.display());
-            return ExitCode::FAILURE;
+    // Ensure the sibling `verus` binary is discoverable for cargo-verus.
+    if let Some(verus) = resolve_verus_bin() {
+        println!("xtask verify: verus {}", verus.display());
+        if let Some(dir) = verus.parent() {
+            let mut path = env::var_os("PATH").unwrap_or_default();
+            let mut paths = env::split_paths(&path).collect::<Vec<_>>();
+            paths.insert(0, dir.to_path_buf());
+            if let Ok(joined) = env::join_paths(paths) {
+                path = joined;
+                env::set_var("PATH", path);
+            }
         }
-        let output = Command::new(&verus)
-            .arg("--crate-type=lib")
-            .arg(&lib)
-            .current_dir(root)
-            .output();
-        let output = match output {
+    }
+    println!("xtask verify: using cargo-verus {}", cargo_verus.display());
+
+    for pkg in VERIFY_CRATES {
+        let mut cmd = Command::new("cargo");
+        // `cargo verus` discovers `cargo-verus` on PATH.
+        cmd.args(["verus", "verify", "-p", pkg, "--color", "never"])
+            .current_dir(root);
+        let output = match cmd.output() {
             Ok(o) => o,
             Err(e) => {
-                eprintln!("xtask verify: failed to spawn {}: {e}", verus.display());
+                eprintln!("xtask verify: failed to spawn cargo verus: {e}");
                 return ExitCode::FAILURE;
             }
         };
@@ -184,19 +240,12 @@ fn cmd_verify(root: &Path) -> ExitCode {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let combined = format!("{stdout}{stderr}");
         let toolchain_mismatch = combined.contains("required rust toolchain")
-            || combined.contains("rustup not found");
-        let stubs_only = combined.contains("verus_builtin")
-            || combined.contains("use vstd::prelude");
+            || combined.contains("rustup not found")
+            || combined.contains("feature `edition2024` is required");
         if toolchain_mismatch {
-            eprintln!("xtask verify: Verus toolchain mismatch under pin {channel}");
+            eprintln!("xtask verify: Verus/cargo toolchain mismatch under pin {channel}");
             eprint!("{combined}");
             eprintln!("xtask verify: soft-skip — see docs/VERUS.md");
-            return ExitCode::SUCCESS;
-        }
-        if stubs_only {
-            eprintln!("xtask verify: `{pkg}` still uses Verus attribute stubs (no vstd yet)");
-            eprint!("{combined}");
-            eprintln!("xtask verify: soft-skip — see docs/VERUS.md (Task 8: real proofs)");
             return ExitCode::SUCCESS;
         }
         if !output.status.success() {
@@ -204,7 +253,17 @@ fn cmd_verify(root: &Path) -> ExitCode {
             eprint!("{combined}");
             return ExitCode::FAILURE;
         }
-        print!("{combined}");
+        // Surface the verification summary lines (cached runs may only print Finished).
+        let mut saw_results = false;
+        for line in combined.lines() {
+            if line.contains("verification results") {
+                println!("{line}");
+                saw_results = true;
+            }
+        }
+        if !saw_results {
+            println!("xtask verify: {pkg}: cargo verus verify succeeded (cached or quiet)");
+        }
         println!("xtask verify: {pkg}: ok");
     }
     println!("xtask verify: ok");
@@ -420,7 +479,7 @@ fn main() -> ExitCode {
         Cmd::Verify => cmd_verify(&root),
         Cmd::Smoke => cmd_smoke(&root),
         Cmd::Bench => not_wired("bench"),
-        Cmd::Coverage => not_wired("coverage"),
+        Cmd::Coverage => coverage::cmd_coverage(&root),
         Cmd::Gdb => not_wired("gdb"),
     }
 }

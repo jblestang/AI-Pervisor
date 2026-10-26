@@ -2,10 +2,10 @@
 //! Covers TEST-UNIT-FWD / SWR-011 / SWR-014.
 
 use guest_common::{
-    forward_lan_poll, forward_wan_poll, ArenaCursor, BootInfo, GuestRole, Stats, BOOT_INFO_MAGIC,
-    BOOT_INFO_VERSION,
+    emit_smoke_ok, emit_smoke_ok_bytes, forward_lan_poll, forward_wan_poll, guest_entry_banner,
+    ArenaCursor, BootInfo, GuestRole, Stats, BOOT_INFO_MAGIC, BOOT_INFO_VERSION, SMOKE_OK,
 };
-use pci_vf::InjectNic;
+use pci_vf::{InjectNic, NicBackend, NicError};
 use ring::{FrameDesc, SpscRing};
 
 fn frame_64(marker: u8) -> [u8; 64] {
@@ -229,4 +229,151 @@ fn unused_frame_desc_type_linked() {
         len: 64,
     };
     assert_eq!(d.len, 64);
+}
+
+#[test]
+fn guest_entry_banner_and_smoke_helpers() {
+    assert_eq!(emit_smoke_ok_bytes(), SMOKE_OK);
+    let wan = BootInfo::placeholder(GuestRole::Wan);
+    assert!(guest_entry_banner(&wan));
+    let lan = BootInfo::placeholder(GuestRole::Lan);
+    assert!(guest_entry_banner(&lan));
+    // uart_port == 0 → UART helpers are no-ops (safe on host).
+    emit_smoke_ok(&wan);
+
+    let mut bad = BootInfo::placeholder(GuestRole::Wan);
+    bad.magic = 0;
+    assert!(!guest_entry_banner(&bad));
+}
+
+#[test]
+fn guest_role_from_u32_and_stats_byte_counters() {
+    assert_eq!(GuestRole::from_u32(1), Some(GuestRole::Wan));
+    assert_eq!(GuestRole::from_u32(2), Some(GuestRole::Lan));
+    assert_eq!(GuestRole::from_u32(0), None);
+
+    let stats = Stats::default();
+    assert_eq!(stats.bytes_wan_rx(), 0);
+    assert_eq!(stats.bytes_wan_tx(), 0);
+    assert_eq!(stats.bytes_lan_rx(), 0);
+    assert_eq!(stats.bytes_lan_tx(), 0);
+
+    let mut ring_w2l_mem = vec![0u8; 4096];
+    let mut ring_l2w_mem = vec![0u8; 4096];
+    let mut arena = vec![0u8; 8192];
+    let mut wan = InjectNic::with_capacity(4);
+    let mut cursor = ArenaCursor::new();
+    let mut scratch = [0u8; 2048];
+    let mut wan_to_lan = SpscRing::new_in(&mut ring_w2l_mem, 4).unwrap();
+    let mut lan_to_wan = SpscRing::new_in(&mut ring_l2w_mem, 4).unwrap();
+    let frame = frame_64(0x7E);
+    wan.inject_rx(&frame).unwrap();
+    forward_wan_poll(
+        &mut wan,
+        &mut wan_to_lan,
+        &mut lan_to_wan,
+        &mut arena,
+        &mut cursor,
+        &mut scratch,
+        &stats,
+    );
+    assert_eq!(stats.bytes_wan_rx(), 64);
+}
+
+#[test]
+fn arena_cursor_wrap_and_oversized_frame() {
+    let mut cursor = ArenaCursor::new();
+    assert!(cursor.alloc(64, 0).is_none());
+    assert!(cursor.alloc(64, 128).is_none());
+    let (o1, l1) = cursor.alloc(64, 40).unwrap();
+    assert_eq!((o1, l1), (0, 40));
+    // Remaining 24 bytes — next 40 must wrap to 0.
+    let (o2, l2) = cursor.alloc(64, 40).unwrap();
+    assert_eq!((o2, l2), (0, 40));
+}
+
+#[test]
+fn forward_handles_buffer_too_small_and_corrupt_desc() {
+    let mut ring_w2l_mem = vec![0u8; 4096];
+    let mut ring_l2w_mem = vec![0u8; 4096];
+    let mut arena = vec![0u8; 128];
+    let mut wan = InjectNic::with_capacity(4);
+    let mut lan = InjectNic::with_capacity(1);
+    let stats = Stats::new();
+    let mut cursor = ArenaCursor::new();
+    // Scratch too small for a 64 B frame → BufferTooSmall → drop.
+    let mut scratch = [0u8; 8];
+    let mut wan_to_lan = SpscRing::new_in(&mut ring_w2l_mem, 4).unwrap();
+    let mut lan_to_wan = SpscRing::new_in(&mut ring_l2w_mem, 4).unwrap();
+
+    wan.inject_rx(&frame_64(0x01)).unwrap();
+    let n = forward_wan_poll(
+        &mut wan,
+        &mut wan_to_lan,
+        &mut lan_to_wan,
+        &mut arena,
+        &mut cursor,
+        &mut scratch,
+        &stats,
+    );
+    assert_eq!(n, 0);
+    assert!(stats.ring_drop_full() >= 1);
+
+    // Corrupt descriptor past arena end → drop on LAN pop path.
+    let mut scratch2 = [0u8; 2048];
+    wan_to_lan
+        .try_push(FrameDesc {
+            offset: 10_000,
+            len: 64,
+        })
+        .unwrap();
+    let before = stats.ring_drop_full();
+    forward_lan_poll(
+        &mut lan,
+        &mut wan_to_lan,
+        &mut lan_to_wan,
+        &mut arena,
+        &mut cursor,
+        &mut scratch2,
+        &stats,
+    );
+    assert!(stats.ring_drop_full() > before);
+}
+
+#[test]
+fn lan_tx_drop_when_inject_tx_queue_full() {
+    let mut ring_w2l_mem = vec![0u8; 4096];
+    let mut ring_l2w_mem = vec![0u8; 4096];
+    let mut arena = vec![0u8; 8192];
+    let mut lan = InjectNic::with_capacity(1);
+    let stats = Stats::new();
+    let mut cursor = ArenaCursor::new();
+    let mut scratch = [0u8; 2048];
+    let mut wan_to_lan = SpscRing::new_in(&mut ring_w2l_mem, 4).unwrap();
+    let mut lan_to_wan = SpscRing::new_in(&mut ring_l2w_mem, 4).unwrap();
+
+    // Fill LAN TX queue first.
+    lan.try_send(b"busy").unwrap();
+    assert!(matches!(lan.try_send(b"x"), Err(NicError::QueueFull)));
+
+    // Place a valid frame on WAN→LAN ring; LAN pop→send must drop on QueueFull.
+    let frame = frame_64(0x55);
+    arena[..64].copy_from_slice(&frame);
+    wan_to_lan
+        .try_push(FrameDesc {
+            offset: 0,
+            len: 64,
+        })
+        .unwrap();
+    let before = stats.ring_drop_full();
+    forward_lan_poll(
+        &mut lan,
+        &mut wan_to_lan,
+        &mut lan_to_wan,
+        &mut arena,
+        &mut cursor,
+        &mut scratch,
+        &stats,
+    );
+    assert!(stats.ring_drop_full() > before);
 }

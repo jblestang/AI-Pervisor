@@ -2,7 +2,8 @@
 //! Inject is an in-process frame queue (production degraded path), not a mock of Sriov.
 
 use pci_vf::{
-    open_from_config, Backend, BackendKind, FlattenedNicConfig, InjectNic, NicBackend, NicError,
+    backend_kind_from_str, open_from_config, Backend, BackendKind, FlattenedNicConfig, InjectNic,
+    NicBackend, NicError, SriovNic,
 };
 
 #[test]
@@ -122,6 +123,7 @@ fn flattened_config_from_demo_config_fields() {
 #[test]
 fn inject_queue_full_and_empty_errors() {
     let mut nic = InjectNic::with_capacity(1);
+    assert_eq!(nic.capacity(), 1);
     nic.inject_rx(&[0u8; 16]).unwrap();
     assert!(matches!(
         nic.inject_rx(&[1u8; 16]),
@@ -135,4 +137,87 @@ fn inject_queue_full_and_empty_errors() {
     assert_eq!(nic.try_recv(&mut big).unwrap(), 16);
     assert!(matches!(nic.try_recv(&mut big), Err(NicError::QueueEmpty)));
     assert!(!nic.rx_ready());
+
+    nic.try_send(&[9u8; 4]).unwrap();
+    assert!(matches!(nic.try_send(&[8u8; 4]), Err(NicError::QueueFull)));
+}
+
+#[test]
+fn backend_enum_dispatch_inject_and_sriov_stub() {
+    let cfg = FlattenedNicConfig {
+        kind: BackendKind::Inject,
+        allow_inject_fallback: false,
+        vf_bdf: None,
+        inject_queue_capacity: 4,
+    };
+    let mut backend = open_from_config(&cfg).expect("inject");
+    assert!(!backend.rx_ready());
+    if let Backend::Inject(ref mut nic) = backend {
+        nic.inject_rx(b"abc").unwrap();
+    }
+    assert!(backend.rx_ready());
+    let mut buf = [0u8; 8];
+    assert_eq!(backend.try_recv(&mut buf).unwrap(), 3);
+    backend.try_send(b"xy").unwrap();
+
+    // Pre-MMIO Sriov stub via Backend enum (no lab VF required).
+    let mut sriov = Backend::Sriov(SriovNic::stub_pre_mmio("0000:00:00.0"));
+    assert!(!sriov.rx_ready());
+    assert!(matches!(sriov.try_recv(&mut buf), Err(NicError::QueueEmpty)));
+    assert!(matches!(sriov.try_send(b"z"), Err(NicError::IoFailure)));
+}
+
+#[test]
+fn backend_kind_from_str_parses_config_names() {
+    assert_eq!(backend_kind_from_str("sriov"), Some(BackendKind::Sriov));
+    assert_eq!(backend_kind_from_str(" Inject "), Some(BackendKind::Inject));
+    assert_eq!(backend_kind_from_str("nope"), None);
+}
+
+#[test]
+fn nic_error_display_covers_variants() {
+    let msgs = [
+        NicError::MissingBdf.to_string(),
+        NicError::DeviceMissing {
+            bdf: "0000:01:10.0".into(),
+        }
+        .to_string(),
+        NicError::BufferTooSmall.to_string(),
+        NicError::QueueFull.to_string(),
+        NicError::QueueEmpty.to_string(),
+        NicError::IoFailure.to_string(),
+    ];
+    assert!(msgs[0].contains("BDF") || msgs[0].contains("bdf") || msgs[0].contains("missing"));
+    assert!(msgs[1].contains("0000:01:10.0"));
+    assert!(msgs.iter().all(|m| !m.is_empty()));
+}
+
+#[test]
+fn sriov_open_succeeds_against_fake_sysfs_tree() {
+    let tmp = std::env::temp_dir().join(format!(
+        "hv-vf-sysfs-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let bdf = "0000:0a:00.1";
+    std::fs::create_dir_all(tmp.join(bdf)).expect("fake sysfs node");
+    // SAFETY: test-only env for probe root; cleaned up below.
+    std::env::set_var("HV_TEST_VF_SYSFS_ROOT", &tmp);
+    let cfg = FlattenedNicConfig {
+        kind: BackendKind::Sriov,
+        allow_inject_fallback: false,
+        vf_bdf: Some(bdf),
+        inject_queue_capacity: 2,
+    };
+    let backend = open_from_config(&cfg);
+    std::env::remove_var("HV_TEST_VF_SYSFS_ROOT");
+    let _ = std::fs::remove_dir_all(&tmp);
+    let mut backend = backend.expect("Sriov open via fake sysfs");
+    assert!(matches!(backend, Backend::Sriov(_)));
+    assert!(!backend.rx_ready());
+    let mut buf = [0u8; 4];
+    assert!(matches!(backend.try_recv(&mut buf), Err(NicError::QueueEmpty)));
 }

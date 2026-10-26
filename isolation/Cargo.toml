@@ -5,9 +5,11 @@ edition.workspace = true
 license.workspace = true
 description = "Memory region / permission model (Verus-annotated)"
 
-# Opt-in for cargo-verus once the workspace rustc pin matches a Verus release
-# (see docs/VERUS.md). Keep false while only attribute stubs are present.
 [package.metadata.verus]
-verify = false
+verify = true
 
 [dependencies]
+vstd = { workspace = true }
+
+[lints]
+workspace = true

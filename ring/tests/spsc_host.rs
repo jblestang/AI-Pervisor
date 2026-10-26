@@ -96,6 +96,26 @@ fn wrap_around_preserves_order() {
 }
 
 #[test]
+fn is_full_matches_capacity() {
+    let mut arena = vec![0u8; 4096];
+    let mut ring = SpscRing::new_in(&mut arena[..], 2).unwrap();
+    assert!(!ring.is_full());
+    ring.try_push(FrameDesc {
+        offset: 0,
+        len: 1,
+    })
+    .unwrap();
+    assert!(!ring.is_full());
+    ring.try_push(FrameDesc {
+        offset: 1,
+        len: 1,
+    })
+    .unwrap();
+    assert!(ring.is_full());
+    assert_eq!(ring.len(), 2);
+}
+
+#[test]
 fn fifo_order_under_partial_fill() {
     let mut arena = vec![0u8; 4096];
     let mut ring = SpscRing::new_in(&mut arena[..], 8).unwrap();
