@@ -1,26 +1,22 @@
 #![no_std]
 #![no_main]
 
-//! LAN guest entry (Task 5).
+//! LAN guest entry.
 //!
 //! Boot info GPA / UART port / ring tips come from the [`guest_common::BootInfo`]
-//! blob prepared by `hv` (placeholders until Task 6). No lab addresses are
-//! hardcoded here.
+//! blob prepared by `hv`. No lab addresses are hardcoded here.
 //!
-//! Entry ABI (spike): first argument is a pointer to [`BootInfo`] (SysV: `rdi`).
-//! When null or invalid, the guest halts.
-//!
-//! Forward datapath ([`guest_common::forward_lan_poll`]) is the same code
-//! covered by host tests with real ring + Inject; hv maps rings/NIC in Task 6
-//! before the poll loop can run against live GPAs.
+//! Entry ABI: `rdi` = `*const BootInfo`. Emits `SMOKE_OK` (`IF-SER-001`) after the
+//! LAN forward path advances TX/fwd counters (rings/NIC mapped by hv). Until L2
+//! VMLAUNCH is complete, nested smoke uses the L1 inject path in `hv`.
 
 extern crate alloc;
 
 use core::panic::PanicInfo;
 
 use guest_common::{
-    forward_lan_poll, guest_entry_banner, ArenaCursor, BootInfo, BumpAlloc, GuestRole, InjectNic,
-    SpscRing, Stats,
+    emit_smoke_ok, forward_lan_poll, guest_entry_banner, ArenaCursor, BootInfo, BumpAlloc,
+    GuestRole, InjectNic, SpscRing, Stats,
 };
 
 #[global_allocator]
@@ -34,7 +30,6 @@ fn panic(_info: &PanicInfo) -> ! {
 #[no_mangle]
 pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
     if boot_info.is_null() {
-        // hv not yet wired (Task 6) — idle.
         loop {}
     }
 
@@ -46,8 +41,8 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
 
     let _ = guest_entry_banner(boot);
 
-    // Keep the LAN forward monomorphization in the freestanding image (same
-    // function as host TEST-UNIT-FWD). Live poll waits for hv-filled GPAs.
+    // Keep LAN forward + smoke emit in the freestanding image (same symbols as
+    // host tests / L1 smoke). Live GPA poll lands with complete VMLAUNCH.
     let _fwd: fn(
         &mut InjectNic,
         &mut SpscRing<'_>,
@@ -58,6 +53,8 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
         &Stats,
     ) -> usize = forward_lan_poll;
     let _ = _fwd;
+    let _emit: fn(&BootInfo) = emit_smoke_ok;
+    let _ = _emit;
 
     loop {
         core::hint::spin_loop();

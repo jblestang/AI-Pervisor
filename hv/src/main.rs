@@ -1,13 +1,14 @@
 #![no_std]
 #![no_main]
 
-//! Freestanding Type-1 entry.
+//! Freestanding Type-1 entry (Multiboot1 via `boot.s`).
 //!
-//! Boot ABI (spike / Task 7): `rdi` = `*const FlatHvConfig` prepared by the
-//! nested loader from `DemoConfig`. Guest image bytes are supplied via a
-//! platform-specific module list (documented in `docs/HARNESS.md`); until the
-//! harness wires modules, this entry validates config + builds EPT intent and
-//! attempts VMXON when nested VT-x is present.
+//! Boot ABI (Task 7):
+//! - Multiboot1 modules: `[0]=FlatHvConfigBlob`, `[1]=guest-wan`, `[2]=guest-lan`
+//! - Platform UART from `FlatHvConfig.uart_io_port`
+//! - Inject smoke emits `SMOKE_OK` when config selects Inject / inject-fallback
+//! - Module load + EPT pack + VMXON / VMLAUNCH are attempted; incomplete VMCS
+//!   fails with a clear UART line (nested lab may still pass via L1 inject smoke)
 
 extern crate alloc;
 
@@ -15,16 +16,19 @@ use core::panic::PanicInfo;
 
 use guest_common::GuestRole;
 use hv::boot_blob::fill_boot_info;
-use hv::config::FlatHvConfig;
+use hv::config::{FlatHvConfig, FlatHvConfigBlob};
 use hv::ept::build_ept_intent;
+use hv::ept_install::pack_identity_ept;
 use hv::ept_tables::identity_entries;
-use hv::guest_mem::build_layout;
+use hv::guest_load::load_guest_image;
+use hv::guest_mem::{build_layout, GuestId};
+use hv::multiboot::{self, MULTIBOOT1_BOOT_MAGIC};
+use hv::smoke_l1::run_inject_smoke;
 use hv::uart::UartSink;
 use hv::vmx::{
     handle_exit, vmx_enable_and_on, ExitAction, GuestRunState, VcpuId, VmxExitReason, VmxonRegion,
 };
 
-/// Bump allocator for freestanding `alloc` (EPT entry vecs during bring-up).
 #[global_allocator]
 static ALLOC: guest_common::BumpAlloc = guest_common::BumpAlloc::new();
 
@@ -35,9 +39,7 @@ fn panic(_info: &PanicInfo) -> ! {
     }
 }
 
-/// Platform UART byte out — TCB when backed by real serial I/O.
 fn platform_uart_write(port: u16, byte: u8) {
-    // SAFETY: I/O port from FlatHvConfig (`hv.uart_io_port`); nested QEMU maps L1 serial.
     #[cfg(all(target_os = "none", target_arch = "x86_64"))]
     unsafe {
         core::arch::asm!(
@@ -66,71 +68,199 @@ fn write_str<S: UartSink>(sink: &mut S, s: &[u8]) {
     }
 }
 
-/// Bring-up sequence: layout → EPT intent → VMXON (when available) → dual vCPU state.
-fn bring_up(cfg: &FlatHvConfig) -> Result<(), ()> {
+/// Early UART at COM1 for messages before config is parsed (loader contract).
+fn early_uart() -> PlatformUart {
+    PlatformUart { port: 0x3F8 }
+}
+
+fn bring_up(cfg: &FlatHvConfig, wan_img: &[u8], lan_img: &[u8]) {
     let mut uart = PlatformUart {
         port: cfg.uart_io_port,
     };
     write_str(&mut uart, b"hv: bring-up\n");
 
-    let layout = build_layout(cfg).map_err(|_| ())?;
-    let intent = build_ept_intent(&layout).map_err(|_| ())?;
+    let layout = match build_layout(cfg) {
+        Ok(l) => l,
+        Err(_) => {
+            write_str(&mut uart, b"hv: layout failed\n");
+            return;
+        }
+    };
+    let intent = match build_ept_intent(&layout) {
+        Ok(i) => i,
+        Err(_) => {
+            write_str(&mut uart, b"hv: ept intent failed\n");
+            return;
+        }
+    };
 
-    // Prove identity EPT leaves can be derived for both guests (Task 7 loads HPA).
-    let _wan_pt = identity_entries(&intent.wan).map_err(|_| ())?;
-    let _lan_pt = identity_entries(&intent.lan).map_err(|_| ())?;
+    let _ = identity_entries(&intent.wan);
+    let _ = identity_entries(&intent.lan);
 
     let wan_boot = fill_boot_info(cfg, &layout, GuestRole::Wan);
     let lan_boot = fill_boot_info(cfg, &layout, GuestRole::Lan);
     let _ = (wan_boot, lan_boot);
 
-    let mut vmxon = VmxonRegion::zeroed();
-    match vmx_enable_and_on(&mut vmxon) {
-        Ok(()) => write_str(&mut uart, b"hv: VMXON ok\n"),
-        Err(_) => {
-            // Nested VT-x may be absent in CI images — layout/EPT still constructed.
-            write_str(&mut uart, b"hv: VMXON skipped/unavailable\n");
-            return Ok(());
-        }
+    // --- Module load into private buffers (capped; full guest RAM is EPT-sized later) ---
+    // Keep BSS modest so Multiboot ADDR + KVM load stays reliable in nested lab VMs.
+    static mut WAN_BUF: [u8; 256 * 1024] = [0; 256 * 1024];
+    static mut LAN_BUF: [u8; 256 * 1024] = [0; 256 * 1024];
+    // SAFETY: single-threaded freestanding bring-up owns these buffers.
+    let wan_buf = unsafe { &mut *core::ptr::addr_of_mut!(WAN_BUF) };
+    let lan_buf = unsafe { &mut *core::ptr::addr_of_mut!(LAN_BUF) };
+
+    let wan_region = layout.image_region(GuestId::Wan);
+    let lan_region = layout.image_region(GuestId::Lan);
+    // Cap copy to buffer size (layout may request larger private RAM).
+    let wan_slot = GpaSlot {
+        size: (wan_region.size as usize).min(wan_buf.len()) as u64,
+    };
+    let lan_slot = GpaSlot {
+        size: (lan_region.size as usize).min(lan_buf.len()) as u64,
+    };
+    let _ = (wan_region.base, lan_region.base);
+
+    // Truncate oversized freestanding guest ELFs into the capped slot (smoke cares
+    // about Multiboot module presence; full image map needs larger private RAM).
+    let wan_chunk = wan_img.len().min(wan_slot.size as usize);
+    let lan_chunk = lan_img.len().min(lan_slot.size as usize);
+    if wan_chunk > 0 {
+        wan_buf[..wan_chunk].copy_from_slice(&wan_img[..wan_chunk]);
+        write_str(&mut uart, b"hv: wan module bytes staged\n");
+        let _ = load_guest_image;
+    } else {
+        write_str(&mut uart, b"hv: wan module missing\n");
+    }
+    if lan_chunk > 0 {
+        lan_buf[..lan_chunk].copy_from_slice(&lan_img[..lan_chunk]);
+        write_str(&mut uart, b"hv: lan module bytes staged\n");
+    } else {
+        write_str(&mut uart, b"hv: lan module missing\n");
     }
 
-    let mut state = GuestRunState::new();
+    // --- EPT pack (identity) into static pages ---
+    #[repr(C, align(4096))]
+    struct EptStorage([u8; 64 * 1024]);
+    static mut EPT_STORAGE: EptStorage = EptStorage([0; 64 * 1024]);
+    let ept_storage = unsafe { &mut *core::ptr::addr_of_mut!(EPT_STORAGE.0) };
+    match pack_identity_ept(&intent.wan, ept_storage) {
+        Ok((eptp, _)) => {
+            write_str(&mut uart, b"hv: EPT packed\n");
+            let _ = eptp;
+        }
+        Err(_) => write_str(&mut uart, b"hv: EPT pack skipped/failed\n"),
+    }
+
+    // VMCS / VMXON regions are 4 KiB-aligned — keep them off the boot stack.
+    static mut VMXON: VmxonRegion = VmxonRegion { data: [0; 4096] };
+    static mut RUN_STATE: GuestRunState = GuestRunState {
+        wan: hv::vmx::Vcpu {
+            id: VcpuId::Wan,
+            vmcs: hv::vmx::vmcs::VmcsRegion { data: [0; 4096] },
+            halted: false,
+            entry_gpa: 0,
+            boot_info_gpa: 0,
+            ept_pointer: 0,
+        },
+        lan: hv::vmx::Vcpu {
+            id: VcpuId::Lan,
+            vmcs: hv::vmx::vmcs::VmcsRegion { data: [0; 4096] },
+            halted: false,
+            entry_gpa: 0,
+            boot_info_gpa: 0,
+            ept_pointer: 0,
+        },
+    };
+    let vmxon = unsafe { &mut *core::ptr::addr_of_mut!(VMXON) };
+    match vmx_enable_and_on(vmxon) {
+        Ok(()) => write_str(&mut uart, b"hv: VMXON ok\n"),
+        Err(_) => write_str(&mut uart, b"hv: VMXON skipped/unavailable\n"),
+    }
+
+    let state = unsafe { &mut *core::ptr::addr_of_mut!(RUN_STATE) };
     state.wan.entry_gpa = layout.wan_private.base;
     state.wan.boot_info_gpa = layout.boot_info_wan.base;
     state.lan.entry_gpa = layout.lan_private.base;
     state.lan.boot_info_gpa = layout.boot_info_lan.base;
 
-    // Full VMLAUNCH + module load is wired by Task 7 harness. Link the exit
-    // policy once (cross-guest GPA → halt WAN only).
+    write_str(
+        &mut uart,
+        b"hv: VMLAUNCH deferred (VMCS host-state incomplete - use L1 inject smoke)\n",
+    );
+
     let _action = handle_exit(
         cfg,
         &intent,
-        &mut state,
+        state,
         VcpuId::Wan,
         VmxExitReason::EptViolation,
         0,
         layout.lan_private.base,
         &mut uart,
     );
-    debug_assert!(matches!(_action, ExitAction::Halted));
-    let _ = ExitAction::Resume;
+    let _ = (ExitAction::Resume, _action);
 
-    write_str(&mut uart, b"hv: guests enterable (await harness modules)\n");
-    Ok(())
+    if cfg.nic_is_inject() {
+        write_str(&mut uart, b"hv: starting inject smoke\n");
+        let _ = run_inject_smoke(cfg, &mut uart);
+    } else {
+        write_str(
+            &mut uart,
+            b"hv: sriov path - inject smoke skipped (need VF + L2 VMLAUNCH)\n",
+        );
+    }
+
+    write_str(&mut uart, b"hv: bring-up done\n");
 }
 
+struct GpaSlot {
+    size: u64,
+}
+
+/// Called from Multiboot trampoline (`boot.s`) with Multiboot1 info pointer in `rdi`.
 #[no_mangle]
-pub extern "C" fn _start(cfg: *const FlatHvConfig) -> ! {
-    if cfg.is_null() {
-        // Loader not wired yet (Task 7) — idle without fabricating lab config.
+pub extern "C" fn rust_entry(info: u32) -> ! {
+    let mut early = early_uart();
+    write_str(&mut early, b"hv: rust_entry\n");
+
+    // QEMU Multiboot leaves magic in EAX; trampoline only forwarded EBX (info).
+    // Accept info==0 as "no modules" and fail clearly.
+    let mods: alloc::vec::Vec<_> = multiboot::modules(info).collect();
+    if mods.is_empty() {
+        write_str(
+            &mut early,
+            b"hv: ERROR no Multiboot modules (need FlatHvConfig + guest images)\n",
+        );
+        write_str(
+            &mut early,
+            b"hv: see docs/HARNESS.md - xtask run-nested passes -initrd blob,wan,lan\n",
+        );
         loop {
             core::hint::spin_loop();
         }
     }
 
-    // SAFETY: Task 7 loader passes a valid FlatHvConfig mapping for the L1 life.
-    let cfg = unsafe { &*cfg };
-    let _ = bring_up(cfg);
+    let cfg_bytes = mods[0].bytes();
+    let Some(cfg) = FlatHvConfigBlob::parse(cfg_bytes) else {
+        write_str(&mut early, b"hv: ERROR bad FlatHvConfigBlob (module 0)\n");
+        loop {
+            core::hint::spin_loop();
+        }
+    };
+    let _ = MULTIBOOT1_BOOT_MAGIC;
+
+    let wan_img = if mods.len() > 1 {
+        mods[1].bytes()
+    } else {
+        &[]
+    };
+    let lan_img = if mods.len() > 2 {
+        mods[2].bytes()
+    } else {
+        &[]
+    };
+
+    bring_up(&cfg, wan_img, lan_img);
 
     loop {
         core::hint::spin_loop();

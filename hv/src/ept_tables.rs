@@ -54,8 +54,9 @@ mod tests {
             frame_capacity: 64,
             gpa_window_base: 0x2000_0000,
             uart_io_port: 0x3F8,
+            _uart_pad: 0,
             inject_queue_capacity: 4,
-            nic_backend_inject: true,
+            nic_backend_inject: 1,
         };
         let layout = build_layout(&cfg).unwrap();
         let intent = build_ept_intent(&layout).unwrap();

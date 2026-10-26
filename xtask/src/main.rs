@@ -1,10 +1,19 @@
 //! Hypervisor spike developer CLI (`cargo xtask …`).
 
+mod qemu;
+
 use std::env;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode};
+use std::process::{Command, ExitCode, Stdio};
+use std::time::{Duration, Instant};
 
 use clap::{Parser, Subcommand};
+
+use qemu::{
+    build_qemu_command, check_kvm_nested, load_demo_config, resolve_datapath_for_launch,
+    resolve_image, write_flat_cfg_blob, NestedImages, NestedMode,
+};
 
 #[derive(Parser, Debug)]
 #[command(name = "xtask", about = "Hypervisor spike developer tasks")]
@@ -17,11 +26,11 @@ struct Cli {
 enum Cmd {
     /// Build workspace members (std libs + no_std freestanding images).
     Build,
-    /// Run nested QEMU (wired in a later task).
+    /// Run nested QEMU (argv from DemoConfig only).
     RunNested,
     /// Run Verus verification on annotated crates (`ring`, `isolation`).
     Verify,
-    /// Nested smoke test (wired in a later task).
+    /// Nested smoke: boot path, wait for serial `SMOKE_OK`.
     Smoke,
     /// E2E bench @ 64 B (wired in a later task).
     Bench,
@@ -34,8 +43,9 @@ enum Cmd {
 const FREESTANDING: &[&str] = &["hv", "guest-wan", "guest-lan"];
 const HOST_LIBS: &[&str] = &["ring", "isolation", "pci-vf", "demo-config", "guest-common"];
 const FREESTANDING_TARGET: &str = "x86_64-unknown-none";
-/// Crates with Verus-oriented contracts (expand in Task 8).
 const VERIFY_CRATES: &[&str] = &["ring", "isolation"];
+const SMOKE_TOKEN: &[u8] = b"SMOKE_OK";
+const SMOKE_TIMEOUT_SECS: u64 = 30;
 
 fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -79,16 +89,13 @@ fn cmd_build(root: &Path) -> ExitCode {
     if let Err(code) = ensure_example_config(root) {
         return code;
     }
-    // Ensure config schema crate and host-testable libs build on the host triple.
     for pkg in HOST_LIBS {
         if let Err(code) = run_cargo(&["build", "-p", pkg], root) {
             return code;
         }
     }
-    // Freestanding Type-1 / guest images.
     for pkg in FREESTANDING {
         let mut args = vec!["build", "-p", pkg, "--target", FREESTANDING_TARGET];
-        // `hv` binary is gated on feature `freestanding` so host `cargo test` stays clean.
         if *pkg == "hv" {
             args.extend_from_slice(&["--features", "freestanding"]);
         }
@@ -96,7 +103,6 @@ fn cmd_build(root: &Path) -> ExitCode {
             return code;
         }
     }
-    // xtask itself (std).
     if let Err(code) = run_cargo(&["build", "-p", "xtask"], root) {
         return code;
     }
@@ -112,7 +118,6 @@ fn resolve_verus_bin() -> Option<PathBuf> {
         }
         eprintln!("VERUS_BIN set but not a file: {}", path.display());
     }
-    // Honor PATH lookup without requiring which(1).
     if let Ok(path_var) = env::var("PATH") {
         for dir in env::split_paths(&path_var) {
             let candidate = dir.join("verus");
@@ -180,7 +185,6 @@ fn cmd_verify(root: &Path) -> ExitCode {
         let combined = format!("{stdout}{stderr}");
         let toolchain_mismatch = combined.contains("required rust toolchain")
             || combined.contains("rustup not found");
-        // Stubs compile without vstd; real verus!/vstd contracts land in Task 8.
         let stubs_only = combined.contains("verus_builtin")
             || combined.contains("use vstd::prelude");
         if toolchain_mismatch {
@@ -207,14 +211,214 @@ fn cmd_verify(root: &Path) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+fn prepare_nested(root: &Path) -> Result<(demo_config::DemoConfig, NestedImages), ExitCode> {
+    if let Err(code) = cmd_build_as_result(root) {
+        return Err(code);
+    }
+    let mut cfg = load_demo_config(root).map_err(|e| {
+        eprintln!("xtask: {e}");
+        ExitCode::FAILURE
+    })?;
+    resolve_datapath_for_launch(&mut cfg).map_err(|e| {
+        eprintln!("xtask: {e}");
+        ExitCode::FAILURE
+    })?;
+    check_kvm_nested().map_err(|e| {
+        eprintln!("xtask: {e}");
+        ExitCode::FAILURE
+    })?;
+
+    let hv = resolve_image(root, &cfg.paths.hv_image).map_err(|e| {
+        eprintln!("xtask: {e}");
+        ExitCode::FAILURE
+    })?;
+    let guest_wan = resolve_image(root, &cfg.paths.guest_wan_image).map_err(|e| {
+        eprintln!("xtask: {e}");
+        ExitCode::FAILURE
+    })?;
+    let guest_lan = resolve_image(root, &cfg.paths.guest_lan_image).map_err(|e| {
+        eprintln!("xtask: {e}");
+        ExitCode::FAILURE
+    })?;
+    let flat_cfg = write_flat_cfg_blob(root, &cfg).map_err(|e| {
+        eprintln!("xtask: {e}");
+        ExitCode::FAILURE
+    })?;
+
+    Ok((
+        cfg,
+        NestedImages {
+            hv,
+            guest_wan,
+            guest_lan,
+            flat_cfg,
+        },
+    ))
+}
+
+fn cmd_build_as_result(root: &Path) -> Result<(), ExitCode> {
+    match cmd_build(root) {
+        c if c == ExitCode::SUCCESS => Ok(()),
+        c => Err(c),
+    }
+}
+
+fn cmd_run_nested(root: &Path) -> ExitCode {
+    let (cfg, images) = match prepare_nested(root) {
+        Ok(v) => v,
+        Err(c) => return c,
+    };
+    let (qemu, args) = match build_qemu_command(root, &cfg, &images, NestedMode::Run) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("xtask run-nested: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    eprintln!("xtask run-nested: {} {}", qemu.display(), args.join(" "));
+    let status = Command::new(&qemu)
+        .args(&args)
+        .current_dir(root)
+        .status();
+    match status {
+        Ok(s) if s.success() => ExitCode::SUCCESS,
+        Ok(s) => {
+            eprintln!("xtask run-nested: qemu exited {s}");
+            ExitCode::FAILURE
+        }
+        Err(e) => {
+            eprintln!(
+                "xtask run-nested: failed to spawn {}: {e}\n  \
+                 hint: set lab.qemu_bin in config or install qemu-system-x86_64",
+                qemu.display()
+            );
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn cmd_smoke(root: &Path) -> ExitCode {
+    let (cfg, images) = match prepare_nested(root) {
+        Ok(v) => v,
+        Err(c) => return c,
+    };
+    let (qemu, args) = match build_qemu_command(root, &cfg, &images, NestedMode::Smoke) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("xtask smoke: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    eprintln!("xtask smoke: {} {}", qemu.display(), args.join(" "));
+    eprintln!(
+        "xtask smoke: waiting for serial token {:?} (timeout {}s, backend={:?})",
+        core::str::from_utf8(SMOKE_TOKEN).unwrap_or("SMOKE_OK"),
+        SMOKE_TIMEOUT_SECS,
+        cfg.datapath.backend
+    );
+
+    let mut child = match Command::new(&qemu)
+        .args(&args)
+        .current_dir(root)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!(
+                "xtask smoke: failed to spawn {}: {e}\n  \
+                 hint: install qemu-system-x86 / set lab.qemu_bin (see docs/HARNESS.md)",
+                qemu.display()
+            );
+            return ExitCode::FAILURE;
+        }
+    };
+
+    let mut stdout = child.stdout.take().expect("piped stdout");
+    // Drop stderr so a stuck QEMU cannot block us on drain; serial is on stdout.
+    drop(child.stderr.take());
+
+    let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
+    let reader = std::thread::spawn(move || {
+        let mut buf = [0u8; 4096];
+        let mut serial = Vec::new();
+        loop {
+            match stdout.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    let chunk = &buf[..n];
+                    let _ = std::io::stderr().write_all(chunk);
+                    serial.extend_from_slice(chunk);
+                    if serial.windows(SMOKE_TOKEN.len()).any(|w| w == SMOKE_TOKEN) {
+                        let _ = tx.send(serial);
+                        return true;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+        let _ = tx.send(serial);
+        false
+    });
+
+    let deadline = Instant::now() + Duration::from_secs(SMOKE_TIMEOUT_SECS);
+    let mut found = false;
+    let mut serial = Vec::new();
+    while Instant::now() < deadline {
+        match rx.recv_timeout(Duration::from_millis(200)) {
+            Ok(data) => {
+                serial = data;
+                found = serial.windows(SMOKE_TOKEN.len()).any(|w| w == SMOKE_TOKEN);
+                break;
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                if let Ok(Some(_)) = child.try_wait() {
+                    if let Ok(data) = rx.recv_timeout(Duration::from_secs(2)) {
+                        serial = data;
+                        found = serial.windows(SMOKE_TOKEN.len()).any(|w| w == SMOKE_TOKEN);
+                    }
+                    break;
+                }
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+    }
+
+    // Kill QEMU first so the stdout reader observes EOF and joins.
+    let _ = child.kill();
+    let _ = child.wait();
+    let _ = reader.join();
+
+    if found {
+        println!("xtask smoke: ok (saw SMOKE_OK)");
+        ExitCode::SUCCESS
+    } else {
+        let text = String::from_utf8_lossy(&serial);
+        eprintln!(
+            "xtask smoke: FAILED - did not observe SMOKE_OK within {SMOKE_TIMEOUT_SECS}s"
+        );
+        eprintln!("xtask smoke: serial capture ({} bytes):\n{text}", serial.len());
+        if text.is_empty() {
+            eprintln!(
+                "xtask smoke: empty serial - hv may not have Multiboot-booted.\n  \
+                 hint: Multiboot1 magic must be in first 8KiB of hv image; \
+                 /dev/kvm + nested=1; see docs/HARNESS.md"
+            );
+        }
+        ExitCode::FAILURE
+    }
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let root = workspace_root();
     match cli.cmd {
         Cmd::Build => cmd_build(&root),
-        Cmd::RunNested => not_wired("run-nested"),
+        Cmd::RunNested => cmd_run_nested(&root),
         Cmd::Verify => cmd_verify(&root),
-        Cmd::Smoke => not_wired("smoke"),
+        Cmd::Smoke => cmd_smoke(&root),
         Cmd::Bench => not_wired("bench"),
         Cmd::Coverage => not_wired("coverage"),
         Cmd::Gdb => not_wired("gdb"),

@@ -3,3 +3,10 @@ xtask = "run --package xtask --"
 
 [build]
 # Default host builds stay on the host triple; freestanding crates use --target via xtask.
+
+# Multiboot2 / module-loadable static images (hv + guests).
+[target.x86_64-unknown-none]
+rustflags = [
+    "-C", "relocation-model=static",
+    "-C", "code-model=kernel",
+]

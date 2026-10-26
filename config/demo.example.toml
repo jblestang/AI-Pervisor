@@ -32,10 +32,13 @@ target_gbps = 1.0
 
 [hv]
 # Guest GPA window start and UART I/O tip for exits (not lab RAM addresses).
-gpa_window_base = 0x100000000
+# For nested Multiboot L1, keep the window inside the trampoline identity map
+# (first 1 GiB) unless you extend boot.s page tables — e.g. 0x10000000.
+gpa_window_base = 0x10000000
 uart_io_port = 0x3F8
 
 [paths]
-hv_image = "target/x86_64-unknown-none/release/hv"
-guest_wan_image = "target/x86_64-unknown-none/release/guest-wan"
-guest_lan_image = "target/x86_64-unknown-none/release/guest-lan"
+# xtask resolves release↔debug if the configured path is missing after `cargo xtask build`.
+hv_image = "target/x86_64-unknown-none/debug/hv"
+guest_wan_image = "target/x86_64-unknown-none/debug/guest-wan"
+guest_lan_image = "target/x86_64-unknown-none/debug/guest-lan"

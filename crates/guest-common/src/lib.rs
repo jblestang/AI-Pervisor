@@ -25,6 +25,21 @@ pub use uart::{uart_write, uart_write_byte};
 
 use boot_info::GuestRole as Role;
 
+/// Serial magic token for `cargo xtask smoke` (`IF-SER-001`).
+pub const SMOKE_OK: &[u8] = b"SMOKE_OK";
+
+/// Bytes of [`SMOKE_OK`] (helper for hv / guests without embedding a lab string twice).
+#[inline]
+pub fn emit_smoke_ok_bytes() -> &'static [u8] {
+    SMOKE_OK
+}
+
+/// Write [`SMOKE_OK`] via the UART tip in `boot` (LAN path after successful forward).
+pub fn emit_smoke_ok(boot: &BootInfo) {
+    uart_write(boot, SMOKE_OK);
+    uart_write(boot, b"\n");
+}
+
 /// Guest entry helper: validate boot blob and emit a short UART banner.
 ///
 /// Returns `false` if the blob is missing/invalid (caller should halt).

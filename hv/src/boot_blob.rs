@@ -23,7 +23,7 @@ pub fn fill_boot_info(cfg: &FlatHvConfig, layout: &GuestLayout, role: GuestRole)
         arena_len: layout.arena.size,
         stats_gpa: layout.stats.base,
         boot_info_gpa,
-        nic_backend: if cfg.nic_backend_inject {
+        nic_backend: if cfg.nic_is_inject() {
             NicBackendKind::Inject
         } else {
             NicBackendKind::Sriov

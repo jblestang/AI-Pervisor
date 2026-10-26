@@ -39,6 +39,7 @@ freestanding = []
 isolation = { path = "../isolation" }
 guest-common = { path = "../crates/guest-common", default-features = false }
 ring = { path = "../ring" }
+pci-vf = { path = "../pci-vf", default-features = false }
 demo-config = { path = "../crates/demo-config", optional = true }
 
 [dev-dependencies]

@@ -10,9 +10,12 @@ extern crate alloc;
 pub mod boot_blob;
 pub mod config;
 pub mod ept;
+pub mod ept_install;
 pub mod ept_tables;
 pub mod guest_load;
 pub mod guest_mem;
+pub mod multiboot;
+pub mod smoke_l1;
 pub mod uart;
 pub mod vmx;
 

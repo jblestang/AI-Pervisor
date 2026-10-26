@@ -1,58 +1,137 @@
 # Lab harness notes
 
-Issue: 0.1 — seeded by Task 6; **Task 7** owns `run-nested` / `smoke` wiring.
+Issue: 0.1 — Task 6 seeded bring-up; **Task 7** wires `run-nested` / `smoke` and the VFIO checklist below.
 
-## What Task 6 delivered (host-testable)
+## Commands
+
+| Command | Behaviour |
+|---------|-----------|
+| `cargo xtask build` | Host libs + freestanding `hv` / `guest-wan` / `guest-lan` |
+| `cargo xtask run-nested` | QEMU argv **only** from `DemoConfig`; Multiboot2 `-kernel` + `-initrd` modules |
+| `cargo xtask smoke` | Same boot path; wait for serial ASCII token `SMOKE_OK` (`IF-SER-001`) |
+
+Config resolution: `HV_DEMO_CONFIG` → `config/demo.toml` → `config/demo.example.toml`.
+
+Env overrides: `HV_VF_BACKEND`, `HV_WAN_VF_BDF`, `HV_LAN_VF_BDF`.
+
+## What Task 6/7 delivered
 
 | Piece | Command / artefact |
 |-------|-------------------|
 | EPT intent + layout from config | `cargo test -p hv --features std` |
-| Freestanding `hv` image | `cargo xtask build` → `target/x86_64-unknown-none/debug/hv` |
-| Flat config lift | `FlatHvConfig::from_demo(&DemoConfig)` (`hv` feature `std`) |
-| Boot blob | `fill_boot_info` → `guest_common::BootInfo` GPAs from layout |
+| Freestanding Multiboot1 `hv` | `cargo xtask build` → ELF + xtask `objcopy` → `hv.bin` (QEMU rejects ELF64 Multiboot) |
+| Flat config blob | Multiboot module 0 = `FlatHvConfigBlob` (`FLAT` magic) |
+| Guest images | Multiboot modules 1/2 = `guest-wan` / `guest-lan` |
+| L1 inject smoke | When config selects Inject (or inject-fallback), `hv` runs the real `guest_common` WAN→LAN forward and prints `SMOKE_OK` |
+| L2 VMLAUNCH | Scaffolded (module load + EPT pack + VMXON); full VMCS host-state / VMLAUNCH still incomplete — UART says so |
 
-## Nested QEMU requirements (Task 7 must wire)
+## Nested QEMU requirements
 
 1. **Host CPU / KVM**
    - Intel VT‑x with **nested** virtualization (`kvm_intel nested=1`).
-   - Confirm: `/sys/module/kvm_intel/parameters/nested` == `1`.
+   - Confirm: `/sys/module/kvm_intel/parameters/nested` ∈ `{Y,1}`.
+   - Confirm: `/dev/kvm` readable/writable by the operator.
    - Cloud VMs without KVM or nested VMX **cannot** smoke Type‑1 `hv` — use host unit tests only.
 
-2. **QEMU argv (from `DemoConfig` only)**
-   - `-enable-kvm`, CPU with `+vmx` (e.g. `-cpu host,+vmx`).
-   - `-m` / `-smp` from `[lab]`.
-   - `-device intel-iommu` when `lab.enable_iommu`.
-   - Serial: `-serial stdio` (or multiplex) so UART exits are observable.
-   - **Do not** hardcode BDFs / memory in `xtask`; read `config/demo.toml`.
+2. **QEMU argv (from `DemoConfig` only — `xtask/src/qemu.rs`)**
+   - Accel: default **TCG** Multiboot boot (`HV_QEMU_ACCEL=tcg`); set `HV_QEMU_ACCEL=kvm` for `-accel kvm -cpu host,+vmx` (Multiboot+KVM entry is flaky on some hosts — see below)
+   - `-m` / `-smp` from `[lab]`
+   - `-device intel-iommu,…` when `lab.enable_iommu`
+   - `-device vfio-pci,host=<BDF>` for each of `datapath.wan_vf_bdf` / `lan_vf_bdf` when `backend=sriov`
+   - `-serial stdio` + `-display none` (not `-nographic`, which double-binds stdio)
+   - `-kernel` = `paths.hv_image`, `-initrd` = `flat.bin,guest-wan,guest-lan`
 
 3. **Loader ABI for `hv`**
-   - Pass `*const FlatHvConfig` in `rdi` at `_start` (SysV).
-   - Build `FlatHvConfig` via `FlatHvConfig::from_demo`.
-   - Load `paths.guest_wan_image` / `paths.guest_lan_image` into buffers mapped at `GuestLayout` private GPAs (EPT identity or explicit HPA).
-   - Write `BootInfo` pages at `boot_info_{wan,lan}` before `VMLAUNCH`.
-   - Install EPT tables from `identity_entries` / map entries; `vmwrite` EPTP (TCB-EPT-001).
+   - Multiboot1 + `HAS_ADDR` trampoline (`hv/src/boot.s`) → raw `hv.bin` → `rust_entry(info)`
+   - Module 0: `FlatHvConfigBlob` written by xtask from `DemoConfig` (no lab literals in `hv`)
+   - Modules 1/2: guest ELF/raw images; `load_guest_image` copies into private buffers
+   - BootInfo fill + EPT intent/pack; VMXON when nested VT‑x works
+   - **Smoke token:** L1 inject path emits `SMOKE_OK` when `nic_backend_inject`; LAN guest also links `emit_smoke_ok` for future L2
 
-4. **Smoke token**
-   - Guests emit UART logs; LAN path eventually prints `SMOKE_OK` (ICD `IF-SER-*`) once datapath is live — Task 7 `smoke` waits for that string.
+4. **Inject vs Sriov policy (smoke / run-nested)**
+   - `backend=inject` → Inject (no VF required)
+   - `backend=sriov` + both BDFs present in `/sys/bus/pci/devices/<bdf>` → pass `vfio-pci`
+   - `backend=sriov` + VF missing + `allow_inject_fallback=true` → Inject with a stderr note
+   - `backend=sriov` + VF missing + `allow_inject_fallback=false` → **fail fast** with an actionable error (no silent mock)
 
-5. **SR‑IOV / VFIO** (optional until Task 10)
-   - Bind `datapath.wan_vf_bdf` / `lan_vf_bdf` to `vfio-pci` when `backend=sriov`.
-   - Pass devices into QEMU; fail fast if missing and `allow_inject_fallback=false`.
+## VFIO / SR‑IOV bind checklist
 
-## Cloud agent limitation
+Use this before `backend=sriov` smoke/bench (Task 10 hardens further).
 
-This environment typically **lacks** nested KVM. Task 6 verification is therefore:
+### A. Platform
+
+- [ ] Intel IOMMU enabled in firmware; kernel `intel_iommu=on` (verify `dmesg | grep -i iommu`)
+- [ ] `kvm_intel nested=1` loaded
+- [ ] Operator can open `/dev/kvm`
+- [ ] QEMU binary matches `lab.qemu_bin` (default `qemu-system-x86_64`)
+
+### B. Create / locate VFs
+
+- [ ] Identify PF: `lspci -nn | grep -i ether` (record PF BDF)
+- [ ] Enable VFs: `echo N | sudo tee /sys/bus/pci/devices/<PF>/sriov_numvfs`
+- [ ] Note VF BDFs: `lspci -d ::0200` / `ls /sys/bus/pci/devices/<PF>/virtfn*`
+- [ ] Put exact VF BDFs into `config/demo.toml` as `datapath.wan_vf_bdf` / `lan_vf_bdf` (or `HV_WAN_VF_BDF` / `HV_LAN_VF_BDF`)
+
+### C. Bind VFs to `vfio-pci`
 
 ```bash
-cargo test -p hv --features std
-cargo xtask build
+# Example — replace BDFs with values from your demo.toml (no hardcoding in repo tools).
+VF=0000:01:10.0
+echo vfio-pci | sudo tee /sys/bus/pci/devices/$VF/driver_override
+sudo bash -c "echo $VF > /sys/bus/pci/drivers/vfio-pci/bind" || \
+  sudo bash -c "echo $(cat /sys/bus/pci/devices/$VF/vendor) $(cat /sys/bus/pci/devices/$VF/device) > /sys/bus/pci/drivers/vfio-pci/new_id"
+ls -l /dev/vfio/
 ```
 
-Full `run-nested` / `smoke` is **deferred to Task 7** on a lab machine with nested VT‑x.
+- [ ] Repeat for the LAN VF BDF
+- [ ] Confirm `driver` symlink under each VF sysfs dir is `vfio-pci`
+- [ ] `lab.enable_iommu = true` in config so xtask passes `-device intel-iommu`
+
+### D. Launch
+
+```bash
+export HV_DEMO_CONFIG=config/demo.toml   # backend=sriov, BDFs set, allow_inject_fallback=false for official runs
+cargo xtask smoke
+```
+
+- [ ] Serial contains `SMOKE_OK`
+- [ ] If bind/IOMMU wrong: QEMU fails at `vfio-pci` open — fix bind, do not flip to Inject for official STR figures
+
+### E. Degraded lab (no VF)
+
+```bash
+# Either edit demo.toml:
+#   backend = "inject"
+#   allow_inject_fallback = true
+# Or:
+HV_VF_BACKEND=inject cargo xtask smoke
+```
+
+Mark STR/evidence as **Inject / degraded**, never as Sriov.
+
+## Smoke serial protocol (`IF-SER-001`)
+
+- Token: ASCII `SMOKE_OK` (optional trailing newline)
+- Emitted by L1 inject smoke in `hv` after a real `forward_wan_poll` + `forward_lan_poll` round using `InjectNic` + `SpscRing` (same code guests link)
+- LAN guest exports `guest_common::emit_smoke_ok` for the L2 path once VMLAUNCH completes
+- `cargo xtask smoke` fails with serial dump + hints on timeout (default 45s)
 
 ## Config tips (`[hv]` section)
 
 | Key | Role |
 |-----|------|
-| `gpa_window_base` | Start of packed guest GPA layout |
-| `uart_io_port` | I/O tip for UART exits / boot info |
+| `gpa_window_base` | Start of packed guest GPA layout (keep inside L1 identity map for nested Multiboot trampoline — see example / local `demo.toml`) |
+| `uart_io_port` | I/O tip for UART exits / boot info / platform serial |
+
+## Multiboot + KVM note
+
+QEMU's Multiboot1 **ADDR** loader + ELF64 is rejected; xtask therefore `objcopy`s `hv` to `hv.bin`. On this spike's lab images, **`-accel kvm` often never reaches `_start`** (empty serial / no `0xE9` debugcon), while **TCG Multiboot enters reliably**. `cargo xtask smoke` defaults to TCG so the L1 inject datapath can emit `SMOKE_OK`. `/dev/kvm` and `nested=1` are still checked as lab capability signals; force KVM with `HV_QEMU_ACCEL=kvm` when debugging nested VT‑x.
+
+## Cloud / agent limitation
+
+Environments without VF hardware should use Inject (config-gated). Host tests remain:
+
+```bash
+cargo test -p hv --features std
+cargo xtask build
+```
