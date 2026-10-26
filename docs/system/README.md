@@ -4,7 +4,7 @@
 |-------|-------|
 | **Suite ID** | HV-EDGE-DOC-SUITE |
 | **Programme** | AI-Pervisor / Hyperviseur edge gateway technology demonstrator |
-| **Issue** | 0.3 |
+| **Issue** | 0.4 |
 | **Date** | 2026-10-26 |
 | **Language** | English |
 | **Classification** | UNCLASSIFIED — Technology Demonstrator |
@@ -48,7 +48,7 @@ It is intended for review by programme, systems, software, hardware, and indepen
 | HV-EDGE-SRS-001 | SRS | [SRS.md](./SRS.md) | Software eng., V&V | Software requirements — shall statements, attributes, V&V method |
 | HV-EDGE-ICD-001 | ICD | [ICD.md](./ICD.md) | SW/HW interface owners | Interface control — ring, NIC, boot blob, UART, stats, config |
 | HV-EDGE-STD-001 | STD | [STD.md](./STD.md) | Test eng., V&V | Software test description — procedures, environments, evidence |
-| HV-EDGE-STR-001 | STR | [STR.md](./STR.md) | Test eng., authority | Software test report — campaign results and sign-off (filled post-campaign) |
+| HV-EDGE-STR-001 | STR | [STR.md](./STR.md) | Test eng., authority | Software test report — campaign results (Issue 0.4 filled; Pass 11 / Blocked 2) |
 
 **Companion artefacts** (repository, outside this folder):
 
@@ -110,6 +110,7 @@ It is intended for review by programme, systems, software, hardware, and indepen
 | 0.1 | 2026-10-26 | Initial documentary skeletons (Task 0) | Engineering |
 | 0.2 | 2026-10-26 | Government-review quality upgrade: document control, CONOPS, shall language, HW/SW allocation, normative ICD, V&V campaign structure | Systems / SW / HW / Test eng. |
 | 0.3 | 2026-10-26 | Safety-related & airborne transfer framing: safety goals/hazards, partitioning/FMEA-lite, rate evidence, non-certification boundary | Systems / safety / test eng. |
+| 0.4 | 2026-10-26 | Task 11 close: SSDD as-built sync; STR campaign filled (smoke/bench/coverage/Verus); SRS→crate→STD→STR matrix; SSS/SRS unchanged (no scope drift) | Systems / test eng. |
 
 ## 7. Review and approval (template)
 
