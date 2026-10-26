@@ -1,116 +1,326 @@
-# SSS — System/Subsystem Specification
+# System / Subsystem Specification (SSS)
 
-**Product:** Hyperviseur edge gateway (spike)  
-**Version:** 0.1 (Task 0 skeleton)  
-**Language:** English
+| Field | Value |
+|-------|-------|
+| **Document ID** | HV-EDGE-SSS-001 |
+| **Title** | Hypervisor Edge Gateway — System / Subsystem Specification |
+| **Issue** | 0.2 |
+| **Date** | 2026-10-26 |
+| **Classification** | UNCLASSIFIED — Technology Demonstrator |
+| **Parent suite** | HV-EDGE-DOC-SUITE |
+| **Supersedes** | Issue 0.1 skeletons |
+
+---
 
 ## Table of contents
 
-1. [Purpose](#1-purpose)
-2. [Scope](#2-scope)
-3. [References](#3-references)
-4. [System context](#4-system-context)
-5. [System needs (`SYS-*`)](#5-system-needs-sys-)
-6. [Constraints](#6-constraints)
-7. [Non-goals](#7-non-goals)
-8. [Success criteria](#8-success-criteria)
-9. [Assumptions and dependencies](#9-assumptions-and-dependencies)
+1. [Document control](#1-document-control)  
+2. [Purpose and applicability](#2-purpose-and-applicability)  
+3. [Referenced documents](#3-referenced-documents)  
+4. [Definitions and acronyms](#4-definitions-and-acronyms)  
+5. [System overview and operational concept](#5-system-overview-and-operational-concept)  
+6. [Stakeholders and external interfaces](#6-stakeholders-and-external-interfaces)  
+7. [System requirements (`SYS-*`)](#7-system-requirements-sys-)  
+8. [Constraints, assumptions, and dependencies](#8-constraints-assumptions-and-dependencies)  
+9. [Non-goals and exclusions](#9-non-goals-and-exclusions)  
+10. [System success criteria (gates)](#10-system-success-criteria-gates)  
+11. [Risks](#11-risks)  
+12. [Requirements allocation summary](#12-requirements-allocation-summary)  
+13. [Change record](#13-change-record)
 
-## 1. Purpose
+---
 
-Specify the system-level needs for a **Type‑1 nested hypervisor** spike that isolates WAN and LAN edge guests, moves packets through a shared guest↔guest ring, and measures bidirectional throughput at 64‑byte frames under a Cargo + `xtask` harness.
+## 1. Document control
 
-## 2. Scope
+### 1.1 Authority and status
 
-**In scope for the spike**
+This SSS defines **system-level needs and constraints** for the technology demonstrator. Software detail is deferred to HV-EDGE-SRS-001. Interface bit/byte contracts are deferred to HV-EDGE-ICD-001. Design realisation is described in HV-EDGE-SSDD-001.
 
-- L1 hypervisor (`hv`) owning VT‑x / EPT under QEMU nested (`+vmx`)
-- Two Rust `no_std` (+ `alloc`) guests: WAN and LAN
-- Shared memory ring for guest↔guest datapath
-- Host↔guest I/O via SR‑IOV VF when available, or config-gated `Inject` backend
-- Verus proofs on all provable safe Rust; coverage ≥ 90% on declared crates
-- Documentary suite (this package)
-- Config-driven demonstrator (`config/demo.toml` + env); no lab hardcoding
+### 1.2 Requirement language
 
-**Out of scope**
+| Verb | Meaning |
+|------|---------|
+| **shall** | Mandatory requirement for the demonstrator within stated scope |
+| **should** | Programme objective; reported even if unmet |
+| **may** | Permitted option |
+| **will** | Statement of fact / external actor behaviour (not a design requirement) |
 
-See [§7 Non-goals](#7-non-goals).
+Verification methods used in this SSS: **T** Test, **D** Demonstration, **A** Analysis, **I** Inspection.
 
-## 3. References
+---
 
-| Ref | Document |
-|-----|----------|
-| R1 | Design: Hyperviseur edge gateway Rust — spike (2026-10-26) |
-| R2 | Implementation plan: Hyperviseur edge spike (2026-10-26) |
-| R3 | [SSDD.md](./SSDD.md), [SRS.md](./SRS.md), [ICD.md](./ICD.md), [STD.md](./STD.md), [STR.md](./STR.md) |
-| R4 | `docs/TCB.md`, `docs/HARNESS.md` (later tasks) |
+## 2. Purpose and applicability
 
-## 4. System context
+### 2.1 Purpose
+
+Specify the system needs for a **Type‑1 hypervisor–based edge gateway demonstrator** that:
+
+- isolates WAN-facing and LAN-facing processing domains in hardware-assisted virtual machines;  
+- forwards traffic host → WAN guest → shared ring → LAN guest → host (and reverse);  
+- measures bidirectional throughput at **64-byte** frames with a published report;  
+- subjects provable software to **machine-checked specifications** (Verus) and enforces **≥ 90%** structural coverage on the declared software perimeter.
+
+### 2.2 Applicability
+
+| Applies to | Does not apply to |
+|------------|-------------------|
+| Nested execution under QEMU/KVM with Intel VT‑x (`+vmx`) | Production bare-metal certification |
+| Software artefacts in repository `jblestang/AI-Pervisor` on the spike baseline | Third-party OS guests (Linux, etc.) |
+| Laboratory configurations described by `config/demo.toml` + ICD | Sites without nested virtualisation capability (blocked, not waived by mock) |
+
+### 2.3 System of interest boundary
+
+**Inside:** L1 hypervisor (`hv`), WAN guest, LAN guest, shared ring and isolation model, `pci-vf` backends, operator harness (`xtask`), configuration schema, documentary suite.
+
+**Outside:** L0 host OS/KVM, physical NIC silicon beyond VF assignment, enterprise orchestration, cryptographic key management, network policy beyond frame forward/measure.
+
+---
+
+## 3. Referenced documents
+
+| Ref | Document | Use |
+|-----|----------|-----|
+| R1 | Design: Hyperviseur edge gateway Rust — spike (2026-10-26) | Source of programme decisions |
+| R2 | Implementation plan: Hyperviseur edge spike (2026-10-26) | Work breakdown |
+| R3 | HV-EDGE-SSDD-001 | Design description |
+| R4 | HV-EDGE-SRS-001 | Software requirements |
+| R5 | HV-EDGE-ICD-001 | Interfaces |
+| R6 | HV-EDGE-STD-001 / HV-EDGE-STR-001 | V&V description / report |
+| R7 | Intel® 64 and IA-32 Architectures SDM (VT‑x / EPT) | Hardware behaviour reference |
+| R8 | `docs/VERUS.md`, `docs/TCB.md`, `docs/HARNESS.md` | Toolchain, TCB, lab procedures |
+
+---
+
+## 4. Definitions and acronyms
+
+| Term | Definition |
+|------|------------|
+| **Type‑1 hypervisor** | Hypervisor that owns CPU virtualisation extensions and memory virtualisation (EPT) in its own code path, without a general-purpose host OS inside the TCB of the guests |
+| **WAN / LAN guest** | Isolated `no_std` Rust binaries representing edge network domains |
+| **Inject backend** | Production-degraded host↔guest I/O path using an in-process frame queue when SR‑IOV VF is unavailable **and** configuration permits |
+| **Mock** | Test double that substitutes for a component under test — **forbidden** for ring, isolation model, and Inject/Sriov behavioural substitutes used to “green” tests |
+| **TCB** | Trusted Computing Base — residual `unsafe` / unproved hardware-facing code listed in `docs/TCB.md` |
+| **EPT** | Extended Page Tables (Intel) |
+| **SR‑IOV / VF** | Single Root I/O Virtualisation / Virtual Function |
+| **SPSC** | Single-producer / single-consumer |
+| **V&V** | Verification and Validation |
+
+| Acronym | Expansion |
+|---------|-----------|
+| BDF | Bus:Device.Function (PCI) |
+| CONOPS | Concept of Operations |
+| GPA | Guest Physical Address |
+| IOMMU | Input–Output Memory Management Unit |
+| VFIO | Virtual Function I/O |
+| TRL | Technology Readiness Level |
+
+---
+
+## 5. System overview and operational concept
+
+### 5.1 Mission context
+
+Edge gateways must separate untrusted or differently classified network domains while sustaining high packet rates. This demonstrator explores a **minimal Type‑1** approach in Rust with:
+
+- hardware-assisted isolation (VT‑x / EPT);  
+- a zero-copy shared-memory datapath between domains;  
+- measurable performance under worst-case small frames;  
+- formal specification of safe software and an explicit TCB.
+
+### 5.2 Concept of operations (CONOPS)
+
+**Actors**
+
+| Actor | Role |
+|-------|------|
+| Laboratory operator | Configures `demo.toml`, binds VFs if available, runs `cargo xtask` commands |
+| L0 host (QEMU/KVM) | Provides nested VT‑x, optional IOMMU/VFIO passthrough |
+| L1 `hv` | Creates two guests, builds EPT maps, emulates UART, loads boot info |
+| WAN guest | Host-facing NIC + forward to LAN via ring |
+| LAN guest | Host-facing NIC + forward to WAN via ring |
+| Independent V&V | Executes STD procedures, archives evidence, completes STR |
+
+**Nominal operational thread (smoke)**
+
+1. Operator supplies complete configuration (or system refuses to start).  
+2. Harness builds images and launches nested QEMU per config.  
+3. `hv` enters VMX, maps private and shared regions, starts both guests.  
+4. Frames traverse NIC → WAN → ring → LAN → NIC (and reverse as configured).  
+5. Counters update; serial emits `SMOKE_OK` on success.  
+6. Operator or automation archives logs as STD evidence.
+
+**Measurement thread (bench)**
+
+As smoke, then generate 64-byte bidirectional load for configured duration; publish JSON report with Gbps, pps, loss, and `target_met` against configured `target_gbps` (objective: 1.0 Gbps).
+
+### 5.3 Context diagram
 
 ```text
-                  ┌─────────────────────────────────────┐
-  Host / lab      │  QEMU nested (+vmx, IOMMU, VFIO)     │
-  traffic         │                                     │
-       │          │   ┌────────── L1 hv (VT-x/EPT) ──┐  │
-       │          │   │  WAN guest │ ring │ LAN guest │  │
-       └──────────┼──►│  (VF/Inj)  │◄───►│ (VF/Inj)  │  │
-                  │   └────────────┴──────┴───────────┘  │
-                  └─────────────────────────────────────┘
+                 ┌──────────────────────────────────────────────────┐
+   Physical or   │              Laboratory host (L0)                │
+   synthetic     │   QEMU nested (+vmx) · IOMMU · VFIO (optional)   │
+   traffic       │                                                  │
+        │        │    ┌─────────────── System of interest ────────┐ │
+        │        │    │  hv (L1)  ·  EPT  ·  UART emu  ·  boot    │ │
+        └────────┼───►│     ┌─────────┐  ring   ┌─────────┐       │ │
+                 │    │     │ WAN VM  │◄───────►│ LAN VM  │       │ │
+                 │    │     │ NicB/E  │ shared  │ NicB/E  │       │ │
+                 │    │     └─────────┘  mem    └─────────┘       │ │
+                 │    └───────────────────────────────────────────┘ │
+                 │              ▲  xtask / serial / reports         │
+                 │              │                                   │
+                 │         Operator / V&V                           │
+                 └──────────────────────────────────────────────────┘
 ```
 
-Operators drive build/run/verify/smoke/bench/coverage exclusively through `cargo xtask` (no just/make).
+---
 
-## 5. System needs (`SYS-*`)
+## 6. Stakeholders and external interfaces
 
-| ID | Need | Notes |
-|----|------|-------|
-| SYS-001 | Isolate WAN and LAN private memory via EPT; shared ring pages mapped RW to both guests | Faulting access → clean exit, no silent corruption |
-| SYS-002 | Provide bidirectional host↔WAN↔ring↔LAN↔host datapath | Smoke and bench exercise real nested path |
-| SYS-003 | Prefer SR‑IOV VF for host↔guest; allow `Inject` only when config permits and VF absent | `Inject` is degraded production backend, not a test mock |
-| SYS-004 | Measure E2E Gbps / pps / loss @ 64 B bidirectional | Target 1 Gbps is an objective; report always published |
-| SYS-005 | Prove safe datapath / ring / isolation logic with Verus | TCB `unsafe` listed in `docs/TCB.md` |
-| SYS-006 | Enforce ≥ 90% line coverage on declared crates | `cargo xtask coverage` fails under threshold |
-| SYS-007 | Drive all demonstrator parameters from config + env | Incomplete config → refuse boot |
-| SYS-008 | Provide operator harness: build, run-nested, verify, smoke, bench, coverage, gdb | Cargo workspace + `xtask` only |
+| Stakeholder | Interest |
+|-------------|----------|
+| Programme owner | Demonstrator gates, TRL evidence, schedule |
+| Systems engineering | Completeness of needs, allocation, risks |
+| Software engineering | Implementable shalls, ICD stability |
+| Hardware / platform engineering | Nested VT‑x, IOMMU, VF availability |
+| Independent test | Repeatable procedures, objective pass/fail |
+| Governmental / institutional reviewer | Traceability, honesty of scope, evidence quality |
 
-## 6. Constraints
+**External interfaces (system level)**
 
-| Topic | Constraint |
-|-------|------------|
-| Hypervisor type | Type‑1 (VT‑x / EPT in project code) |
-| Initial lab | Nested QEMU/KVM; Intel x86_64 first |
-| Guests | Rust `no_std` + `alloc`; no Linux guest in spike |
-| Harness | Cargo only + `cargo xtask` |
-| Quality | No mocks/stubs for speed; no demo hardcoding |
-| Docs | English; home-grown suite under `docs/system/` |
+| Interface | Counterpart | Control doc |
+|-----------|-------------|-------------|
+| Nested virtualisation / QEMU CLI | L0 lab | ICD `IF-CFG-LAB`, HARNESS |
+| PCI VF (SR‑IOV) | NIC / VFIO | ICD `IF-NIC-*`, HARNESS |
+| Operator configuration | File + environment | ICD `IF-CFG-*` |
+| Serial / UART observation | Operator / smoke tool | ICD `IF-UART-*`, `IF-SER-*` |
+| Bench report file | V&V archive | STD / STR |
 
-## 7. Non-goals
+---
 
-| Item | Status |
-|------|--------|
-| Bare-metal Intel boot | N/A for spike (after spike) |
-| Linux guests | N/A for spike |
-| Hardware EPT walk proofs beyond Rust isolation model | N/A for spike |
-| RISC‑V / ARM | N/A for spike |
+## 7. System requirements (`SYS-*`)
 
-## 8. Success criteria
+### 7.1 Isolation and safety of domains
 
-1. `cargo xtask smoke` green (two guests, ring echo, counters) — nested, config-driven  
-2. `cargo xtask verify` green on all annotated crates  
-3. EPT out-of-region access → proper exit (no silent corruption)  
-4. `cargo xtask bench` publishes E2E @ 64 B report (`target_met` may be false)  
-5. `cargo xtask coverage` ≥ 90% on declared perimeter  
-6. No demo hardcoding; example config checked in  
-7. VF howto documented so guests stay unchanged when switching backend  
-8. Documentary suite complete; STR filled after campaign (Task 11)
+| ID | Requirement | Priority | V&V |
+|----|-------------|----------|-----|
+| SYS-ISO-001 | The system **shall** isolate WAN guest private memory from LAN guest private memory using EPT such that a guest cannot read or write the other guest’s private region. | Must | T/D |
+| SYS-ISO-002 | The system **shall** map shared ring (and other explicitly designated shared pages) read-write to both guests according to the ICD memory map. | Must | T/I |
+| SYS-ISO-003 | On EPT violation for an unauthorised access, the system **shall** handle the exit without silent corruption of the peer guest’s memory, emitting a diagnostic on the UART path and halting the faulting guest. | Must | T/D |
+| SYS-ISO-004 | The system **shall** maintain a software region/permission model used to construct EPT intent; conflicting private WAN/LAN claims **shall** be rejected by that model. | Must | T/A |
 
-## 9. Assumptions and dependencies
+### 7.2 Datapath and performance
 
-| Item | Assumption |
-|------|------------|
-| Lab CPU | Nested VT‑x available (`+vmx`) |
-| Optional VF | IOMMU + VFIO binding when `backend=sriov` |
-| Toolchain | Rust nightly as required by Verus / `no_std` targets |
-| Verus | Available to `cargo xtask verify` |
+| ID | Requirement | Priority | V&V |
+|----|-------------|----------|-----|
+| SYS-DP-001 | The system **shall** provide bidirectional frame forwarding host↔WAN↔shared-ring↔LAN↔host under nested execution. | Must | T/D |
+| SYS-DP-002 | Host↔guest I/O **shall** use SR‑IOV Virtual Functions when configuration selects `sriov` and devices are present. | Must | D |
+| SYS-DP-003 | The system **may** use the Inject backend only when configuration selects `inject`, or when `allow_inject_fallback` is true and no VF is available; Inject **shall not** be used as an undeclared test mock. | Must | T/I |
+| SYS-DP-004 | When configuration requires `sriov` and the VF is absent, the system **shall** fail fast (refuse silent substitution). | Must | T |
+| SYS-DP-005 | The system **shall** measure and publish E2E Gbps, pps, and loss for bidirectional traffic at 64-byte frames for a configured duration. | Must | T |
+| SYS-DP-006 | The system **should** achieve ≥ 1.0 Gbps bidirectional at 64-byte frames under laboratory SR‑IOV conditions; unmet targets **shall** still produce a valid report with `target_met = false`. | Should | T |
 
-**Open issues:** None for Task 0 documentary skeleton.
+### 7.3 Assurance, configuration, and operability
+
+| ID | Requirement | Priority | V&V |
+|----|-------------|----------|-----|
+| SYS-AS-001 | Provable safe software in the declared perimeter **shall** be subject to Verus specification checking via the operator harness; harness verify **shall** fail when proofs are broken under the Task‑8 hard-fail regime. | Must | T |
+| SYS-AS-002 | Structural line coverage on the declared crate set **shall** be ≥ 90%, enforced by the coverage harness command. | Must | T |
+| SYS-AS-003 | All demonstrator parameters (VF BDF, memory sizes, ring capacity, bench settings, image paths, QEMU parameters) **shall** be supplied by configuration and/or documented environment overrides; incomplete configuration **shall** cause start failure. | Must | T/I |
+| SYS-AS-004 | The system **shall** provide operator commands: build, run-nested, verify, smoke, bench, coverage, and gdb attach support, invoked through Cargo `xtask` only (no parallel Make/just requirement). | Must | D/I |
+| SYS-AS-005 | Residual `unsafe` / unproved hardware-facing code **shall** be enumerated in a TCB document. | Must | I |
+| SYS-AS-006 | The documentary suite (SSS, SSDD, SRS, ICD, STD, STR) **shall** be maintained in English under `docs/system/` with stable requirement identifiers. | Must | I |
+
+---
+
+## 8. Constraints, assumptions, and dependencies
+
+### 8.1 Constraints (`CON-*`)
+
+| ID | Constraint |
+|----|------------|
+| CON-PLT-001 | Initial target architecture is **x86_64 Intel** with nested VT‑x. |
+| CON-SW-001 | Hypervisor and guests are implemented in **Rust** `no_std` + `alloc` (except std tools: `xtask`, `demo-config`). |
+| CON-SW-002 | Build and operator entry points are **Cargo workspace + `cargo xtask`**. |
+| CON-QA-001 | No business mocks for ring, isolation, or NIC backends in unit tests; Inject is a real backend, not a Sriov mock. |
+| CON-DOC-001 | Documentary structure is home-grown; IEEE/ECSS templates are **not** mandated. |
+
+### 8.2 Assumptions (`ASM-*`)
+
+| ID | Assumption | If violated |
+|----|------------|-------------|
+| ASM-LAB-001 | Laboratory provides nested VT‑x (`+vmx`) under KVM. | Nested smoke/bench blocked |
+| ASM-LAB-002 | For official Sriov results, laboratory provides IOMMU and bindable VFs. | Official bench may run Inject only if config allows; mark STR accordingly |
+| ASM-TOOL-001 | Rust toolchain matches Verus requirements (see `docs/VERUS.md`; currently 1.99.1). | Verify soft-skip or fail per VERUS.md policy |
+| ASM-OP-001 | Operator can supply a complete `demo.toml`. | System refuses boot (by design) |
+
+### 8.3 Dependencies
+
+| Dependency | Nature |
+|------------|--------|
+| QEMU + KVM | Nested execution substrate |
+| Verus release aligned to rustc pin | Proof checking |
+| `cargo-llvm-cov` (or equivalent via xtask) | Coverage gate |
+| Optional: physical NIC with SR‑IOV | Production-representative datapath |
+
+---
+
+## 9. Non-goals and exclusions
+
+| ID | Exclusion | Rationale |
+|----|-----------|-----------|
+| NGX-001 | Bare-metal Intel boot | Deferred post-demonstrator |
+| NGX-002 | Linux or other GPOS guests | Scope control |
+| NGX-003 | Machine-checked proofs of hardware EPT walks beyond the Rust isolation model | TCB boundary |
+| NGX-004 | ARM / RISC‑V | Deferred |
+| NGX-005 | Cryptographic isolation / MLS labelling | Out of demonstrator scope |
+| NGX-006 | Formal DO-178C / ECSS process qualification of tools | Not claimed |
+
+---
+
+## 10. System success criteria (gates)
+
+The demonstrator baseline is **accepted for technical review closure** when all **Must** items below are evidenced in STR (Should items reported):
+
+| Gate | Evidence |
+|------|----------|
+| G1 Smoke | `TEST-SMOKE-001` Pass — two guests, ring path, `SMOKE_OK` |
+| G2 Verify | `TEST-VERUS-001` Pass under applicable hard-fail policy |
+| G3 Isolation | `TEST-ISO-001` / `TEST-ISO-002` Pass — EPT intent + violation handling |
+| G4 Bench report | `TEST-BENCH-001` Pass — valid JSON report @ 64 B (target optional) |
+| G5 Coverage | `TEST-COV-001` Pass — ≥ 90% |
+| G6 Config integrity | `TEST-CFG-001` Pass + inspection — no demo hardcoding |
+| G7 Docs | `TEST-DOC-001` Pass — suite complete; STR filled |
+
+---
+
+## 11. Risks
+
+| ID | Risk | Impact | Mitigation | Residual |
+|----|------|--------|------------|----------|
+| RSK-001 | Nested + real SR‑IOV difficult in lab | Official Gbps figures delayed | Dual backend API; early HARNESS; STR Blocked vs Pass | Medium |
+| RSK-002 | 1 Gbps @ 64 B (~1.5 Mpps/dir) hard under nested | Should-gate unmet | Mandatory measurement; optimise ring/poll; do not fake Pass | Accepted for spike |
+| RSK-003 | Verus × `no_std` friction | Proof lag | Stub→real contracts plan; VERUS.md; Task 8 hard-fail | Medium |
+| RSK-004 | Type‑1 scope vs schedule | Incomplete vertical slice | xtask-first; vertical cut; honest STR Not run | Medium |
+
+---
+
+## 12. Requirements allocation summary
+
+| SYS ID | Primary allocation | Detailed in |
+|--------|--------------------|-------------|
+| SYS-ISO-* | `hv` EPT + `isolation` | SSDD §4–5, SRS SWR-ISO-* |
+| SYS-DP-001..004 | guests + `ring` + `pci-vf` | SSDD §5–6, SRS SWR-DP-*, SWR-NIC-* |
+| SYS-DP-005..006 | `xtask` bench + stats | SRS SWR-HVN-*, ICD IF-STATS-* |
+| SYS-AS-001..002 | Verus + coverage harness | SRS SWR-AS-*, STD |
+| SYS-AS-003..004 | `demo-config` + `xtask` | ICD IF-CFG-*, SRS SWR-CFG-* |
+| SYS-AS-005..006 | docs / TCB | SSDD §8, SRS SWR-DOC-* |
+
+---
+
+## 13. Change record
+
+| Issue | Date | Description |
+|-------|------|-------------|
+| 0.1 | 2026-10-26 | Skeleton |
+| 0.2 | 2026-10-26 | Full SSS: CONOPS, shall language, stakeholders, gates, risks, allocation |

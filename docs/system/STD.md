@@ -1,202 +1,321 @@
-# STD — Software Test Description
+# Software Test Description (STD)
 
-**Product:** Hyperviseur edge gateway (spike)  
-**Version:** 0.1 (Task 0 seed)  
-**Language:** English
+| Field | Value |
+|-------|-------|
+| **Document ID** | HV-EDGE-STD-001 |
+| **Title** | Hypervisor Edge Gateway — Software Test Description |
+| **Issue** | 0.2 |
+| **Date** | 2026-10-26 |
+| **Classification** | UNCLASSIFIED — Technology Demonstrator |
+| **Parent suite** | HV-EDGE-DOC-SUITE |
+| **Verifies** | HV-EDGE-SRS-001 Issue 0.2 |
+| **Results recorded in** | HV-EDGE-STR-001 |
+
+---
 
 ## Table of contents
 
-1. [Purpose](#1-purpose)
-2. [Test strategy](#2-test-strategy)
-3. [Environment](#3-environment)
-4. [Procedures](#4-procedures)
-5. [Traceability matrix](#5-traceability-matrix)
-6. [Pass / fail rules](#6-pass--fail-rules)
+1. [Document control](#1-document-control)  
+2. [V&V strategy](#2-vv-strategy)  
+3. [Environments and resources](#3-environments-and-resources)  
+4. [Entry and exit criteria](#4-entry-and-exit-criteria)  
+5. [Evidence and CM](#5-evidence-and-cm)  
+6. [Test procedures](#6-test-procedures)  
+7. [Traceability matrix](#7-traceability-matrix)  
+8. [Pass, fail, blocked, not run](#8-pass-fail-blocked-not-run)  
+9. [Change record](#9-change-record)
 
-## 1. Purpose
+---
 
-Define executable test procedures (`TEST-*`) for SRS requirements. Each procedure maps to **`cargo xtask`** and/or `cargo test` commands. Results are recorded in [STR.md](./STR.md) after the campaign (Task 11).
+## 1. Document control
 
-## 2. Test strategy
+This STD defines **executable verification procedures** for software requirements. It is written for independent test engineers and for governmental / institutional technical reviewers who must judge objectivity of gates.
 
-| Layer | Command family | Mocks |
-|-------|----------------|-------|
-| Config / unit | `cargo test -p …` | Forbidden for ring / Inject / isolation under test |
-| Proofs | `cargo xtask verify` | N/A |
-| Coverage | `cargo xtask coverage` | N/A |
-| Nested integration | `cargo xtask run-nested`, `smoke` | Inject only if config allows |
-| Measurement | `cargo xtask bench` | Prefer Sriov for official numbers |
+Procedures map primarily to `cargo xtask` and `cargo test` so that evidence is reproducible from a clean checkout plus documented lab prerequisites.
 
-## 3. Environment
+---
 
-| Item | Requirement |
-|------|-------------|
-| Host | Linux with KVM; nested VT‑x (`+vmx`) |
-| Toolchain | Rust per `rust-toolchain.toml`; Verus available for verify |
-| Config | Complete `config/demo.toml` (from example) |
-| Optional VF | IOMMU + vfio-pci per `docs/HARNESS.md` when `backend=sriov` |
+## 2. V&V strategy
 
-Preconditions per procedure are listed below. If a lab lacks VF, Sriov-only procedures are marked **blocked** in STR (not silently skipped with a mock).
+| Layer | Objective | Primary commands | Mock policy |
+|-------|-----------|------------------|-------------|
+| Configuration | Schema integrity | `cargo test -p demo-config` | N/A |
+| Component | Ring, isolation, NIC | `cargo test -p ring|isolation|pci-vf|guest-common` | **Forbidden** to mock SUT |
+| Structural coverage | ≥ 90% declared crates | `cargo xtask coverage` | N/A |
+| Formal specs | Verus | `cargo xtask verify` | N/A |
+| Integration | Nested datapath | `cargo xtask smoke` | Inject only if config allows |
+| Performance | Measurement @ 64 B | `cargo xtask bench` | Prefer Sriov for official figures |
+| Inspection | Docs / hardcoding / TCB | Checklist `TEST-DOC-001` | N/A |
 
-## 4. Procedures
+**Independence:** Where organisationally available, an independent tester executes smoke/bench/coverage/verify and completes STR signature blocks. Developers may execute unit procedures during implementation; STR campaign should re-run gates on a declared baseline SHA.
 
-### TEST-BUILD-001 — Workspace build
+---
 
-| Field | Value |
-|-------|-------|
-| Command | `cargo xtask build` |
-| Covers | SWR-010, SWR-050 |
-| Steps | 1. Ensure toolchain installed. 2. Run command. 3. Confirm `hv`, `guest-wan`, `guest-lan` images exist at `paths.*`. |
-| Pass | Exit 0; images present |
-| Fail | Non-zero exit or missing artifacts |
+## 3. Environments and resources
 
-### TEST-CFG-001 — Config load and reject
+### 3.1 ENV-HOST — Developer / CI host
 
-| Field | Value |
-|-------|-------|
-| Command | `cargo test -p demo-config` |
-| Covers | SWR-030, SWR-031, SWR-032, SWR-012 (indirect), IF-CFG-* |
-| Steps | 1. Run package tests including incomplete-config reject and example load. 2. Optionally export env overrides and re-run override tests when present. |
-| Pass | All tests green |
-| Fail | Any test failure |
+| Resource | Requirement |
+|----------|-------------|
+| OS | Linux with nested virtualisation capability for integration procedures |
+| Toolchain | Per `rust-toolchain.toml` (Issue 0.2: Rust **1.99.1**) |
+| Verus | Per `docs/VERUS.md` when executing `TEST-VERUS-001` in hard-fail mode |
+| Coverage tools | As wired by `xtask coverage` (e.g. llvm-cov) |
+| Config | Complete file derived from `config/demo.example.toml` |
 
-### TEST-UNIT-RING — Shared ring
+### 3.2 ENV-LAB-SRIOV — Official datapath lab
 
-| Field | Value |
-|-------|-------|
-| Command | `cargo test -p ring` |
-| Covers | SWR-011, SWR-013, IF-RING-*, SWR-044 |
-| Steps | 1. Run host harness tests (push/pop, full-without-overwrite). 2. Confirm no mock doubles of the ring. |
-| Pass | All tests green |
-| Fail | Any test failure |
+| Resource | Requirement |
+|----------|-------------|
+| All of ENV-HOST | — |
+| IOMMU | Enabled; QEMU/lab configured per `docs/HARNESS.md` |
+| VFs | Bound via vfio-pci; BDFs in config |
+| `datapath.backend` | `sriov` |
+| `allow_inject_fallback` | `false` for official figures |
 
-### TEST-UNIT-ISO — Isolation model
+### 3.3 ENV-LAB-INJECT — Degraded lab
 
-| Field | Value |
-|-------|-------|
-| Command | `cargo test -p isolation` |
-| Covers | SWR-004, SWR-001 (model level) |
-| Steps | 1. Run allow/deny region tests for WAN/LAN/shared. |
-| Pass | All tests green |
-| Fail | Any test failure |
+| Resource | Requirement |
+|----------|-------------|
+| Nested VT‑x | Required |
+| VF | Not required |
+| Config | `backend=inject` **or** fallback explicitly allowed |
 
-### TEST-UNIT-NIC — NicBackend Inject and fail-fast
+If ENV-LAB-SRIOV is unavailable, Sriov-specific expected results are marked **Blocked** in STR — never silently replaced by an undeclared mock.
 
-| Field | Value |
-|-------|-------|
-| Command | `cargo test -p pci-vf` |
-| Covers | SWR-020, SWR-022, SWR-023, SWR-044, IF-NIC-* |
-| Steps | 1. Exercise Inject queue. 2. Assert Sriov-required + missing BDF errors. |
-| Pass | All tests green |
-| Fail | Any test failure |
+---
 
-### TEST-UNIT-FWD — Guest forward logic
+## 4. Entry and exit criteria
 
-| Field | Value |
-|-------|-------|
-| Command | `cargo test -p guest-common` (or equivalent host-tested forward crate) |
-| Covers | SWR-011, SWR-014 |
-| Steps | 1. Forward frames through real ring + Inject in-process. |
-| Pass | All tests green |
-| Fail | Any test failure / crate missing after Task 5 |
+### 4.1 Campaign entry
 
-### TEST-VERUS-001 — Verus verify
+1. Documentary suite Issue identified (this STD + SRS Issue).  
+2. Software baseline SHA recorded.  
+3. Environments classified (HOST / LAB-INJECT / LAB-SRIOV).  
+4. Configuration file archived with evidence pack.
 
-| Field | Value |
-|-------|-------|
-| Command | `cargo xtask verify` |
-| Covers | SWR-040 |
-| Steps | 1. Run verify on all annotated packages. |
-| Pass | Exit 0 |
-| Fail | Non-zero exit (broken or missing proofs) |
+### 4.2 Campaign exit
+
+1. Every procedure in §6 has result Pass, Fail, Blocked, or Not run with rationale.  
+2. Must-gate Failures dispositioned (fix or accept risk in STR).  
+3. Evidence artefacts stored and linked from STR.  
+4. Authority signatures completed on STR when submitted externally.
+
+---
+
+## 5. Evidence and CM
+
+| Artefact | Typical path / form |
+|----------|---------------------|
+| Unit test logs | CI or local console capture |
+| Coverage report | Path emitted by `xtask coverage` |
+| Verus log | Path emitted by `xtask verify` |
+| Smoke serial log | Capture including `SMOKE_OK` |
+| Bench JSON | `target/bench-report.json` (or config override) |
+| Config used | Copy of `demo.toml` (+ env) |
+| Baseline | `git rev-parse HEAD` |
+
+Evidence pack identifier is recorded in STR §2.
+
+---
+
+## 6. Test procedures
+
+Each procedure follows: Objective → Covers → Environment → Preconditions → Steps → Expected results → Evidence.
+
+### TEST-BUILD-001 — Workspace image build
+
+| Field | Content |
+|-------|---------|
+| **Objective** | Demonstrate that hypervisor and guest images build via harness |
+| **Covers** | SWR-DP-010, SWR-HVN-050 |
+| **Environment** | ENV-HOST |
+| **Preconditions** | Toolchain installed; repository checkout clean at baseline |
+| **Steps** | 1. `cargo xtask build` 2. Verify artefacts exist at `paths.hv_image`, `paths.guest_wan_image`, `paths.guest_lan_image` |
+| **Expected** | Exit code 0; three images present and non-empty |
+| **Evidence** | Command log; `ls -l` of image paths |
+
+### TEST-CFG-001 — Configuration validation
+
+| Field | Content |
+|-------|---------|
+| **Objective** | Validate TOML schema accept/reject and example completeness |
+| **Covers** | SWR-CFG-030, SWR-CFG-031, SWR-CFG-032, SWR-DP-012 (indirect) |
+| **Environment** | ENV-HOST |
+| **Steps** | 1. `cargo test -p demo-config` 2. Confirm tests cover incomplete reject and example load 3. If override tests exist, export env vars and re-run |
+| **Expected** | All tests Pass |
+| **Evidence** | `cargo test` output |
+
+### TEST-UNIT-RING — SPSC ring component test
+
+| Field | Content |
+|-------|---------|
+| **Objective** | Verify ring push/pop, full-without-overwrite, init rules on real memory |
+| **Covers** | SWR-DP-013, SWR-DP-015, SWR-AS-044, IF-RING-* |
+| **Environment** | ENV-HOST |
+| **Steps** | 1. `cargo test -p ring` 2. Inspect tests: no mock of ring structure |
+| **Expected** | All tests Pass |
+| **Evidence** | Test output |
+
+### TEST-UNIT-ISO — Isolation model component test
+
+| Field | Content |
+|-------|---------|
+| **Objective** | Verify region allow/deny and overlap rejection |
+| **Covers** | SWR-ISO-004, SWR-ISO-005 |
+| **Environment** | ENV-HOST |
+| **Steps** | 1. `cargo test -p isolation` |
+| **Expected** | All tests Pass |
+| **Evidence** | Test output |
+
+### TEST-UNIT-NIC — NicBackend policy and Inject
+
+| Field | Content |
+|-------|---------|
+| **Objective** | Verify Inject queue behaviour and Sriov fail-fast |
+| **Covers** | SWR-NIC-020, SWR-NIC-022, SWR-NIC-023, SWR-AS-044 |
+| **Environment** | ENV-HOST |
+| **Steps** | 1. `cargo test -p pci-vf` 2. Confirm fail-fast test when Sriov required and BDF missing |
+| **Expected** | All tests Pass |
+| **Evidence** | Test output |
+| **Applicability** | Not run until `pci-vf` tests land |
+
+### TEST-UNIT-FWD — Forward logic
+
+| Field | Content |
+|-------|---------|
+| **Objective** | Verify WAN/LAN forward using real ring + Inject in-process |
+| **Covers** | SWR-DP-011, SWR-DP-014 |
+| **Environment** | ENV-HOST |
+| **Steps** | 1. `cargo test -p guest-common` (or documented equivalent) |
+| **Expected** | All tests Pass |
+| **Applicability** | Not run until guest forward extraction lands |
+
+### TEST-VERUS-001 — Verus verification
+
+| Field | Content |
+|-------|---------|
+| **Objective** | Execute specification checking on annotated crates |
+| **Covers** | SWR-AS-040, SWR-HVN-057 |
+| **Environment** | ENV-HOST with Verus per `docs/VERUS.md` |
+| **Steps** | 1. Ensure `VERUS_BIN` or `verus` on `PATH` 2. `cargo xtask verify` 3. Interpret soft-skip vs hard-fail per VERUS.md / Task 8 policy |
+| **Expected (hard-fail regime)** | Exit 0 with proofs checked |
+| **Expected (stub regime)** | Soft-skip permitted only as documented; record in STR |
+| **Evidence** | Verify log |
 
 ### TEST-COV-001 — Coverage threshold
 
-| Field | Value |
-|-------|-------|
-| Command | `cargo xtask coverage` |
-| Covers | SWR-042, SWR-043 |
-| Steps | 1. Run coverage. 2. Confirm line coverage ≥ 90% on declared crates. 3. Inspect allowlist for unjustified exclusions. |
-| Pass | Exit 0; report ≥ 90% |
-| Fail | Below threshold or silent exclusions |
+| Field | Content |
+|-------|---------|
+| **Objective** | Enforce ≥ 90% line coverage on declared crates |
+| **Covers** | SWR-AS-042, SWR-AS-043, SWR-HVN-057 |
+| **Environment** | ENV-HOST |
+| **Steps** | 1. `cargo xtask coverage` 2. Read report percentage 3. Inspect allowlist justifications |
+| **Expected** | Exit 0; coverage ≥ 90%; no silent exclusions |
+| **Evidence** | Coverage report + allowlist file |
+| **Applicability** | Not run until coverage command fully wired (Task 8) |
 
-### TEST-ISO-001 — EPT map builder (host unit)
+### TEST-ISO-001 — EPT map builder (host)
 
-| Field | Value |
-|-------|-------|
-| Command | `cargo test -p hv -- EPT` (or documented filter for EPT/map tests) |
-| Covers | SWR-001, SWR-002, SWR-004 |
-| Steps | 1. Build EPT intent from `isolation::MemoryMap` without QEMU. 2. Assert private vs shared permissions. |
-| Pass | All relevant tests green |
-| Fail | Any failure |
+| Field | Content |
+|-------|---------|
+| **Objective** | Verify EPT intent construction from isolation model without QEMU |
+| **Covers** | SWR-ISO-001, SWR-ISO-002, SWR-ISO-004 |
+| **Environment** | ENV-HOST |
+| **Steps** | 1. Run `hv` unit tests for EPT/map (documented filter) |
+| **Expected** | Pass; private vs shared permissions correct |
+| **Applicability** | Not run until `hv` EPT tests land |
 
 ### TEST-ISO-002 — EPT violation nested
 
-| Field | Value |
-|-------|-------|
-| Command | Nested lab procedure via `cargo xtask run-nested` with violation stimulus (documented in HARNESS when available) |
-| Covers | SWR-003 |
-| Steps | 1. Trigger out-of-region access from a guest. 2. Observe UART diagnostic and halt of faulting guest; peer integrity preserved. |
-| Pass | Clean exit handling as specified |
-| Fail | Silent corruption or host crash |
-| Spike note | May be manual until automated; record method in STR |
+| Field | Content |
+|-------|---------|
+| **Objective** | Demonstrate clean handling of unauthorised access under nested execution |
+| **Covers** | SWR-ISO-003 |
+| **Environment** | ENV-LAB-INJECT or ENV-LAB-SRIOV |
+| **Steps** | 1. Launch nested per HARNESS 2. Apply documented violation stimulus 3. Observe UART diagnostic and halt of faulting guest 4. Confirm peer memory integrity (analysis/observation) |
+| **Expected** | Diagnostic present; faulting guest halted; no silent peer corruption |
+| **Evidence** | Serial log + operator observation note |
+| **Note** | Manual acceptable until automated; method must be recorded in STR |
 
 ### TEST-SMOKE-001 — Nested smoke
 
-| Field | Value |
-|-------|-------|
-| Command | `cargo xtask smoke` |
-| Covers | SWR-001, SWR-011, SWR-014, SWR-021/SWR-022, SWR-024, SWR-051, SWR-052, IF-SER-001 |
-| Preconditions | `TEST-BUILD-001` pass; valid `demo.toml`; nested KVM |
-| Steps | 1. Run smoke. 2. Wait for serial `SMOKE_OK`. 3. Note backend (Sriov vs Inject) from config. |
-| Pass | Exit 0; `SMOKE_OK` observed |
-| Fail | Timeout, non-zero exit, or missing magic |
+| Field | Content |
+|-------|---------|
+| **Objective** | End-to-end boot and datapath echo under nested QEMU |
+| **Covers** | SWR-ISO-001, SWR-DP-011, SWR-DP-014, SWR-NIC-021/022, SWR-NIC-024, SWR-CFG-035, SWR-HVN-051, SWR-HVN-052 |
+| **Environment** | ENV-LAB-INJECT or ENV-LAB-SRIOV |
+| **Preconditions** | TEST-BUILD-001 Pass; valid config; nested KVM |
+| **Steps** | 1. Archive config 2. `cargo xtask smoke` 3. Record backend in use |
+| **Expected** | Exit 0; serial contains `SMOKE_OK` |
+| **Evidence** | Full serial log; config copy; backend note |
 
-### TEST-BENCH-001 — E2E bench @ 64 B
+### TEST-BENCH-001 — E2E measurement @ 64 B
 
-| Field | Value |
-|-------|-------|
-| Command | `cargo xtask bench` |
-| Covers | SWR-053, SWR-054, SWR-055 (Should), SYS-004 |
-| Preconditions | Smoke-capable lab; prefer `backend=sriov` for official figures |
-| Steps | 1. Ensure `bench.frame_size = 64`. 2. Run bench. 3. Read JSON report (default `target/bench-report.json`). |
-| Pass | Exit 0; report contains Gbps, pps, loss, duration, `target_met` |
-| Fail | Measurement did not complete / missing report |
-| Note | `target_met: false` is **not** a procedure failure |
+| Field | Content |
+|-------|---------|
+| **Objective** | Produce mandatory performance report at 64-byte frames |
+| **Covers** | SWR-HVN-053, SWR-HVN-054, SWR-HVN-055 (Should), SYS-DP-005/006 |
+| **Environment** | Prefer ENV-LAB-SRIOV; else ENV-LAB-INJECT with STR annotation |
+| **Preconditions** | Smoke-capable system; `bench.frame_size = 64` |
+| **Steps** | 1. `cargo xtask bench` 2. Archive JSON report 3. Record `target_met` |
+| **Expected** | Exit 0; report contains Gbps, pps, loss, duration, `target_met` |
+| **Non-fail** | `target_met = false` is **not** a procedure failure |
+| **Evidence** | `bench-report.json` |
 
 ### TEST-DOC-001 — Documentary and TCB inspection
 
-| Field | Value |
-|-------|-------|
-| Command | Manual inspection (no xtask) |
-| Covers | SWR-033, SWR-034, SWR-041, SWR-056, SWR-060, SWR-061 |
-| Steps | 1. Confirm English suite under `docs/system/`. 2. Confirm example config, TCB list, HARNESS when those files exist. 3. Confirm STD↔SRS IDs. |
-| Pass | Checklist satisfied for artifacts that exist at campaign time |
-| Fail | Missing mandatory docs or hardcoding found |
+| Field | Content |
+|-------|---------|
+| **Objective** | Confirm documentary suite, example config, TCB/HARNESS presence, absence of demo hardcoding |
+| **Covers** | SWR-CFG-033, SWR-CFG-034, SWR-AS-041, SWR-HVN-056, SWR-DOC-060..062 |
+| **Environment** | ENV-HOST (inspection) |
+| **Steps** | 1. Verify `docs/system/` English suite Issue 2. Verify `config/demo.example.toml` 3. When present, verify `docs/TCB.md`, `docs/HARNESS.md` 4. Spot-check `hv`/guest sources for lab literals 5. Confirm STD↔SRS ID consistency |
+| **Expected** | Checklist items satisfied for artefacts required at campaign date |
+| **Evidence** | Signed checklist appendix in STR |
 
-## 5. Traceability matrix
+---
 
-| TEST ID | SWR IDs | Primary command |
-|---------|---------|-----------------|
-| TEST-BUILD-001 | SWR-010, SWR-050 | `cargo xtask build` |
-| TEST-CFG-001 | SWR-030, SWR-031, SWR-032 | `cargo test -p demo-config` |
-| TEST-UNIT-RING | SWR-011, SWR-013, SWR-044 | `cargo test -p ring` |
-| TEST-UNIT-ISO | SWR-004 | `cargo test -p isolation` |
-| TEST-UNIT-NIC | SWR-020, SWR-022, SWR-023, SWR-044 | `cargo test -p pci-vf` |
-| TEST-UNIT-FWD | SWR-011, SWR-014 | `cargo test -p guest-common` |
-| TEST-VERUS-001 | SWR-040 | `cargo xtask verify` |
-| TEST-COV-001 | SWR-042, SWR-043 | `cargo xtask coverage` |
-| TEST-ISO-001 | SWR-001, SWR-002, SWR-004 | `cargo test -p hv` (EPT) |
-| TEST-ISO-002 | SWR-003 | `cargo xtask run-nested` (+ stimulus) |
-| TEST-SMOKE-001 | SWR-001, SWR-011, SWR-014, SWR-021/022, SWR-024, SWR-051, SWR-052 | `cargo xtask smoke` |
-| TEST-BENCH-001 | SWR-053, SWR-054, SWR-055 | `cargo xtask bench` |
-| TEST-DOC-001 | SWR-033, SWR-034, SWR-041, SWR-056, SWR-060, SWR-061 | inspection |
+## 7. Traceability matrix
 
-## 6. Pass / fail rules
+| TEST ID | SWR IDs (primary) | Command / method |
+|---------|-------------------|------------------|
+| TEST-BUILD-001 | SWR-DP-010, SWR-HVN-050 | `cargo xtask build` |
+| TEST-CFG-001 | SWR-CFG-030..032 | `cargo test -p demo-config` |
+| TEST-UNIT-RING | SWR-DP-013, SWR-DP-015, SWR-AS-044 | `cargo test -p ring` |
+| TEST-UNIT-ISO | SWR-ISO-004, SWR-ISO-005 | `cargo test -p isolation` |
+| TEST-UNIT-NIC | SWR-NIC-020,022,023, SWR-AS-044 | `cargo test -p pci-vf` |
+| TEST-UNIT-FWD | SWR-DP-011, SWR-DP-014 | `cargo test -p guest-common` |
+| TEST-VERUS-001 | SWR-AS-040, SWR-HVN-057 | `cargo xtask verify` |
+| TEST-COV-001 | SWR-AS-042,043, SWR-HVN-057 | `cargo xtask coverage` |
+| TEST-ISO-001 | SWR-ISO-001,002,004 | `cargo test -p hv` (EPT) |
+| TEST-ISO-002 | SWR-ISO-003 | nested + stimulus |
+| TEST-SMOKE-001 | SWR-ISO-001, SWR-DP-011,014, SWR-NIC-*, SWR-HVN-051,052 | `cargo xtask smoke` |
+| TEST-BENCH-001 | SWR-HVN-053..055 | `cargo xtask bench` |
+| TEST-DOC-001 | SWR-CFG-033,034, SWR-AS-041, SWR-HVN-056, SWR-DOC-* | inspection |
 
-1. Automated procedures: process exit code and stated artifacts decide pass/fail.  
-2. Lab-blocked Sriov cases: mark **Blocked** in STR with reason — do not substitute an undeclared mock.  
-3. Bench target miss: procedure **Pass** if report valid; product objective tracked via `target_met`.  
-4. Code not yet implemented (pre Task N): mark **Not run** in STR until available.
+---
 
-**Procedures deferred:** None beyond notes above. N/A for spike: formal DO-178 tool qualification.
+## 8. Pass, fail, blocked, not run
+
+| Result | Definition |
+|--------|------------|
+| **Pass** | Expected results met; evidence archived |
+| **Fail** | Expected results not met |
+| **Blocked** | Cannot execute due to missing lab resource (e.g. VF); documented |
+| **Not run** | Procedure not applicable yet on this baseline (implementation pending) |
+
+**Rules**
+
+1. Do not convert Blocked Sriov into Pass via undeclared mock.  
+2. Bench target miss → procedure Pass if report valid.  
+3. Soft-skip verify under stub regime → record explicitly; does not satisfy hard-fail gate until Task 8 policy applies.
+
+---
+
+## 9. Change record
+
+| Issue | Date | Description |
+|-------|------|-------------|
+| 0.1 | 2026-10-26 | Skeleton |
+| 0.2 | 2026-10-26 | Full STD: environments, entry/exit, evidence, detailed procedures, result vocabulary |

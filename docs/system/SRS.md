@@ -1,140 +1,214 @@
-# SRS — Software Requirements Specification
+# Software Requirements Specification (SRS)
 
-**Product:** Hyperviseur edge gateway (spike)  
-**Version:** 0.1 (Task 0 seed from design)  
-**Language:** English
+| Field | Value |
+|-------|-------|
+| **Document ID** | HV-EDGE-SRS-001 |
+| **Title** | Hypervisor Edge Gateway — Software Requirements Specification |
+| **Issue** | 0.2 |
+| **Date** | 2026-10-26 |
+| **Classification** | UNCLASSIFIED — Technology Demonstrator |
+| **Parent suite** | HV-EDGE-DOC-SUITE |
+| **Parents** | HV-EDGE-SSS-001, HV-EDGE-SSDD-001, HV-EDGE-ICD-001 |
+
+---
 
 ## Table of contents
 
-1. [Purpose](#1-purpose)
-2. [Conventions](#2-conventions)
-3. [Isolation and memory](#3-isolation-and-memory)
-4. [Datapath and guests](#4-datapath-and-guests)
-5. [NIC backends](#5-nic-backends)
-6. [Configuration](#6-configuration)
-7. [Proofs and coverage](#7-proofs-and-coverage)
-8. [Harness and measurement](#8-harness-and-measurement)
-9. [Documentation](#9-documentation)
-10. [Requirement index](#10-requirement-index)
+1. [Document control](#1-document-control)  
+2. [Scope](#2-scope)  
+3. [Requirement attributes](#3-requirement-attributes)  
+4. [Isolation and memory management](#4-isolation-and-memory-management)  
+5. [Datapath and guests](#5-datapath-and-guests)  
+6. [NIC backends](#6-nic-backends)  
+7. [Configuration and build](#7-configuration-and-build)  
+8. [Assurance (proofs and coverage)](#8-assurance-proofs-and-coverage)  
+9. [Harness and measurement](#9-harness-and-measurement)  
+10. [Documentation and CM](#10-documentation-and-cm)  
+11. [Requirements index and parent traceability](#11-requirements-index-and-parent-traceability)  
+12. [Change record](#12-change-record)
 
-## 1. Purpose
+---
 
-State **testable** software requirements (`SWR-*`) derived from the spike design. Acceptance is demonstrated by STD procedures (`TEST-*`) and recorded in STR.
+## 1. Document control
 
-## 2. Conventions
+This SRS states **software requirements** for the demonstrator. Each requirement is uniquely identified, prioritised, and assigned a verification method. Interface field meanings are owned by the ICD; this SRS requires software to **conform** to those interfaces.
 
-| Field | Meaning |
-|-------|---------|
-| ID | Stable `SWR-NNN` |
-| Priority | Must (spike gate) / Should (objective) |
-| Verification | Primary method (test / proof / inspection / measurement) |
+### 1.1 Requirement language
 
-Priority **Must** items block spike success criteria. **Should** items are reported even if unmet (e.g. 1 Gbps target).
+Same as SSS: **shall** / **should** / **may** / **will**.
 
-## 3. Isolation and memory
+### 1.2 Verification methods
 
-| ID | Requirement | Priority | Verification |
-|----|-------------|----------|--------------|
-| SWR-001 | `hv` shall map private WAN and private LAN guest memory as mutually inaccessible via EPT. | Must | TEST-ISO-001, TEST-SMOKE-001 |
-| SWR-002 | Shared ring (and agreed shared pages) shall be mapped read-write to both guests and nowhere else that would break isolation. | Must | TEST-ISO-001 |
-| SWR-003 | An EPT violation for out-of-region access shall cause a handled exit: UART diagnostic and halt of the faulting guest without silently corrupting peer memory. | Must | TEST-ISO-002 |
-| SWR-004 | The Rust `isolation` crate shall expose a region/permission model used when recording EPT intent; access checks shall reject overlapping private WAN/LAN claims. | Must | TEST-UNIT-ISO, TEST-VERUS-001 |
+| Code | Method | Meaning |
+|------|--------|---------|
+| **T** | Test | Automated or scripted procedure with expected result |
+| **D** | Demonstration | Observed behaviour on laboratory configuration |
+| **A** | Analysis | Proof, model check, or reasoned calculation |
+| **I** | Inspection | Document/code review checklist |
 
-## 4. Datapath and guests
+---
 
-| ID | Requirement | Priority | Verification |
-|----|-------------|----------|--------------|
-| SWR-010 | WAN and LAN guests shall be Rust `no_std` (+ `alloc`) binaries loaded by `hv`. | Must | TEST-BUILD-001, inspection |
-| SWR-011 | Guests shall forward frames WAN→ring→LAN and LAN→ring→WAN using the shared ring ABI (`IF-RING-*`). | Must | TEST-SMOKE-001, TEST-UNIT-FWD |
-| SWR-012 | Guests shall obtain ring base, arena, NIC, UART, and stats locations from the boot info blob (`IF-BOOT-*`), not from compile-time lab literals. | Must | TEST-CFG-001, inspection |
-| SWR-013 | When the shared ring is full, the producer shall drop the frame and increment a drop counter; it shall not block indefinitely. | Must | TEST-UNIT-RING |
-| SWR-014 | Guests shall update a shared stats page (`IF-STATS-*`) consumed by smoke/bench. | Must | TEST-SMOKE-001, TEST-BENCH-001 |
+## 2. Scope
 
-## 5. NIC backends
+**In scope:** software in packages `hv`, `guest-wan`, `guest-lan`, optional `guest-common`, `ring`, `isolation`, `pci-vf`, `demo-config`, `xtask`, and associated tests/docs hooks.
 
-| ID | Requirement | Priority | Verification |
-|----|-------------|----------|--------------|
-| SWR-020 | `pci-vf` shall expose a single `NicBackend` API for receive/send used by both guests. | Must | TEST-UNIT-NIC |
-| SWR-021 | When config selects `sriov` and the VF is present, the backend shall be `Sriov`. | Must | TEST-SMOKE-001 (lab), HARNESS |
-| SWR-022 | When config selects `inject`, or (`allow_inject_fallback` and VF absent), the backend shall be `Inject` (in-process frame queue). | Must | TEST-UNIT-NIC |
-| SWR-023 | When config requires `sriov` and the device/BDF is missing, open shall fail fast with an error — no silent substitute. | Must | TEST-UNIT-NIC |
-| SWR-024 | Switching between `Sriov` and `Inject` shall require config changes only; guest forward logic shall remain unchanged. | Must | inspection, TEST-SMOKE-001 |
+**Out of scope:** L0 host OS, QEMU internals, NIC silicon firmware, governmental process certification of the development environment.
 
-## 6. Configuration
+---
 
-| ID | Requirement | Priority | Verification |
-|----|-------------|----------|--------------|
-| SWR-030 | Demonstrator parameters shall be loaded from TOML conforming to `IF-CFG-*` (lab, datapath, guests, ring, bench, paths). | Must | TEST-CFG-001 |
-| SWR-031 | Incomplete TOML shall be rejected with an error naming the missing field. | Must | TEST-CFG-001 |
-| SWR-032 | Environment overrides `HV_DEMO_CONFIG`, `HV_VF_BACKEND`, `HV_WAN_VF_BDF`, `HV_LAN_VF_BDF` shall apply as specified in ICD. | Must | TEST-CFG-001 |
-| SWR-033 | Source code shall not embed lab-specific BDFs, memory sizes, ring capacities, or bench durations as demonstrator defaults. | Must | inspection |
-| SWR-034 | An example complete config (`config/demo.example.toml`) shall be checked into the repository. | Must | inspection |
+## 3. Requirement attributes
 
-## 7. Proofs and coverage
+Each requirement table uses:
 
-| ID | Requirement | Priority | Verification |
-|----|-------------|----------|--------------|
-| SWR-040 | All provable safe Rust in `ring`, `isolation`, guest datapath logic, and safe parts of `pci-vf` shall carry Verus specs; `cargo xtask verify` shall fail if proofs break. | Must | TEST-VERUS-001 |
-| SWR-041 | Every `unsafe` block in the TCB shall be listed in `docs/TCB.md` with a one-line justification. | Must | inspection |
-| SWR-042 | `cargo xtask coverage` shall measure line coverage on the declared crate set and **fail** if coverage &lt; 90%. | Must | TEST-COV-001 |
-| SWR-043 | Coverage exclusions shall be limited to listed TCB/glue files with explicit justification in `xtask/coverage-allowlist.toml`. | Must | inspection |
-| SWR-044 | Unit tests shall exercise real ring, Inject queue, and isolation structures — not mocks of those components. | Must | inspection, unit tests |
+| Column | Content |
+|--------|---------|
+| ID | Stable `SWR-<AREA>-<nnn>` |
+| Requirement | Shall statement |
+| Priority | Must / Should |
+| Parent | `SYS-*` and/or `IF-*` |
+| V&V | Method codes |
+| Procedure | Primary `TEST-*` |
 
-## 8. Harness and measurement
+---
 
-| ID | Requirement | Priority | Verification |
-|----|-------------|----------|--------------|
-| SWR-050 | Operators shall build images via `cargo xtask build`. | Must | TEST-BUILD-001 |
-| SWR-051 | `cargo xtask run-nested` shall launch QEMU nested with args derived only from `DemoConfig`. | Must | TEST-SMOKE-001 |
-| SWR-052 | `cargo xtask smoke` shall wait for serial magic `SMOKE_OK` after a successful inject/sriov echo path. | Must | TEST-SMOKE-001 |
-| SWR-053 | `cargo xtask bench` shall run for `bench.duration_secs` at `bench.frame_size` (default 64), bidirectional when configured, and write a JSON report (Gbps, pps, loss, `target_met`). | Must | TEST-BENCH-001 |
-| SWR-054 | Bench shall exit 0 when measurement completes even if `target_gbps` is not met; the report shall set `target_met: false` in that case. | Must | TEST-BENCH-001 |
-| SWR-055 | Official bench / production demo path should use `Sriov` + real VFs when the lab provides them. | Should | TEST-BENCH-001 (lab) |
-| SWR-056 | `docs/HARNESS.md` shall document VFIO binding and nested SR‑IOV setup. | Must | inspection |
+## 4. Isolation and memory management
 
-## 9. Documentation
+| ID | Requirement | Priority | Parent | V&V | Procedure |
+|----|-------------|----------|--------|-----|-----------|
+| SWR-ISO-001 | The hypervisor software **shall** construct EPT mappings such that WAN private guest memory is not readable or writable by the LAN guest, and LAN private guest memory is not readable or writable by the WAN guest. | Must | SYS-ISO-001 | T/D | TEST-ISO-001, TEST-SMOKE-001 |
+| SWR-ISO-002 | The hypervisor software **shall** map shared ring headers, descriptor slots, payload arena, and stats page with read-write access for both guests as specified in ICD `IF-BOOT-*` / `IF-RING-*` / `IF-STATS-*`. | Must | SYS-ISO-002, IF-BOOT-002 | T/I | TEST-ISO-001 |
+| SWR-ISO-003 | On an EPT violation attributable to unauthorised access, hypervisor software **shall** (a) emit a diagnostic on the UART path, (b) halt the faulting guest, and (c) refrain from applying the faulting write to peer private memory. | Must | SYS-ISO-003 | T/D | TEST-ISO-002 |
+| SWR-ISO-004 | The `isolation` software **shall** provide a region and permission model with an access-check operation; insertion of overlapping regions that would allow conflicting private WAN/LAN claims **shall** be rejected. | Must | SYS-ISO-004 | T/A | TEST-UNIT-ISO, TEST-VERUS-001 |
+| SWR-ISO-005 | Permission bits in the isolation model **shall** distinguish at least read, write, and execute rights, and access checks **shall** deny requests lacking required rights. | Must | SYS-ISO-004 | T | TEST-UNIT-ISO |
 
-| ID | Requirement | Priority | Verification |
-|----|-------------|----------|--------------|
-| SWR-060 | The documentary suite SSS/SSDD/SRS/ICD/STD/STR shall remain in English under `docs/system/`. | Must | inspection |
-| SWR-061 | STD procedures shall reference `SWR-*` IDs; STR shall record results per `TEST-*`. | Must | inspection |
+---
 
-## 10. Requirement index
+## 5. Datapath and guests
 
-| ID | Title (short) |
-|----|---------------|
-| SWR-001 | EPT private WAN/LAN |
-| SWR-002 | Shared ring mapping |
-| SWR-003 | EPT violation handling |
-| SWR-004 | Isolation model crate |
-| SWR-010 | no_std guests |
-| SWR-011 | Bidirectional ring forward |
-| SWR-012 | Boot-info driven layout |
-| SWR-013 | Ring-full drop |
-| SWR-014 | Stats page |
-| SWR-020 | NicBackend API |
-| SWR-021 | Sriov when present |
-| SWR-022 | Inject when allowed |
-| SWR-023 | Sriov fail-fast |
-| SWR-024 | Config-only backend switch |
-| SWR-030 | TOML DemoConfig |
-| SWR-031 | Reject incomplete config |
-| SWR-032 | Env overrides |
-| SWR-033 | No demo hardcoding |
-| SWR-034 | Example config checked in |
-| SWR-040 | Verus on provable Rust |
-| SWR-041 | TCB documentation |
-| SWR-042 | Coverage ≥ 90% |
-| SWR-043 | Explicit coverage allowlist |
-| SWR-044 | No business mocks |
-| SWR-050 | xtask build |
-| SWR-051 | xtask run-nested |
-| SWR-052 | xtask smoke |
-| SWR-053 | xtask bench report |
-| SWR-054 | Bench exit vs target |
-| SWR-055 | Prefer Sriov for official bench |
-| SWR-056 | HARNESS.md |
-| SWR-060 | English doc suite |
-| SWR-061 | Traceability STD/STR |
+| ID | Requirement | Priority | Parent | V&V | Procedure |
+|----|-------------|----------|--------|-----|-----------|
+| SWR-DP-010 | WAN and LAN guest software **shall** be built as Rust `no_std` (+ `alloc`) images loadable by the hypervisor. | Must | SYS-DP-001 | T/I | TEST-BUILD-001 |
+| SWR-DP-011 | Guest software **shall** forward frames in both directions WAN→ring→LAN and LAN→ring→WAN using the shared ring ABI (`IF-RING-*`). | Must | SYS-DP-001, IF-RING-003 | T | TEST-SMOKE-001, TEST-UNIT-FWD |
+| SWR-DP-012 | Guest software **shall** obtain ring, arena, NIC, UART, and stats locations exclusively from the boot information blob (`IF-BOOT-*`); guest source **shall not** embed laboratory-specific addresses or sizes as demonstrator defaults. | Must | SYS-AS-003, IF-BOOT-* | T/I | TEST-CFG-001, TEST-DOC-001 |
+| SWR-DP-013 | When `try_push` indicates ring full, producer software **shall** drop the frame and increment the drop counter defined in `IF-STATS-*`; software **shall not** block indefinitely awaiting space. | Must | IF-RING-003, IF-STATS-001 | T | TEST-UNIT-RING |
+| SWR-DP-014 | Guest software **shall** update the shared statistics page counters defined in `IF-STATS-001` so that smoke and bench procedures can observe progress. | Must | SYS-DP-005, IF-STATS-001 | T | TEST-SMOKE-001, TEST-BENCH-001 |
+| SWR-DP-015 | Ring software **shall** implement SPSC semantics: capacity a power of two; full and empty conditions per ICD; descriptor format `FrameDesc { offset: u32, len: u32 }` (`IF-RING-001`). | Must | IF-RING-001..003 | T/A | TEST-UNIT-RING, TEST-VERUS-001 |
 
-**Deferred / N/A for spike:** bare-metal boot requirements — None in this SRS.
+---
+
+## 6. NIC backends
+
+| ID | Requirement | Priority | Parent | V&V | Procedure |
+|----|-------------|----------|--------|-----|-----------|
+| SWR-NIC-020 | `pci-vf` software **shall** expose a single `NicBackend` interface providing at least readiness query, receive into a buffer, and transmit of a frame (`IF-NIC-001`). | Must | SYS-DP-002, IF-NIC-001 | T | TEST-UNIT-NIC |
+| SWR-NIC-021 | When configuration selects backend `sriov` and the configured VF is present, open **shall** yield the Sriov backend. | Must | SYS-DP-002, IF-NIC-003 | D/T | TEST-SMOKE-001 |
+| SWR-NIC-022 | When configuration selects `inject`, or when `allow_inject_fallback` is true and no VF is available, open **shall** yield the Inject backend (in-process frame queue). | Must | SYS-DP-003, IF-NIC-003 | T | TEST-UNIT-NIC |
+| SWR-NIC-023 | When configuration requires `sriov` with `allow_inject_fallback = false` and the VF/BDF is missing, open **shall** return an error and **shall not** silently substitute another backend. | Must | SYS-DP-004, IF-NIC-003 | T | TEST-UNIT-NIC |
+| SWR-NIC-024 | Guest forward logic **shall** depend only on `NicBackend`; switching Sriov↔Inject **shall** require configuration change only, not guest source change. | Must | SYS-DP-003 | I/D | TEST-DOC-001, TEST-SMOKE-001 |
+
+---
+
+## 7. Configuration and build
+
+| ID | Requirement | Priority | Parent | V&V | Procedure |
+|----|-------------|----------|--------|-----|-----------|
+| SWR-CFG-030 | Configuration software **shall** load demonstrator parameters from TOML sections defined by ICD `IF-CFG-*` (lab, datapath, guests, ring, bench, paths). | Must | SYS-AS-003, IF-CFG-* | T | TEST-CFG-001 |
+| SWR-CFG-031 | Configuration software **shall** reject incomplete TOML with an error that identifies the missing mandatory field. | Must | SYS-AS-003, IF-CFG-REJECT | T | TEST-CFG-001 |
+| SWR-CFG-032 | Configuration software **shall** honour environment overrides `HV_DEMO_CONFIG`, `HV_VF_BACKEND`, `HV_WAN_VF_BDF`, and `HV_LAN_VF_BDF` as specified in `IF-CFG-ENV`. | Must | IF-CFG-ENV | T | TEST-CFG-001 |
+| SWR-CFG-033 | Application source for `hv` and guests **shall not** embed laboratory-specific BDFs, memory sizes, ring capacities, or bench durations as demonstrator defaults. | Must | SYS-AS-003 | I | TEST-DOC-001 |
+| SWR-CFG-034 | The repository **shall** contain a complete example configuration file `config/demo.example.toml` conforming to `IF-CFG-*`. | Must | SYS-AS-003 | I | TEST-DOC-001 |
+| SWR-CFG-035 | QEMU command-line construction in the harness **shall** derive machine parameters solely from `DemoConfig` (no parallel hardcoded lab profile). | Must | SYS-AS-003, SYS-AS-004 | I/T | TEST-SMOKE-001 |
+
+---
+
+## 8. Assurance (proofs and coverage)
+
+| ID | Requirement | Priority | Parent | V&V | Procedure |
+|----|-------------|----------|--------|-----|-----------|
+| SWR-AS-040 | Provable safe software in `ring`, `isolation`, guest datapath logic, and safe portions of `pci-vf` **shall** carry Verus specifications; `cargo xtask verify` **shall** fail when proofs are broken under the hard-fail regime defined for Task 8 / `docs/VERUS.md`. | Must | SYS-AS-001 | T/A | TEST-VERUS-001 |
+| SWR-AS-041 | Every `unsafe` block belonging to the TCB **shall** be listed in `docs/TCB.md` with a one-line justification. | Must | SYS-AS-005 | I | TEST-DOC-001 |
+| SWR-AS-042 | `cargo xtask coverage` **shall** measure line coverage on the declared crate set and **shall** exit unsuccessful if coverage is strictly less than 90%. | Must | SYS-AS-002 | T | TEST-COV-001 |
+| SWR-AS-043 | Coverage exclusions **shall** be limited to files listed in an allowlist with explicit justification; silent exclusion **shall not** be used. | Must | SYS-AS-002 | I | TEST-COV-001 |
+| SWR-AS-044 | Unit tests for ring, isolation, and Inject **shall** exercise the real implementations; introduction of mocks that replace those components under test **shall** be treated as non-compliant. | Must | CON-QA-001 | I/T | TEST-UNIT-RING, TEST-UNIT-ISO, TEST-UNIT-NIC |
+
+---
+
+## 9. Harness and measurement
+
+| ID | Requirement | Priority | Parent | V&V | Procedure |
+|----|-------------|----------|--------|-----|-----------|
+| SWR-HVN-050 | The software **shall** provide `cargo xtask build` producing hypervisor and guest images at paths indicated by configuration. | Must | SYS-AS-004 | T | TEST-BUILD-001 |
+| SWR-HVN-051 | The software **shall** provide `cargo xtask run-nested` launching nested QEMU using arguments derived from `DemoConfig`. | Must | SYS-AS-004 | D/T | TEST-SMOKE-001 |
+| SWR-HVN-052 | The software **shall** provide `cargo xtask smoke` that waits for the serial magic string `SMOKE_OK` (`IF-SER-001`) after a successful datapath exercise. | Must | SYS-DP-001, IF-SER-001 | T | TEST-SMOKE-001 |
+| SWR-HVN-053 | The software **shall** provide `cargo xtask bench` that runs for `bench.duration_secs` at `bench.frame_size` (demonstrator default 64), bidirectional when configured, and writes a JSON report including Gbps, pps, loss, duration, and `target_met`. | Must | SYS-DP-005, IF-CFG-BENCH | T | TEST-BENCH-001 |
+| SWR-HVN-054 | Bench **shall** exit successfully when measurement completes even if configured `target_gbps` is not met; the report **shall** set `target_met` to false in that case. | Must | SYS-DP-006 | T | TEST-BENCH-001 |
+| SWR-HVN-055 | For official published performance figures, the configuration **should** select `sriov` with real VFs. | Should | SYS-DP-006 | D | TEST-BENCH-001 |
+| SWR-HVN-056 | Repository documentation **shall** include `docs/HARNESS.md` describing VFIO binding and nested SR‑IOV setup sufficient to switch backend without guest code changes. | Must | SYS-AS-004 | I | TEST-DOC-001 |
+| SWR-HVN-057 | The software **shall** provide `cargo xtask verify` and `cargo xtask coverage` entry points for assurance gates. | Must | SYS-AS-001, SYS-AS-002 | T | TEST-VERUS-001, TEST-COV-001 |
+
+---
+
+## 10. Documentation and CM
+
+| ID | Requirement | Priority | Parent | V&V | Procedure |
+|----|-------------|----------|--------|-----|-----------|
+| SWR-DOC-060 | The documentary suite SSS, SSDD, SRS, ICD, STD, and STR **shall** be maintained in English under `docs/system/`. | Must | SYS-AS-006 | I | TEST-DOC-001 |
+| SWR-DOC-061 | STD procedures **shall** reference `SWR-*` identifiers; STR **shall** record a result for each executed `TEST-*`. | Must | SYS-AS-006 | I | TEST-DOC-001 |
+| SWR-DOC-062 | Interface changes that alter on-the-wire or shared-memory layout **shall** update ICD issue and affected SRS/STD traceability in the same baseline. | Must | SYS-AS-006 | I | TEST-DOC-001 |
+
+---
+
+## 11. Requirements index and parent traceability
+
+| SWR ID | Title | Parent SYS |
+|--------|-------|------------|
+| SWR-ISO-001 | EPT private isolation | SYS-ISO-001 |
+| SWR-ISO-002 | Shared page mapping | SYS-ISO-002 |
+| SWR-ISO-003 | EPT violation handling | SYS-ISO-003 |
+| SWR-ISO-004 | Isolation model overlap reject | SYS-ISO-004 |
+| SWR-ISO-005 | Permission bits | SYS-ISO-004 |
+| SWR-DP-010 | no_std guests | SYS-DP-001 |
+| SWR-DP-011 | Bidirectional forward | SYS-DP-001 |
+| SWR-DP-012 | Boot-info driven | SYS-AS-003 |
+| SWR-DP-013 | Ring-full drop | SYS-DP-001 |
+| SWR-DP-014 | Stats updates | SYS-DP-005 |
+| SWR-DP-015 | SPSC ring semantics | SYS-DP-001 |
+| SWR-NIC-020 | NicBackend API | SYS-DP-002 |
+| SWR-NIC-021 | Sriov selection | SYS-DP-002 |
+| SWR-NIC-022 | Inject selection | SYS-DP-003 |
+| SWR-NIC-023 | Sriov fail-fast | SYS-DP-004 |
+| SWR-NIC-024 | Config-only switch | SYS-DP-003 |
+| SWR-CFG-030 | TOML load | SYS-AS-003 |
+| SWR-CFG-031 | Incomplete reject | SYS-AS-003 |
+| SWR-CFG-032 | Env overrides | SYS-AS-003 |
+| SWR-CFG-033 | No hardcoding | SYS-AS-003 |
+| SWR-CFG-034 | Example config | SYS-AS-003 |
+| SWR-CFG-035 | QEMU from config | SYS-AS-003 |
+| SWR-AS-040 | Verus specs | SYS-AS-001 |
+| SWR-AS-041 | TCB list | SYS-AS-005 |
+| SWR-AS-042 | Coverage ≥ 90% | SYS-AS-002 |
+| SWR-AS-043 | Coverage allowlist | SYS-AS-002 |
+| SWR-AS-044 | No business mocks | CON-QA-001 |
+| SWR-HVN-050 | xtask build | SYS-AS-004 |
+| SWR-HVN-051 | xtask run-nested | SYS-AS-004 |
+| SWR-HVN-052 | xtask smoke | SYS-DP-001 |
+| SWR-HVN-053 | xtask bench | SYS-DP-005 |
+| SWR-HVN-054 | Bench vs target | SYS-DP-006 |
+| SWR-HVN-055 | Prefer Sriov bench | SYS-DP-006 |
+| SWR-HVN-056 | HARNESS.md | SYS-AS-004 |
+| SWR-HVN-057 | verify + coverage cmds | SYS-AS-001/002 |
+| SWR-DOC-060 | English suite | SYS-AS-006 |
+| SWR-DOC-061 | STD/STR trace | SYS-AS-006 |
+| SWR-DOC-062 | ICD change CM | SYS-AS-006 |
+
+**Withdrawn IDs:** None.  
+**N/A for demonstrator:** bare-metal boot software requirements — None defined.
+
+---
+
+## 12. Change record
+
+| Issue | Date | Description |
+|-------|------|-------------|
+| 0.1 | 2026-10-26 | Skeleton seed |
+| 0.2 | 2026-10-26 | Renumbered area IDs; full shall attributes; parent/V&V/procedure columns |

@@ -1,291 +1,368 @@
-# ICD — Interface Control Document
+# Interface Control Document (ICD)
 
-**Product:** Hyperviseur edge gateway (spike)  
-**Version:** 0.1 (Task 0 seed)  
-**Language:** English
+| Field | Value |
+|-------|-------|
+| **Document ID** | HV-EDGE-ICD-001 |
+| **Title** | Hypervisor Edge Gateway — Interface Control Document |
+| **Issue** | 0.2 |
+| **Date** | 2026-10-26 |
+| **Classification** | UNCLASSIFIED — Technology Demonstrator |
+| **Parent suite** | HV-EDGE-DOC-SUITE |
+| **Normative for** | Shared-memory layouts, NIC open policy, boot blob semantics, config schema, serial smoke token |
+
+---
 
 ## Table of contents
 
-1. [Purpose](#1-purpose)
-2. [Conventions](#2-conventions)
-3. [Shared ring ABI (`IF-RING-*`)](#3-shared-ring-abi-if-ring-)
-4. [NicBackend (`IF-NIC-*`)](#4-nicbackend-if-nic-)
-5. [Boot info blob (`IF-BOOT-*`)](#5-boot-info-blob-if-boot-)
-6. [UART (`IF-UART-*`)](#6-uart-if-uart-)
-7. [Stats page (`IF-STATS-*`)](#7-stats-page-if-stats-)
-8. [Config schema `demo.toml` (`IF-CFG-*`)](#8-config-schema-demotoml-if-cfg-)
-9. [Serial smoke protocol (`IF-SER-*`)](#9-serial-smoke-protocol-if-ser-)
-10. [Interface index](#10-interface-index)
+1. [Document control](#1-document-control)  
+2. [General interface conventions](#2-general-interface-conventions)  
+3. [Shared ring (`IF-RING-*`)](#3-shared-ring-if-ring-)  
+4. [NicBackend (`IF-NIC-*`)](#4-nicbackend-if-nic-)  
+5. [Boot information blob (`IF-BOOT-*`)](#5-boot-information-blob-if-boot-)  
+6. [UART (`IF-UART-*`)](#6-uart-if-uart-)  
+7. [Statistics page (`IF-STATS-*`)](#7-statistics-page-if-stats-)  
+8. [Configuration schema (`IF-CFG-*`)](#8-configuration-schema-if-cfg-)  
+9. [Serial smoke protocol (`IF-SER-*`)](#9-serial-smoke-protocol-if-ser-)  
+10. [Sequence charts](#10-sequence-charts)  
+11. [Interface index](#11-interface-index)  
+12. [Change record](#12-change-record)
 
-## 1. Purpose
+---
 
-Define **wire and logical interfaces** owned by documentation, not by hardcoded source literals. Implementations must match these IDs; SRS `SWR-*` and STD `TEST-*` cite them.
+## 1. Document control
 
-Endianness: little-endian. Address width: 64-bit guest physical unless noted.
+### 1.1 Precedence
 
-## 2. Conventions
+1. This ICD is **normative** for interface semantics and, where sized, binary layouts.  
+2. In case of conflict with source comments, **this ICD prevails** until source and ICD are updated in the same baseline.  
+3. SSS/SRS cite ICD IDs; they do not redefine layouts.
 
-| Prefix | Domain |
-|--------|--------|
-| `IF-RING-` | Shared ring layout and operations |
-| `IF-NIC-` | `NicBackend` / VF / Inject |
-| `IF-BOOT-` | Boot info blob from `hv` to guests |
-| `IF-UART-` | Emulated UART / hypercall logging |
-| `IF-STATS-` | Shared counters page |
-| `IF-CFG-` | `demo.toml` + env |
-| `IF-SER-` | Host-visible serial protocol for smoke |
+### 1.2 Maturity of layouts
 
-Exact Rust field names may use snake_case equivalents; **layout and semantics** here are normative for the spike.
+| Interface | Binary layout status |
+|-----------|----------------------|
+| `IF-RING-*` | **Normative packing** aligned with `ring` crate Issue 0.2 |
+| `IF-STATS-*` | Semantic counters normative; `#[repr(C)]` offsets at guest bring-up |
+| `IF-BOOT-*` | Field set normative; packing at Tasks 5–6 |
+| `IF-NIC-*` | Logical API + open policy normative |
+| `IF-CFG-*` | TOML schema normative (see `config/demo.example.toml`) |
 
-## 3. Shared ring ABI (`IF-RING-*`)
+---
+
+## 2. General interface conventions
+
+| Topic | Convention |
+|-------|------------|
+| Endianness | Little-endian |
+| Address width | 64-bit guest physical (GPA) unless stated |
+| Atomic indices | `AtomicU32` free-running counters; wrap on overflow |
+| Alignment | Structures aligned to their natural Rust/`repr(C)` alignment unless stated |
+| String BDFs | ASCII `BBBB:bb:dd.f` (e.g. `0000:01:10.0`) |
+
+---
+
+## 3. Shared ring (`IF-RING-*`)
 
 ### IF-RING-001 — Frame descriptor
 
-| Field | Type | Meaning |
-|-------|------|---------|
-| `offset` | `u32` | Byte offset into the shared payload arena |
-| `len` | `u32` | Frame length in bytes |
+**Normative packing** (`#[repr(C)]`), 8 bytes:
 
-Descriptors do not embed payload bytes (zero-copy intent).
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 4 | `offset` | Byte offset into shared payload arena |
+| 4 | 4 | `len` | Frame length in bytes (≤ `frame_capacity` from config) |
 
-### IF-RING-002 — Ring header (shared memory)
+Payload bytes are **not** embedded in the descriptor (zero-copy).
 
-Logical header (exact packing finalized in `ring` crate; must remain SPSC-safe):
+### IF-RING-002 — Ring memory layout
 
-| Field | Type | Meaning |
-|-------|------|---------|
-| `capacity` | power-of-two `usize`/`u32` | Slot count (`capacity_pow2` from config) |
-| `write_idx` | atomic index | Producer cursor |
-| `read_idx` | atomic index | Consumer cursor |
+```text
+[ RingHeader | FrameDesc × capacity ]
+```
 
-Capacity and arena size come from config (`IF-CFG-RING`), not source constants.
+**RingHeader** (`#[repr(C)]`), 16 bytes:
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 4 | `capacity` | Slot count; non-zero power of two |
+| 4 | 4 | `_pad` | Reserved; write as 0 |
+| 8 | 4 | `write_idx` | Producer cursor (`AtomicU32`) |
+| 12 | 4 | `read_idx` | Consumer cursor (`AtomicU32`) |
+
+Slot index = `idx & (capacity - 1)`.
+
+**Full:** `write_idx.wrapping_sub(read_idx) == capacity`  
+**Empty:** `write_idx == read_idx`
+
+Initial state after `new_in`: both indices 0; slots zeroed.
 
 ### IF-RING-003 — Operations
 
-| Op | Semantics |
-|----|-----------|
-| `try_push(desc)` | Enqueue; on full → error / drop path (see SWR-013) |
-| `try_pop()` | Dequeue; on empty → error |
+| Operation | Precondition | Success | Failure |
+|-----------|--------------|---------|---------|
+| `try_push(desc)` | Single producer | Enqueues descriptor; advances `write_idx` with release semantics | `RingFull` — caller drops / retries; no overwrite |
+| `try_pop()` | Single consumer | Returns descriptor; advances `read_idx` with acquire semantics | `RingEmpty` |
 
-Single producer / single consumer per direction. Bidirectional datapath uses two rings or a dual-ring layout with the same descriptor ABI (implementation choice documented in SSDD as-built).
+**Concurrency:** Exactly one producer and one consumer per ring instance. Cross-guest mappings **shall** provide coherent shared pages (hypervisor responsibility).
 
 ### IF-RING-004 — Payload arena
 
-Contiguous shared region; `frame_capacity` (config) is the maximum `len` accepted for spike benches. Arena base/size appear in boot info (`IF-BOOT-002`).
+Contiguous shared region separate from the descriptor ring. `FrameDesc.offset` is relative to arena base. Maximum accepted `len` for the demonstrator is `ring.frame_capacity` from configuration.
+
+### IF-RING-005 — Initialisation errors
+
+`RingInitError` when: capacity is 0 or not power-of-two; arena too small for header + slots; alignment cannot be satisfied.
+
+### IF-RING-006 — Bidirectional datapath
+
+The system **shall** provide logical forwarding in both WAN→LAN and LAN→WAN directions. Realisation **may** use two SPSC rings or an equivalent dual structure; each direction **shall** obey `IF-RING-001..005`.
+
+---
 
 ## 4. NicBackend (`IF-NIC-*`)
 
-### IF-NIC-001 — Trait (logical)
+### IF-NIC-001 — Logical interface
 
-```text
-rx_ready() -> bool
-try_recv(buf) -> Result<usize, NicError>   # bytes written
-try_send(frame) -> Result<(), NicError>
-```
+| Method | Semantics |
+|--------|-----------|
+| `rx_ready() -> bool` | True if a receive attempt may succeed without waiting |
+| `try_recv(buf) -> Result<usize, NicError>` | Copies/produces at most `buf.len()` bytes; returns length |
+| `try_send(frame) -> Result<(), NicError>` | Submits frame bytes for host-facing transmit |
 
-### IF-NIC-002 — Backends
+### IF-NIC-002 — Backend types
 
-| Name | Behavior |
-|------|----------|
-| `Sriov` | Real VF via VFIO / passthrough as configured |
-| `Inject` | In-process frame queue (degraded lab / no VF) |
+| Name | Description |
+|------|-------------|
+| `Sriov` | Host↔guest via SR‑IOV Virtual Function (VFIO/passthrough as lab-configured) |
+| `Inject` | In-process frame queue implementing the same interface (degraded / no-VF lab) |
 
-### IF-NIC-003 — Open policy
+Inject is a **first-class backend**, not a unit-test mock of Sriov.
 
-| Config | Device present | Result |
-|--------|----------------|--------|
-| `backend=sriov` | yes | `Sriov` |
-| `backend=sriov`, `allow_inject_fallback=false` | no | **Error** |
-| `backend=sriov`, `allow_inject_fallback=true` | no | `Inject` |
-| `backend=inject` | N/A | `Inject` |
+### IF-NIC-003 — Open policy (normative)
 
-Flattened NIC config for guests is summarized in boot info (`IF-BOOT-003`); host-side open uses full `DemoConfig`.
+| `datapath.backend` | VF present | `allow_inject_fallback` | Result |
+|--------------------|------------|-------------------------|--------|
+| `sriov` | yes | any | `Sriov` |
+| `sriov` | no | `false` | **Error** (fail fast) |
+| `sriov` | no | `true` | `Inject` |
+| `inject` | any | any | `Inject` |
 
-### IF-NIC-004 — Errors
+### IF-NIC-004 — Error classes
 
-`NicError` includes at least: device missing, buffer too small, queue full/empty, I/O failure. Exact enum is code-owned; fail-fast on missing Sriov is mandatory (SWR-023).
+Implementations **shall** distinguish at least: device missing / open failure; buffer too small; queue full; queue empty; I/O failure. Exact Rust enum is implementation-owned; policy in `IF-NIC-003` is not optional.
 
-## 5. Boot info blob (`IF-BOOT-*`)
+---
 
-Prepared by `hv` from `DemoConfig` before guest entry. Guests must not hardcode these values.
+## 5. Boot information blob (`IF-BOOT-*`)
+
+Prepared by `hv` from `DemoConfig` before guest entry. Guests **shall not** hardcode these values.
 
 ### IF-BOOT-001 — Identity
 
-| Field | Meaning |
-|-------|---------|
-| `magic` | Spike-defined constant identifying the blob |
-| `version` | Schema version (`u32`) |
-| `guest_role` | `WAN` or `LAN` |
+| Field | Type (logical) | Description |
+|-------|----------------|-------------|
+| `magic` | `u32` | Identifies spike boot blob |
+| `version` | `u32` | Schema version; increment on breaking layout |
+| `guest_role` | enum/`u32` | `WAN` or `LAN` |
 
-### IF-BOOT-002 — Memory map pointers
+### IF-BOOT-002 — Memory map
 
-| Field | Meaning |
-|-------|---------|
-| `ring_header_gpa` | Guest physical address of ring header(s) |
-| `arena_gpa` / `arena_len` | Payload arena |
-| `stats_gpa` | Stats page (`IF-STATS-*`) |
-| `boot_info_gpa` | Self / mirror as needed |
+| Field | Description |
+|-------|-------------|
+| `ring_wan_to_lan_gpa` / `ring_lan_to_wan_gpa` (or equivalent) | GPA of ring region(s) |
+| `arena_gpa`, `arena_len` | Payload arena |
+| `stats_gpa` | Statistics page |
+| Private region bases/sizes | Informational / debug as needed |
 
-Private heap/stack regions remain guest-local; only shared regions are listed here.
+### IF-BOOT-003 — Flattened NIC parameters
 
-### IF-BOOT-003 — NIC flattened config
-
-| Field | Meaning |
-|-------|---------|
+| Field | Description |
+|-------|-------------|
 | `backend` | `sriov` \| `inject` |
-| `vf_bdf` | Optional BDF string/bytes when Sriov |
-| Backend-specific MMIO / queue tips | Filled by `hv` from lab config |
+| `vf_bdf` | Present when Sriov |
+| MMIO / queue tips | Filled by hypervisor from lab binding |
 
-### IF-BOOT-004 — UART
+### IF-BOOT-004 — UART tip
 
-| Field | Meaning |
-|-------|---------|
-| `uart_port` or hypercall id | How guests emit logs (`IF-UART-*`) |
+| Field | Description |
+|-------|-------------|
+| `uart_port` and/or hypercall identifier | Guest log emission path (`IF-UART-001`) |
+
+**Packing note:** Exact `#[repr(C)]` offsets are baselined when guest bring-up lands; field set above is binding.
+
+---
 
 ## 6. UART (`IF-UART-*`)
 
-### IF-UART-001
+### IF-UART-001 — Guest to operator
 
-Guests write log bytes via the mechanism advertised in boot info (I/O port exit and/or hypercall). `hv` emulates UART and forwards to the QEMU serial device visible to `xtask smoke` / operators.
+Guests write log bytes via the mechanism advertised in boot info. Hypervisor emulates UART (I/O exit and/or hypercall) and forwards to the QEMU serial device observed by `xtask smoke` and operators.
 
-### IF-UART-002
+### IF-UART-002 — Input
 
-No requirement for interactive console input in the spike. N/A for spike: full 16550 feature parity.
+Interactive console input is **N/A for demonstrator**. Full 16550 feature parity is **not** required.
 
-## 7. Stats page (`IF-STATS-*`)
+---
 
-Shared page (or small region) mapped to both guests and readable by the harness/bench path.
+## 7. Statistics page (`IF-STATS-*`)
 
-### IF-STATS-001 — Counters (minimum)
+### IF-STATS-001 — Counter set (semantic)
 
-| Counter | Direction / meaning |
-|---------|---------------------|
-| `wan_rx` / `wan_tx` | Frames at WAN NicBackend |
-| `lan_rx` / `lan_tx` | Frames at LAN NicBackend |
-| `ring_fwd_wan_to_lan` | Descriptors pushed WAN→LAN |
-| `ring_fwd_lan_to_wan` | Descriptors pushed LAN→WAN |
-| `ring_drop_full` | Drops due to full ring |
+Monotonic `u64` counters (layout offsets baselined with guests):
+
+| Counter | Meaning |
+|---------|---------|
+| `wan_rx`, `wan_tx` | Frames at WAN NicBackend |
+| `lan_rx`, `lan_tx` | Frames at LAN NicBackend |
+| `ring_fwd_wan_to_lan` | Descriptors successfully pushed WAN→LAN |
+| `ring_fwd_lan_to_wan` | Descriptors successfully pushed LAN→WAN |
+| `ring_drop_full` | Frames dropped due to full ring |
 | `bytes_*` | Optional byte counters for bench |
 
-Exact layout (`#[repr(C)]`) is finalized with code; this list is the semantic contract for smoke/bench.
+### IF-STATS-002 — Observation rules
 
-### IF-STATS-002 — Synchronization
+Readers (harness) **may** observe torn 64-bit values during smoke; bench sampling interval is harness-defined. Counters are updated by the owning guest only.
 
-Counters are monotonic `u64` updated by the owning guest; readers tolerate torn reads for smoke; bench sampling interval is harness-defined.
+---
 
-## 8. Config schema `demo.toml` (`IF-CFG-*`)
+## 8. Configuration schema (`IF-CFG-*`)
 
-Normative sections — all mandatory unless noted. Matches plan Task 1.
+All sections mandatory unless noted. Example: `config/demo.example.toml`.
 
 ### IF-CFG-LAB
 
-```toml
-[lab]
-qemu_bin = "qemu-system-x86_64"
-memory_mb = 4096
-smp = 4
-enable_iommu = true
-```
+| Key | Type | Description |
+|-----|------|-------------|
+| `qemu_bin` | string | QEMU executable |
+| `memory_mb` | integer | Nested VM RAM |
+| `smp` | integer | vCPU count for QEMU |
+| `enable_iommu` | bool | Pass IOMMU device when true |
 
 ### IF-CFG-DATAPATH
 
-```toml
-[datapath]
-backend = "sriov"              # "sriov" | "inject"
-allow_inject_fallback = false
-wan_vf_bdf = "0000:01:10.0"    # required if backend=sriov
-lan_vf_bdf = "0000:01:10.1"
-```
+| Key | Type | Description |
+|-----|------|-------------|
+| `backend` | `"sriov"` \| `"inject"` | Backend selection |
+| `allow_inject_fallback` | bool | See `IF-NIC-003` |
+| `wan_vf_bdf` | string | Required when `backend=sriov` |
+| `lan_vf_bdf` | string | Required when `backend=sriov` |
 
 ### IF-CFG-GUESTS
 
-```toml
-[guests]
-wan_memory_mb = 128
-lan_memory_mb = 128
-wan_vcpus = 1
-lan_vcpus = 1
-```
+| Key | Type | Description |
+|-----|------|-------------|
+| `wan_memory_mb`, `lan_memory_mb` | integer | Private guest memory sizes |
+| `wan_vcpus`, `lan_vcpus` | integer | Demonstrator uses 1 each |
 
 ### IF-CFG-RING
 
-```toml
-[ring]
-capacity_pow2 = 1024
-frame_capacity = 2048
-```
+| Key | Type | Description |
+|-----|------|-------------|
+| `capacity_pow2` | integer | Ring slot count (power of two) |
+| `frame_capacity` | integer | Max frame length (bytes) |
 
 ### IF-CFG-BENCH
 
-```toml
-[bench]
-frame_size = 64
-duration_secs = 30
-bidirectional = true
-target_gbps = 1.0
-```
+| Key | Type | Description |
+|-----|------|-------------|
+| `frame_size` | integer | Bench frame size (demonstrator: 64) |
+| `duration_secs` | integer | Measurement duration |
+| `bidirectional` | bool | Full-duplex when true |
+| `target_gbps` | float | Objective threshold for `target_met` |
 
 ### IF-CFG-PATHS
 
-```toml
-[paths]
-hv_image = "target/x86_64-unknown-none/release/hv"
-guest_wan_image = "target/x86_64-unknown-none/release/guest-wan"
-guest_lan_image = "target/x86_64-unknown-none/release/guest-lan"
-```
+| Key | Type | Description |
+|-----|------|-------------|
+| `hv_image` | path | Hypervisor image |
+| `guest_wan_image` | path | WAN guest image |
+| `guest_lan_image` | path | LAN guest image |
 
-### IF-CFG-ENV — Environment overrides
+### IF-CFG-ENV
 
 | Variable | Effect |
 |----------|--------|
-| `HV_DEMO_CONFIG` | Path to TOML file |
-| `HV_VF_BACKEND` | Override `datapath.backend` |
-| `HV_WAN_VF_BDF` | Override `datapath.wan_vf_bdf` |
-| `HV_LAN_VF_BDF` | Override `datapath.lan_vf_bdf` |
+| `HV_DEMO_CONFIG` | Path to TOML |
+| `HV_VF_BACKEND` | Overrides `datapath.backend` |
+| `HV_WAN_VF_BDF` | Overrides `datapath.wan_vf_bdf` |
+| `HV_LAN_VF_BDF` | Overrides `datapath.lan_vf_bdf` |
 
 ### IF-CFG-REJECT
 
-Parser shall error if any mandatory field is missing (SWR-031). Example complete file: `config/demo.example.toml` (Task 1).
+Parser **shall** fail closed if any mandatory field is missing or inconsistent with backend rules (e.g. `sriov` without BDFs).
+
+---
 
 ## 9. Serial smoke protocol (`IF-SER-*`)
 
 ### IF-SER-001
 
-After a successful smoke datapath, the system emits the ASCII magic string `SMOKE_OK` on the UART/serial stream observed by `cargo xtask smoke`.
+On successful smoke datapath completion, the system emits ASCII token **`SMOKE_OK`** on the UART/serial stream consumed by `cargo xtask smoke`.
 
 ### IF-SER-002
 
-N/A for spike: multi-line structured serial JSON protocol (bench uses file report instead).
+Multi-line structured serial JSON is **N/A for demonstrator**; bench uses a file report.
 
-## 10. Interface index
+---
 
-| ID | Summary |
-|----|---------|
-| IF-RING-001 | FrameDesc |
-| IF-RING-002 | Ring header |
-| IF-RING-003 | try_push / try_pop |
-| IF-RING-004 | Payload arena |
-| IF-NIC-001 | NicBackend ops |
-| IF-NIC-002 | Sriov / Inject |
-| IF-NIC-003 | Open policy |
-| IF-NIC-004 | NicError |
-| IF-BOOT-001 | Magic / version / role |
-| IF-BOOT-002 | GPA map |
-| IF-BOOT-003 | Flattened NIC |
-| IF-BOOT-004 | UART tip |
-| IF-UART-001 | Guest→hv log path |
-| IF-UART-002 | No interactive RX (N/A) |
-| IF-STATS-001 | Counter set |
-| IF-STATS-002 | Sync rules |
-| IF-CFG-LAB | `[lab]` |
-| IF-CFG-DATAPATH | `[datapath]` |
-| IF-CFG-GUESTS | `[guests]` |
-| IF-CFG-RING | `[ring]` |
-| IF-CFG-BENCH | `[bench]` |
-| IF-CFG-PATHS | `[paths]` |
-| IF-CFG-ENV | Env overrides |
-| IF-CFG-REJECT | Incomplete reject |
-| IF-SER-001 | `SMOKE_OK` |
-| IF-SER-002 | Structured serial N/A |
+## 10. Sequence charts
 
-**Open interface decisions:** Exact `#[repr(C)]` byte layouts — deferred to implementation commits; semantics above are binding.
+### 10.1 Smoke (Inject path)
+
+```text
+Operator          xtask           QEMU/hv         WAN           Ring          LAN
+   |                |                |             |             |             |
+   |-- smoke ------->|                |             |             |             |
+   |                |-- start ------->|             |             |             |
+   |                |                |-- boot+map ->|             |             |
+   |                |                |------------->|-------------|------------>|
+   |                |                |             |<- inject RX -|             |
+   |                |                |             |-- try_push ->|             |
+   |                |                |             |             |-- try_pop ->|
+   |                |                |             |             |             |-- TX
+   |                |                |             |             |             |-- stats
+   |                |<- SMOKE_OK ----|<------------ UART -------------------   |
+   |<- Pass --------|                |             |             |             |
+```
+
+### 10.2 Configuration fail-closed
+
+```text
+Operator    demo-config
+   |             |
+   |-- load ---->|
+   |             |-- missing field?
+   |<- error ----|
+   |  (no QEMU)
+```
+
+---
+
+## 11. Interface index
+
+| ID | Summary | Normative depth |
+|----|---------|-----------------|
+| IF-RING-001 | FrameDesc packing | Binary |
+| IF-RING-002 | Header + slots layout | Binary |
+| IF-RING-003 | push/pop semantics | Behaviour |
+| IF-RING-004 | Payload arena | Behaviour |
+| IF-RING-005 | Init errors | Behaviour |
+| IF-RING-006 | Bidirectional realisation | Behaviour |
+| IF-NIC-001 | NicBackend methods | Logical API |
+| IF-NIC-002 | Backend types | Taxonomy |
+| IF-NIC-003 | Open policy | Behaviour |
+| IF-NIC-004 | Error classes | Behaviour |
+| IF-BOOT-001..004 | Boot blob fields | Semantic (packing later) |
+| IF-UART-001..002 | UART path | Behaviour |
+| IF-STATS-001..002 | Counters | Semantic |
+| IF-CFG-* | TOML + env | Schema |
+| IF-SER-001..002 | Smoke token | Protocol |
+
+---
+
+## 12. Change record
+
+| Issue | Date | Description |
+|-------|------|-------------|
+| 0.1 | 2026-10-26 | Skeleton seed |
+| 0.2 | 2026-10-26 | Normative ring packing; open policy tables; sequences; maturity matrix |
