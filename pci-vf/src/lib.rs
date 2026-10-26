@@ -17,7 +17,7 @@ mod traits;
 mod verus_stub;
 
 pub use inject::InjectNic;
-pub use sriov::SriovNic;
+pub use sriov::{probe_vf_status, SriovNic, VfStatus};
 pub use traits::{BackendKind, FlattenedNicConfig, NicBackend, NicError};
 
 /// Concrete backend returned by [`open_from_config`].

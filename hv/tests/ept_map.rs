@@ -5,7 +5,7 @@
 //! derives from those sizes.
 
 use demo_config::DemoConfig;
-use guest_common::{GuestRole, BOOT_INFO_MAGIC, BOOT_INFO_VERSION};
+use guest_common::{GuestRole, NicBackendKind, BOOT_INFO_MAGIC, BOOT_INFO_VERSION};
 use hv::boot_blob::fill_boot_info;
 use hv::config::FlatHvConfig;
 use hv::ept::{build_ept_intent, EptGuest};
@@ -141,6 +141,9 @@ fn boot_info_filled_from_layout_not_lab_literals() {
     assert_eq!(boot.boot_info_gpa, layout.boot_info_wan.base);
     assert_eq!(boot.uart_port, flat.uart_io_port);
     assert_ne!(boot.uart_port, 0, "uart must come from config");
+    // demo.example.toml selects sriov; from_demo must not silent-Inject.
+    assert!(!flat.nic_is_inject());
+    assert_eq!(boot.nic_backend, NicBackendKind::Sriov);
 }
 
 #[test]

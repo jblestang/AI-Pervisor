@@ -1,6 +1,13 @@
 # Checked-in template for the hypervisor spike demonstrator.
 # Copy to config/demo.toml (gitignored) and adjust for your lab.
 # Env overrides: HV_DEMO_CONFIG, HV_VF_BACKEND, HV_WAN_VF_BDF, HV_LAN_VF_BDF
+#
+# Task 10 — SR-IOV lab path:
+#   - Official smoke/bench require backend=sriov + real VFs bound to vfio-pci
+#     (see docs/HARNESS.md VF bind checklist). allow_inject_fallback=false.
+#   - Guests are unchanged when flipping backend via this file / env only.
+#   - Until L2 VMLAUNCH completes, `cargo xtask smoke|bench` with Sriov+VFs
+#     fail fast with an actionable message (no silent Inject).
 
 [lab]
 qemu_bin = "qemu-system-x86_64"

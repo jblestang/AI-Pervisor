@@ -138,42 +138,97 @@ pub fn check_kvm_nested() -> Result<(), NestedError> {
     Ok(())
 }
 
+/// Sysfs root for PCI devices (`HV_TEST_VF_SYSFS_ROOT` overrides for host tests).
+fn pci_sysfs_root() -> PathBuf {
+    std::env::var_os("HV_TEST_VF_SYSFS_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/sys/bus/pci/devices"))
+}
+
 /// Sysfs presence check for a PCI BDF (`0000:bb:dd.f`).
 pub fn vf_sysfs_present(bdf: &str) -> bool {
     let bdf = bdf.trim();
     if bdf.is_empty() {
         return false;
     }
-    Path::new("/sys/bus/pci/devices").join(bdf).is_dir()
+    pci_sysfs_root().join(bdf).is_dir()
 }
 
-/// Apply Inject fallback policy when Sriov VFs are missing.
+/// True when the VF sysfs `driver` symlink leaf is `vfio-pci`.
+pub fn vf_vfio_bound(bdf: &str) -> bool {
+    let bdf = bdf.trim();
+    if bdf.is_empty() {
+        return false;
+    }
+    let link = pci_sysfs_root().join(bdf).join("driver");
+    match std::fs::read_link(&link) {
+        Ok(target) => target
+            .file_name()
+            .and_then(|s| s.to_str())
+            .map(|s| s == "vfio-pci")
+            .unwrap_or(false),
+        Err(_) => false,
+    }
+}
+
+/// Describe why a configured VF is not ready for Sriov passthrough.
+fn vf_readiness(bdf: &str) -> Result<(), String> {
+    let bdf = bdf.trim();
+    if bdf.is_empty() {
+        return Err("BDF empty".into());
+    }
+    if !vf_sysfs_present(bdf) {
+        return Err(format!(
+            "sysfs node missing (/sys/bus/pci/devices/{bdf} or HV_TEST_VF_SYSFS_ROOT)"
+        ));
+    }
+    if !vf_vfio_bound(bdf) {
+        let driver = std::fs::read_link(pci_sysfs_root().join(bdf).join("driver"))
+            .ok()
+            .and_then(|p| {
+                p.file_name()
+                    .map(|s| s.to_string_lossy().into_owned())
+            })
+            .unwrap_or_else(|| "unbound".into());
+        return Err(format!(
+            "not bound to vfio-pci (current driver={driver}); see docs/HARNESS.md § VF bind checklist"
+        ));
+    }
+    Ok(())
+}
+
+/// Apply Inject fallback policy when Sriov VFs are missing / unbound.
 ///
 /// Returns the backend that will actually be used (may rewrite `cfg` in place).
+/// Never silently substitutes Inject when `allow_inject_fallback=false`.
 pub fn resolve_datapath_for_launch(cfg: &mut DemoConfig) -> Result<VfBackend, NestedError> {
     match cfg.datapath.backend {
         VfBackend::Inject => Ok(VfBackend::Inject),
         VfBackend::Sriov => {
             let wan = cfg.datapath.wan_vf_bdf.as_deref().unwrap_or("").trim();
             let lan = cfg.datapath.lan_vf_bdf.as_deref().unwrap_or("").trim();
-            let wan_ok = vf_sysfs_present(wan);
-            let lan_ok = vf_sysfs_present(lan);
-            if wan_ok && lan_ok {
+            let wan_ready = vf_readiness(wan);
+            let lan_ready = vf_readiness(lan);
+            if wan_ready.is_ok() && lan_ready.is_ok() {
                 return Ok(VfBackend::Sriov);
             }
+            let wan_detail = wan_ready.err().unwrap_or_else(|| "ok".into());
+            let lan_detail = lan_ready.err().unwrap_or_else(|| "ok".into());
             if cfg.datapath.allow_inject_fallback {
                 eprintln!(
-                    "xtask: Sriov VF missing (wan_present={wan_ok} lan_present={lan_ok}); \
+                    "xtask: Sriov VF not ready \
+                     (wan={wan:?}: {wan_detail}; lan={lan:?}: {lan_detail}); \
                      allow_inject_fallback=true → using Inject"
                 );
                 cfg.datapath.backend = VfBackend::Inject;
                 Ok(VfBackend::Inject)
             } else {
                 Err(NestedError::Message(format!(
-                    "datapath.backend=sriov but VF sysfs missing \
-                     (wan={wan:?} present={wan_ok}, lan={lan:?} present={lan_ok}) \
+                    "datapath.backend=sriov but VF not ready for passthrough \
+                     (wan={wan:?}: {wan_detail}; lan={lan:?}: {lan_detail}) \
                      and allow_inject_fallback=false.\n  \
-                     hint: bind VFs per docs/HARNESS.md, or set datapath.backend=inject \
+                     hint: complete the VF bind checklist in docs/HARNESS.md \
+                     (IOMMU + vfio-pci + nested), or set datapath.backend=inject \
                      / allow_inject_fallback=true, or HV_VF_BACKEND=inject"
                 )))
             }
@@ -329,4 +384,135 @@ pub fn load_demo_config(root: &Path) -> Result<DemoConfig, NestedError> {
     );
     DemoConfig::load(&example)
         .map_err(|e| NestedError::Message(format!("config {}: {e}", example.display())))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use demo_config::DemoConfig;
+    use std::sync::Mutex;
+
+    /// Serialise tests that mutate `HV_TEST_VF_SYSFS_ROOT` (process-global env).
+    static VF_SYSFS_LOCK: Mutex<()> = Mutex::new(());
+
+    fn sriov_cfg(fallback: bool) -> DemoConfig {
+        let toml = format!(
+            r#"
+[lab]
+qemu_bin = "qemu-system-x86_64"
+memory_mb = 512
+smp = 2
+enable_iommu = true
+
+[datapath]
+backend = "sriov"
+allow_inject_fallback = {fallback}
+wan_vf_bdf = "0000:de:10.0"
+lan_vf_bdf = "0000:de:10.1"
+
+[guests]
+wan_memory_mb = 64
+lan_memory_mb = 64
+wan_vcpus = 1
+lan_vcpus = 1
+
+[ring]
+capacity_pow2 = 64
+frame_capacity = 256
+
+[bench]
+frame_size = 64
+duration_secs = 1
+bidirectional = true
+target_gbps = 1.0
+
+[hv]
+gpa_window_base = 0x10000000
+uart_io_port = 0x3F8
+
+[paths]
+hv_image = "target/x86_64-unknown-none/debug/hv"
+guest_wan_image = "target/x86_64-unknown-none/debug/guest-wan"
+guest_lan_image = "target/x86_64-unknown-none/debug/guest-lan"
+"#
+        );
+        DemoConfig::parse_str(&toml).expect("sriov test cfg")
+    }
+
+    fn fake_vfio_tree(bdfs: &[&str]) -> PathBuf {
+        let tmp = std::env::temp_dir().join(format!(
+            "xtask-vf-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let drivers = tmp.join("drivers/vfio-pci");
+        std::fs::create_dir_all(&drivers).unwrap();
+        for bdf in bdfs {
+            let dev = tmp.join(bdf);
+            std::fs::create_dir_all(&dev).unwrap();
+            std::os::unix::fs::symlink(&drivers, dev.join("driver")).unwrap();
+        }
+        tmp
+    }
+
+    #[test]
+    fn resolve_sriov_fails_fast_without_vf_when_fallback_off() {
+        let _guard = VF_SYSFS_LOCK.lock().unwrap();
+        std::env::remove_var("HV_TEST_VF_SYSFS_ROOT");
+        let mut cfg = sriov_cfg(false);
+        let err = resolve_datapath_for_launch(&mut cfg).expect_err("no silent inject");
+        let msg = err.to_string();
+        assert!(msg.contains("allow_inject_fallback=false"));
+        assert!(msg.contains("HARNESS"));
+        assert_eq!(cfg.datapath.backend, VfBackend::Sriov);
+    }
+
+    #[test]
+    fn resolve_sriov_fallback_rewrites_to_inject() {
+        let _guard = VF_SYSFS_LOCK.lock().unwrap();
+        std::env::remove_var("HV_TEST_VF_SYSFS_ROOT");
+        let mut cfg = sriov_cfg(true);
+        let backend = resolve_datapath_for_launch(&mut cfg).expect("fallback");
+        assert_eq!(backend, VfBackend::Inject);
+        assert_eq!(cfg.datapath.backend, VfBackend::Inject);
+    }
+
+    #[test]
+    fn resolve_sriov_ready_when_vfio_bound() {
+        let _guard = VF_SYSFS_LOCK.lock().unwrap();
+        let tmp = fake_vfio_tree(&["0000:de:10.0", "0000:de:10.1"]);
+        std::env::set_var("HV_TEST_VF_SYSFS_ROOT", &tmp);
+        let mut cfg = sriov_cfg(false);
+        let backend = resolve_datapath_for_launch(&mut cfg);
+        std::env::remove_var("HV_TEST_VF_SYSFS_ROOT");
+        let _ = std::fs::remove_dir_all(&tmp);
+        assert_eq!(backend.expect("ready"), VfBackend::Sriov);
+        assert_eq!(cfg.datapath.backend, VfBackend::Sriov);
+    }
+
+    #[test]
+    fn resolve_sriov_rejects_unbound_device_without_fallback() {
+        let _guard = VF_SYSFS_LOCK.lock().unwrap();
+        let tmp = std::env::temp_dir().join(format!(
+            "xtask-vf-unbound-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        for bdf in ["0000:de:10.0", "0000:de:10.1"] {
+            std::fs::create_dir_all(tmp.join(bdf)).unwrap();
+        }
+        std::env::set_var("HV_TEST_VF_SYSFS_ROOT", &tmp);
+        let mut cfg = sriov_cfg(false);
+        let err = resolve_datapath_for_launch(&mut cfg).expect_err("unbound");
+        std::env::remove_var("HV_TEST_VF_SYSFS_ROOT");
+        let _ = std::fs::remove_dir_all(&tmp);
+        assert!(err.to_string().contains("vfio-pci"));
+        assert_eq!(cfg.datapath.backend, VfBackend::Sriov);
+    }
 }

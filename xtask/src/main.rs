@@ -362,6 +362,18 @@ fn cmd_smoke(root: &Path) -> ExitCode {
         Ok(v) => v,
         Err(c) => return c,
     };
+    // Honest Sriov path: L1 inject smoke is skipped when nic_backend is Sriov.
+    // L2 VMLAUNCH + guest VF poll is still incomplete — fail fast instead of
+    // waiting 30s for a SMOKE_OK that cannot appear (no silent Inject).
+    if cfg.datapath.backend == demo_config::VfBackend::Sriov {
+        eprintln!(
+            "xtask smoke: datapath.backend=sriov with VFs vfio-bound, but L2 VMLAUNCH \
+             + guest Sriov datapath is not yet complete — cannot emit SMOKE_OK honestly.\n  \
+             hint: for lab/CI Inject smoke use HV_VF_BACKEND=inject (or backend=inject); \
+             when VFs are ready, see docs/HARNESS.md § \"Sriov smoke / remaining gaps\""
+        );
+        return ExitCode::FAILURE;
+    }
     let (qemu, args) = match build_qemu_command(root, &cfg, &images, NestedMode::Smoke) {
         Ok(v) => v,
         Err(e) => {

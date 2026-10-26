@@ -203,7 +203,12 @@ fn sriov_open_succeeds_against_fake_sysfs_tree() {
             .as_nanos()
     ));
     let bdf = "0000:0a:00.1";
-    std::fs::create_dir_all(tmp.join(bdf)).expect("fake sysfs node");
+    let dev = tmp.join(bdf);
+    std::fs::create_dir_all(&dev).expect("fake sysfs node");
+    // Task 10: open requires a vfio-pci driver symlink (bind checklist).
+    let drivers = tmp.join("drivers/vfio-pci");
+    std::fs::create_dir_all(&drivers).expect("fake vfio-pci driver dir");
+    std::os::unix::fs::symlink(&drivers, dev.join("driver")).expect("driver symlink");
     // SAFETY: test-only env for probe root; cleaned up below.
     std::env::set_var("HV_TEST_VF_SYSFS_ROOT", &tmp);
     let cfg = FlattenedNicConfig {
@@ -220,4 +225,23 @@ fn sriov_open_succeeds_against_fake_sysfs_tree() {
     assert!(!backend.rx_ready());
     let mut buf = [0u8; 4];
     assert!(matches!(backend.try_recv(&mut buf), Err(NicError::QueueEmpty)));
+}
+
+#[test]
+fn sriov_open_rejects_unbound_vf_sysfs_node() {
+    let tmp = std::env::temp_dir().join(format!(
+        "hv-vf-unbound-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let bdf = "0000:0b:00.1";
+    std::fs::create_dir_all(tmp.join(bdf)).expect("fake unbound VF");
+    std::env::set_var("HV_TEST_VF_SYSFS_ROOT", &tmp);
+    let err = SriovNic::open(bdf).expect_err("unbound VF must not open");
+    std::env::remove_var("HV_TEST_VF_SYSFS_ROOT");
+    let _ = std::fs::remove_dir_all(&tmp);
+    assert!(matches!(err, NicError::DeviceMissing { .. }));
 }

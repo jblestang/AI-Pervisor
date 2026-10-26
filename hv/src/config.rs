@@ -23,7 +23,7 @@ pub struct FlatHvConfig {
     pub _uart_pad: u16,
     /// Inject queue tip capacity mirrored into boot info (0 = unspecified).
     pub inject_queue_capacity: u32,
-    /// Non-zero when Inject (or inject-fallback) is selected by config.
+    /// Non-zero when the *resolved* backend is Inject (after VF open policy).
     pub nic_backend_inject: u32,
 }
 
@@ -87,10 +87,92 @@ impl FlatHvConfig {
             uart_io_port: cfg.hv.uart_io_port,
             _uart_pad: 0,
             inject_queue_capacity: cfg.ring.capacity_pow2,
-            nic_backend_inject: u32::from(
-                matches!(cfg.datapath.backend, VfBackend::Inject)
-                    || cfg.datapath.allow_inject_fallback,
-            ),
+            // Reflect the *resolved* backend only. Callers (xtask) must run
+            // `resolve_datapath_for_launch` first so Inject fallback rewrites
+            // `datapath.backend` before this lift. Never OR with
+            // `allow_inject_fallback` — that flag only authorises a rewrite
+            // when VFs are missing; it must not silently mark Sriov as Inject
+            // when VFs are present (SWR-NIC-023 / Task 10).
+            nic_backend_inject: u32::from(matches!(
+                cfg.datapath.backend,
+                VfBackend::Inject
+            )),
         }
+    }
+}
+
+#[cfg(all(test, feature = "std"))]
+mod flat_backend_tests {
+    use super::*;
+    use alloc::format;
+    use alloc::string::String;
+    use demo_config::{DemoConfig, VfBackend};
+
+    fn base_toml(backend: &str, fallback: bool) -> String {
+        format!(
+            r#"
+[lab]
+qemu_bin = "qemu-system-x86_64"
+memory_mb = 512
+smp = 2
+enable_iommu = true
+
+[datapath]
+backend = "{backend}"
+allow_inject_fallback = {fallback}
+wan_vf_bdf = "0000:01:10.0"
+lan_vf_bdf = "0000:01:10.1"
+
+[guests]
+wan_memory_mb = 64
+lan_memory_mb = 64
+wan_vcpus = 1
+lan_vcpus = 1
+
+[ring]
+capacity_pow2 = 64
+frame_capacity = 256
+
+[bench]
+frame_size = 64
+duration_secs = 1
+bidirectional = true
+target_gbps = 1.0
+
+[hv]
+gpa_window_base = 0x10000000
+uart_io_port = 0x3F8
+
+[paths]
+hv_image = "target/x86_64-unknown-none/debug/hv"
+guest_wan_image = "target/x86_64-unknown-none/debug/guest-wan"
+guest_lan_image = "target/x86_64-unknown-none/debug/guest-lan"
+"#
+        )
+    }
+
+    #[test]
+    fn sriov_with_fallback_flag_does_not_mark_inject() {
+        // allow_inject_fallback=true must NOT flip nic_backend_inject while
+        // backend remains Sriov (VFs present / resolve kept Sriov).
+        let cfg = DemoConfig::parse_str(&base_toml("sriov", true)).expect("parse");
+        assert_eq!(cfg.datapath.backend, VfBackend::Sriov);
+        assert!(cfg.datapath.allow_inject_fallback);
+        let flat = FlatHvConfig::from_demo(&cfg);
+        assert!(!flat.nic_is_inject(), "must not silent-Inject when Sriov selected");
+    }
+
+    #[test]
+    fn inject_backend_marks_inject() {
+        let cfg = DemoConfig::parse_str(&base_toml("inject", true)).expect("parse");
+        let flat = FlatHvConfig::from_demo(&cfg);
+        assert!(flat.nic_is_inject());
+    }
+
+    #[test]
+    fn sriov_without_fallback_marks_sriov() {
+        let cfg = DemoConfig::parse_str(&base_toml("sriov", false)).expect("parse");
+        let flat = FlatHvConfig::from_demo(&cfg);
+        assert!(!flat.nic_is_inject());
     }
 }

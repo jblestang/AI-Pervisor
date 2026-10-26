@@ -42,7 +42,11 @@ impl fmt::Display for NicError {
         match self {
             NicError::MissingBdf => write!(f, "sriov required but VF BDF missing"),
             NicError::DeviceMissing { bdf } => {
-                write!(f, "sriov VF device missing or unavailable: {bdf}")
+                write!(
+                    f,
+                    "sriov VF missing or not bound to vfio-pci: {bdf} \
+                     (see docs/HARNESS.md VF bind checklist)"
+                )
             }
             NicError::BufferTooSmall => write!(f, "receive buffer too small for frame"),
             NicError::QueueFull => write!(f, "NIC queue full"),
