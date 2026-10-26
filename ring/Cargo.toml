@@ -3,6 +3,11 @@ name = "ring"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Shared SPSC ring buffer (placeholder)"
+description = "Shared SPSC ring buffer (Verus-annotated)"
+
+# Opt-in for cargo-verus once the workspace rustc pin matches a Verus release
+# (see docs/VERUS.md). Keep false while only attribute stubs are present.
+[package.metadata.verus]
+verify = false
 
 [dependencies]
