@@ -19,7 +19,7 @@ enum Cmd {
     Build,
     /// Run nested QEMU (wired in a later task).
     RunNested,
-    /// Run Verus verification on annotated crates (`ring` for Task 2).
+    /// Run Verus verification on annotated crates (`ring`, `isolation`).
     Verify,
     /// Nested smoke test (wired in a later task).
     Smoke,
@@ -35,7 +35,7 @@ const FREESTANDING: &[&str] = &["hv", "guest-wan", "guest-lan"];
 const HOST_LIBS: &[&str] = &["ring", "isolation", "pci-vf", "demo-config"];
 const FREESTANDING_TARGET: &str = "x86_64-unknown-none";
 /// Crates with Verus-oriented contracts (expand in Task 8).
-const VERIFY_CRATES: &[&str] = &["ring"];
+const VERIFY_CRATES: &[&str] = &["ring", "isolation"];
 
 fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))

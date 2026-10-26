@@ -13,7 +13,7 @@
 | Required rustc | **1.99.1-x86_64-unknown-linux-gnu** |
 | Workspace pin | **1.99.1** |
 
-`cargo xtask verify` invokes Verus on annotated crates (`ring`) when `VERUS_BIN` or `verus` on `PATH` is set. Soft-skips (exit 0) when:
+`cargo xtask verify` invokes Verus on annotated crates (`ring`, `isolation`) when `VERUS_BIN` or `verus` on `PATH` is set. Soft-skips (exit 0) when:
 
 - the Verus binary is missing, or
 - Verus reports a rustup/toolchain mismatch, or
@@ -21,14 +21,15 @@
 
 Other Verus failures hard-fail.
 
-## Current proof status (`ring`)
+## Current proof status (`ring`, `isolation`)
 
-- Host tests: `cargo test -p ring`.
-- In-source proof intent uses `requires!` / `ensures!` stubs in `ring/src/verus_stub.rs` so the crate builds without a Verus Cargo feature.
+- Host tests: `cargo test -p ring`, `cargo test -p isolation`.
+- In-source proof intent uses `requires!` / `ensures!` stubs in each crate’s `src/verus_stub.rs` so the crates build without a Verus Cargo feature.
+- `isolation` exposes `Region` / `MemoryMap::check_access` with overlap rejection for private WAN/LAN claims.
 - Real `verus!` / `vstd` contracts and hard-fail CI on proof errors remain for Task 8 (`[package.metadata.verus] verify = true`).
 
 ## Enabling full verification
 
 1. Install Verus release binaries; set `VERUS_BIN` or put `verus` on `PATH`.
-2. Replace stubs with real `verus!` / `vstd` contracts; set `verify = true` in `ring/Cargo.toml`.
+2. Replace stubs with real `verus!` / `vstd` contracts; set `verify = true` in annotated crates’ `Cargo.toml`.
 3. Re-run `cargo xtask verify` and require a hard failure on proof errors (Task 8).
