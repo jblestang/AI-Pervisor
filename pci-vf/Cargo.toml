@@ -3,6 +3,19 @@ name = "pci-vf"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "NIC backend trait: Sriov | Inject (placeholder)"
+description = "NIC backend trait: Sriov | Inject"
+
+# Opt-in for cargo-verus once the workspace rustc pin matches a Verus release
+# (see docs/VERUS.md). Keep false while only attribute stubs are present.
+[package.metadata.verus]
+verify = false
+
+[features]
+default = ["std"]
+# Host/sysfs VF probe. Guests build with `--no-default-features` for pure no_std.
+std = []
 
 [dependencies]
+
+[dev-dependencies]
+demo-config = { path = "../crates/demo-config" }
