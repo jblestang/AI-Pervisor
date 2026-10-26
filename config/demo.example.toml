@@ -29,6 +29,7 @@ frame_size = 64
 duration_secs = 30
 bidirectional = true
 target_gbps = 1.0
+report_path = "target/bench-report.json"
 
 [hv]
 # Guest GPA window start and UART I/O tip for exits (not lab RAM addresses).

@@ -1,0 +1,19 @@
+{
+  "frame_size": 64,
+  "duration_secs": 1.0,
+  "bidirectional": true,
+  "backend": "inject",
+  "gbps": 2.241386,
+  "pps": 4377707.538,
+  "loss": 0.0,
+  "target_gbps": 1.0,
+  "target_met": true,
+  "environment_class": "inject-harness",
+  "git_sha": "SAMPLE",
+  "timestamp": "0",
+  "frames_delivered": 4377709,
+  "bytes_delivered": 280173376,
+  "ring_drops": 0,
+  "gbps_basis": "aggregate_bidirectional_tx_bytes",
+  "loss_unit": "ratio_drops_over_drops_plus_forwards"
+}

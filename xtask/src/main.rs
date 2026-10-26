@@ -1,5 +1,6 @@
 //! Hypervisor spike developer CLI (`cargo xtask …`).
 
+mod bench;
 mod coverage;
 mod qemu;
 
@@ -33,7 +34,7 @@ enum Cmd {
     Verify,
     /// Nested smoke: boot path, wait for serial `SMOKE_OK`.
     Smoke,
-    /// E2E bench @ 64 B (wired in a later task).
+    /// E2E bench @ 64 B bidirectional; writes `IF-RPT-BENCH` JSON report.
     Bench,
     /// Line-coverage gate (≥90% on declared crates; see `coverage-allowlist.toml`).
     Coverage,
@@ -478,7 +479,13 @@ fn main() -> ExitCode {
         Cmd::RunNested => cmd_run_nested(&root),
         Cmd::Verify => cmd_verify(&root),
         Cmd::Smoke => cmd_smoke(&root),
-        Cmd::Bench => not_wired("bench"),
+        Cmd::Bench => match load_demo_config(&root) {
+            Ok(cfg) => bench::cmd_bench(&root, cfg),
+            Err(e) => {
+                eprintln!("xtask bench: {e}");
+                ExitCode::FAILURE
+            }
+        },
         Cmd::Coverage => coverage::cmd_coverage(&root),
         Cmd::Gdb => not_wired("gdb"),
     }

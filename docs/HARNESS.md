@@ -1,18 +1,19 @@
 # Lab harness notes
 
-Issue: 0.1 — Task 6 seeded bring-up; **Task 7** wires `run-nested` / `smoke` and the VFIO checklist below.
+Issue: 0.2 — Task 7 smoke + Task 9 `xtask bench` / stats ABI.
 
 ## Commands
 
 | Command | Behaviour |
 |---------|-----------|
 | `cargo xtask build` | Host libs + freestanding `hv` / `guest-wan` / `guest-lan` |
-| `cargo xtask run-nested` | QEMU argv **only** from `DemoConfig`; Multiboot2 `-kernel` + `-initrd` modules |
+| `cargo xtask run-nested` | QEMU argv **only** from `DemoConfig`; Multiboot1 `-kernel` + `-initrd` modules |
 | `cargo xtask smoke` | Same boot path; wait for serial ASCII token `SMOKE_OK` (`IF-SER-001`) |
+| `cargo xtask bench` | Timed E2E measure from `[bench]`; writes `IF-RPT-BENCH` JSON (`target_met` may be false; exit 0 if measured) |
 
 Config resolution: `HV_DEMO_CONFIG` → `config/demo.toml` → `config/demo.example.toml`.
 
-Env overrides: `HV_VF_BACKEND`, `HV_WAN_VF_BDF`, `HV_LAN_VF_BDF`.
+Env overrides: `HV_VF_BACKEND`, `HV_WAN_VF_BDF`, `HV_LAN_VF_BDF`, `HV_BENCH_REPORT` (report path).
 
 ## What Task 6/7 delivered
 
@@ -114,7 +115,48 @@ Mark STR/evidence as **Inject / degraded**, never as Sriov.
 - Token: ASCII `SMOKE_OK` (optional trailing newline)
 - Emitted by L1 inject smoke in `hv` after a real `forward_wan_poll` + `forward_lan_poll` round using `InjectNic` + `SpscRing` (same code guests link)
 - LAN guest exports `guest_common::emit_smoke_ok` for the L2 path once VMLAUNCH completes
-- `cargo xtask smoke` fails with serial dump + hints on timeout (default 45s)
+- `cargo xtask smoke` fails with serial dump + hints on timeout (default 30s)
+
+## Stats ABI (`IF-STATS-*`) — shared page for smoke/bench
+
+Source of truth: ICD §7 + `guest_common::Stats` / `stats_off`.
+
+| Item | Contract |
+|------|----------|
+| Packing | `#[repr(C)]` little-endian `u64` × 11 = **88** bytes (`STATS_PAGE_SIZE`) |
+| Offsets | `wan_rx@0` … `bytes_lan_tx@80` (see ICD `IF-STATS-003`) |
+| Writers | Owning guest / L1 inject path / host Inject harness (same forward code) |
+| Readers | Harness may see torn 64-bit loads; bench uses start/end [`StatsSnapshot`] deltas |
+| No lab constants | Frame size, duration, target Gbps, report path come from `[bench]` only |
+
+## Bench (`IF-CFG-BENCH` / `IF-RPT-BENCH`)
+
+### Policy (same as smoke)
+
+- `backend=inject` → Inject measurement
+- `backend=sriov` + both VF BDFs present in sysfs → **Sriov** selected; E2E through L2 guests is required for an honest Sriov figure (blocked until VMLAUNCH datapath is complete — tool exits non-zero rather than silently publishing Inject as Sriov)
+- `backend=sriov` + VF missing + `allow_inject_fallback=true` → Inject with stderr note; report `backend=inject`, `environment_class=inject-harness`
+- `backend=sriov` + VF missing + `allow_inject_fallback=false` → fail fast
+
+### Inject measurement (current spike)
+
+`cargo xtask bench` drives the **real** `guest_common` WAN↔LAN forward path with `InjectNic` + `SpscRing` for `bench.duration_secs` at `bench.frame_size` (bidirectional when configured). This is the same datapath code as L1 inject smoke — not a mock. Report fields:
+
+| Field | Meaning |
+|-------|---------|
+| `gbps` | Aggregate bidirectional: `(bytes_wan_tx + bytes_lan_tx) * 8 / duration / 1e9` |
+| `pps` | `(wan_tx + lan_tx) / duration` |
+| `loss` | `ring_drop_full / (ring_drop_full + ring_fwd_wan_to_lan + ring_fwd_lan_to_wan)` |
+| `target_met` | `gbps >= target_gbps` (false is **not** a tool failure) |
+
+### CI / short sample
+
+```bash
+HV_DEMO_CONFIG=config/bench.inject.ci.toml cargo xtask bench
+# → target/bench-report.json (or HV_BENCH_REPORT / bench.report_path)
+```
+
+Schema sample: `docs/system/samples/bench-report.example.json`.
 
 ## Config tips (`[hv]` section)
 

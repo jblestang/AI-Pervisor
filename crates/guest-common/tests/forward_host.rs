@@ -247,6 +247,19 @@ fn guest_entry_banner_and_smoke_helpers() {
 }
 
 #[test]
+fn stats_page_packing_matches_icd() {
+    use guest_common::{stats_off, Stats, STATS_PAGE_SIZE};
+    assert_eq!(STATS_PAGE_SIZE, 88);
+    assert_eq!(core::mem::size_of::<Stats>(), STATS_PAGE_SIZE);
+    assert_eq!(stats_off::WAN_RX, 0);
+    assert_eq!(stats_off::BYTES_LAN_TX, 80);
+    let s = Stats::new();
+    let snap = s.snapshot();
+    assert_eq!(snap.wan_rx, 0);
+    assert_eq!(snap.delta(snap), guest_common::StatsSnapshot::default());
+}
+
+#[test]
 fn guest_role_from_u32_and_stats_byte_counters() {
     assert_eq!(GuestRole::from_u32(1), Some(GuestRole::Wan));
     assert_eq!(GuestRole::from_u32(2), Some(GuestRole::Lan));

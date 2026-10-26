@@ -48,12 +48,19 @@ pub struct RingConfig {
     pub frame_capacity: u32,
 }
 
+fn default_bench_report_path() -> String {
+    "target/bench-report.json".into()
+}
+
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct BenchConfig {
     pub frame_size: u32,
     pub duration_secs: u64,
     pub bidirectional: bool,
     pub target_gbps: f64,
+    /// JSON report path (`IF-RPT-BENCH`); default `target/bench-report.json`.
+    #[serde(default = "default_bench_report_path")]
+    pub report_path: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]

@@ -4,7 +4,7 @@
 |-------|-------|
 | **Document ID** | HV-EDGE-ICD-001 |
 | **Title** | Hypervisor Edge Gateway — Interface Control Document |
-| **Issue** | 0.3 |
+| **Issue** | 0.4 |
 | **Date** | 2026-10-26 |
 | **Classification** | UNCLASSIFIED — Technology Demonstrator |
 | **Parent suite** | HV-EDGE-DOC-SUITE |
@@ -43,7 +43,7 @@
 | Interface | Binary layout status |
 |-----------|----------------------|
 | `IF-RING-*` | **Normative packing** aligned with `ring` crate Issue 0.2 |
-| `IF-STATS-*` | Semantic counters normative; `#[repr(C)]` offsets at guest bring-up |
+| `IF-STATS-*` | Semantic counters + normative `#[repr(C)]` packing (`IF-STATS-003`) |
 | `IF-BOOT-*` | Field set normative; packing at Tasks 5–6 |
 | `IF-NIC-*` | Logical API + open policy normative |
 | `IF-CFG-*` | TOML schema normative (see `config/demo.example.toml`) |
@@ -209,7 +209,7 @@ Interactive console input is **N/A for demonstrator**. Full 16550 feature parity
 
 ### IF-STATS-001 — Counter set (semantic)
 
-Monotonic `u64` counters (layout offsets baselined with guests):
+Monotonic `u64` counters:
 
 | Counter | Meaning |
 |---------|---------|
@@ -218,11 +218,29 @@ Monotonic `u64` counters (layout offsets baselined with guests):
 | `ring_fwd_wan_to_lan` | Descriptors successfully pushed WAN→LAN |
 | `ring_fwd_lan_to_wan` | Descriptors successfully pushed LAN→WAN |
 | `ring_drop_full` | Frames dropped due to full ring |
-| `bytes_*` | Optional byte counters for bench |
+| `bytes_wan_rx`, `bytes_wan_tx`, `bytes_lan_rx`, `bytes_lan_tx` | Byte counters for bench |
 
 ### IF-STATS-002 — Observation rules
 
-Readers (harness) **may** observe torn 64-bit values during smoke; bench sampling interval is harness-defined. Counters are updated by the owning guest only.
+Readers (harness) **may** observe torn 64-bit values during smoke. Bench sampling: take a full counter snapshot at measurement start and end; compute saturating deltas (`IF-STATS` via `StatsSnapshot`). Counters are updated by the owning guest (or L1 inject / host Inject harness exercising the same forward code) only.
+
+### IF-STATS-003 — Packed layout (`#[repr(C)]`)
+
+Little-endian `u64` fields, total size **88** bytes (`STATS_PAGE_SIZE`). Offsets match `guest_common::stats_off`:
+
+| Offset | Field |
+|--------|-------|
+| 0 | `wan_rx` |
+| 8 | `wan_tx` |
+| 16 | `lan_rx` |
+| 24 | `lan_tx` |
+| 32 | `ring_fwd_wan_to_lan` |
+| 40 | `ring_fwd_lan_to_wan` |
+| 48 | `ring_drop_full` |
+| 56 | `bytes_wan_rx` |
+| 64 | `bytes_wan_tx` |
+| 72 | `bytes_lan_rx` |
+| 80 | `bytes_lan_tx` |
 
 ---
 
@@ -267,27 +285,28 @@ All sections mandatory unless noted. Example: `config/demo.example.toml`.
 | Key | Type | Description |
 |-----|------|-------------|
 | `frame_size` | integer | Bench frame size (demonstrator: 64; airborne worst-case stress) |
-| `duration_secs` | integer | Measurement duration |
+| `duration_secs` | integer | Measurement duration (must be &gt; 0) |
 | `bidirectional` | bool | Full-duplex when true |
 | `target_gbps` | float | Objective threshold for `target_met` |
+| `report_path` | path | Optional; default `target/bench-report.json` |
 
 ### IF-RPT-BENCH — Bench report JSON (normative fields)
 
-Published by `cargo xtask bench` (path default `target/bench-report.json`). Required for SYS-DP-007 / SWR-HVN-058:
+Published by `cargo xtask bench` (path from `bench.report_path` or `HV_BENCH_REPORT`). Required for SYS-DP-007 / SWR-HVN-058:
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `frame_size` | integer | Bytes |
-| `duration_secs` | number | Actual or configured duration |
+| `duration_secs` | number | Actual wall-clock duration |
 | `bidirectional` | bool | As run |
-| `backend` | string | `sriov` \| `inject` |
-| `gbps` | number | Measured aggregate or per-direction (document which in report/`HARNESS`) |
-| `pps` | number | Packets per second |
-| `loss` | number | Loss ratio or count (document unit in report) |
+| `backend` | string | `sriov` \| `inject` (actual backend after open policy) |
+| `gbps` | number | **Aggregate bidirectional** wire rate from delivered TX bytes (`bytes_wan_tx + bytes_lan_tx`) × 8 / duration / 1e9 |
+| `pps` | number | Aggregate delivered pps (`wan_tx + lan_tx`) / duration |
+| `loss` | number | Ratio `ring_drop_full / (ring_drop_full + ring_fwd_*)` |
 | `target_gbps` | number | From config |
-| `target_met` | bool | Comparison result — **must not** be forced true |
+| `target_met` | bool | `gbps >= target_gbps` — **must not** be forced true |
 
-Optional but recommended for airborne/safety review: `environment_class`, `wan_vf_bdf`, `lan_vf_bdf`, `git_sha`, `timestamp`.
+Optional but recommended for airborne/safety review: `environment_class`, `wan_vf_bdf`, `lan_vf_bdf`, `git_sha`, `timestamp`, `gbps_basis`, `loss_unit`.
 
 ### IF-CFG-PATHS
 
@@ -305,6 +324,7 @@ Optional but recommended for airborne/safety review: `environment_class`, `wan_v
 | `HV_VF_BACKEND` | Overrides `datapath.backend` |
 | `HV_WAN_VF_BDF` | Overrides `datapath.wan_vf_bdf` |
 | `HV_LAN_VF_BDF` | Overrides `datapath.lan_vf_bdf` |
+| `HV_BENCH_REPORT` | Overrides `bench.report_path` for the JSON output |
 
 ### IF-CFG-REJECT
 
@@ -373,7 +393,7 @@ Operator    demo-config
 | IF-NIC-004 | Error classes | Behaviour |
 | IF-BOOT-001..004 | Boot blob fields | Semantic (packing later) |
 | IF-UART-001..002 | UART path | Behaviour |
-| IF-STATS-001..002 | Counters | Semantic |
+| IF-STATS-001..003 | Counters + packing | Semantic + layout |
 | IF-CFG-* | TOML + env | Schema |
 | IF-SER-001..002 | Smoke token | Protocol |
 | IF-RPT-BENCH | Bench JSON fields | Schema |
@@ -387,3 +407,4 @@ Operator    demo-config
 | 0.1 | 2026-10-26 | Skeleton seed |
 | 0.2 | 2026-10-26 | Normative ring packing; open policy tables; sequences; maturity matrix |
 | 0.3 | 2026-10-26 | Partitioning coupling note; IF-RPT-BENCH for airborne/safety rate evidence |
+| 0.4 | 2026-10-26 | IF-STATS-003 packing; bench `report_path` / `HV_BENCH_REPORT`; gbps/loss units |

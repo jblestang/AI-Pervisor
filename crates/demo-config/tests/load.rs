@@ -14,6 +14,7 @@ fn loads_example_config() {
     let s = include_str!("../../../config/demo.example.toml");
     let c = demo_config::DemoConfig::parse_str(s).expect("example must be complete");
     assert_eq!(c.bench.frame_size, 64);
+    assert_eq!(c.bench.report_path, "target/bench-report.json");
     assert!(matches!(
         c.datapath.backend,
         demo_config::VfBackend::Sriov | demo_config::VfBackend::Inject

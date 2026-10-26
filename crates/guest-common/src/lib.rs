@@ -20,7 +20,7 @@ pub use bump_alloc::BumpAlloc;
 pub use forward::{forward_lan_poll, forward_wan_poll, ArenaCursor};
 pub use pci_vf::{InjectNic, NicBackend};
 pub use ring::SpscRing;
-pub use stats::Stats;
+pub use stats::{stats_off, Stats, StatsSnapshot, STATS_PAGE_SIZE};
 pub use uart::{uart_write, uart_write_byte};
 
 use boot_info::GuestRole as Role;
