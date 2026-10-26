@@ -87,10 +87,12 @@ fn cmd_build(root: &Path) -> ExitCode {
     }
     // Freestanding Type-1 / guest images.
     for pkg in FREESTANDING {
-        if let Err(code) = run_cargo(
-            &["build", "-p", pkg, "--target", FREESTANDING_TARGET],
-            root,
-        ) {
+        let mut args = vec!["build", "-p", pkg, "--target", FREESTANDING_TARGET];
+        // `hv` binary is gated on feature `freestanding` so host `cargo test` stays clean.
+        if *pkg == "hv" {
+            args.extend_from_slice(&["--features", "freestanding"]);
+        }
+        if let Err(code) = run_cargo(&args, root) {
             return code;
         }
     }

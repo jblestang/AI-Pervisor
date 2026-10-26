@@ -63,6 +63,15 @@ pub struct PathsConfig {
     pub guest_lan_image: String,
 }
 
+/// Hypervisor bring-up tips consumed when building the flattened hv boot blob.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct HvConfig {
+    /// Guest-physical window base where private + shared regions are packed.
+    pub gpa_window_base: u64,
+    /// I/O port advertised in boot info for UART exits (`IF-UART-001`).
+    pub uart_io_port: u16,
+}
+
 /// Complete demonstrator configuration (all sections mandatory).
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct DemoConfig {
@@ -71,6 +80,7 @@ pub struct DemoConfig {
     pub guests: GuestsConfig,
     pub ring: RingConfig,
     pub bench: BenchConfig,
+    pub hv: HvConfig,
     pub paths: PathsConfig,
 }
 
@@ -104,6 +114,8 @@ const REQUIRED_KEYS: &[&str] = &[
     "bench.duration_secs",
     "bench.bidirectional",
     "bench.target_gbps",
+    "hv.gpa_window_base",
+    "hv.uart_io_port",
     "paths.hv_image",
     "paths.guest_wan_image",
     "paths.guest_lan_image",
@@ -260,6 +272,10 @@ frame_size = 64
 duration_secs = 30
 bidirectional = true
 target_gbps = 1.0
+
+[hv]
+gpa_window_base = 0x100000000
+uart_io_port = 0x3F8
 
 [paths]
 hv_image = "target/x86_64-unknown-none/release/hv"

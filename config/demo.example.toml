@@ -30,6 +30,11 @@ duration_secs = 30
 bidirectional = true
 target_gbps = 1.0
 
+[hv]
+# Guest GPA window start and UART I/O tip for exits (not lab RAM addresses).
+gpa_window_base = 0x100000000
+uart_io_port = 0x3F8
+
 [paths]
 hv_image = "target/x86_64-unknown-none/release/hv"
 guest_wan_image = "target/x86_64-unknown-none/release/guest-wan"

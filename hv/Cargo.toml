@@ -3,10 +3,45 @@ name = "hv"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Type-1 nested hypervisor (placeholder)"
+description = "Type-1 nested hypervisor — VT-x / EPT bring-up"
+
+[lib]
+name = "hv"
+path = "src/lib.rs"
 
 [[bin]]
 name = "hv"
 path = "src/main.rs"
+# Only built for the freestanding image (avoids host `cargo test` + std panic_handler clash).
+required-features = ["freestanding"]
+test = false
+bench = false
+doctest = false
+
+[[test]]
+name = "ept_map"
+path = "tests/ept_map.rs"
+required-features = ["std"]
+
+[[test]]
+name = "guest_load"
+path = "tests/guest_load.rs"
+required-features = ["std"]
+
+[features]
+default = []
+# Host-only helpers (DemoConfig → FlatHvConfig). Freestanding builds omit this.
+std = ["dep:demo-config"]
+# Enable the `hv` binary for `x86_64-unknown-none` (xtask build).
+freestanding = []
 
 [dependencies]
+isolation = { path = "../isolation" }
+guest-common = { path = "../crates/guest-common", default-features = false }
+ring = { path = "../ring" }
+demo-config = { path = "../crates/demo-config", optional = true }
+
+[dev-dependencies]
+demo-config = { path = "../crates/demo-config" }
+guest-common = { path = "../crates/guest-common", features = ["std"] }
+isolation = { path = "../isolation" }
