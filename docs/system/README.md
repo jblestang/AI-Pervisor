@@ -4,11 +4,12 @@
 |-------|-------|
 | **Suite ID** | HV-EDGE-DOC-SUITE |
 | **Programme** | AI-Pervisor / Hyperviseur edge gateway technology demonstrator |
-| **Issue** | 0.2 |
+| **Issue** | 0.3 |
 | **Date** | 2026-10-26 |
 | **Language** | English |
 | **Classification** | UNCLASSIFIED — Technology Demonstrator |
-| **Structure** | Home-grown systems-engineering package (not claimed IEEE/ECSS conformity) |
+| **Intended transfer** | Safety-related systems; airborne / aeronautical edge datapaths (rates & isolation) |
+| **Structure** | Home-grown systems-engineering package (not claimed IEEE / ECSS / DO‑178 / ARP conformity) |
 
 ---
 
@@ -16,16 +17,27 @@
 
 This package is the **authoritative documentary baseline** for the Hypervisor Edge Gateway technology demonstrator (Type‑1 nested hypervisor, dual WAN/LAN guests, shared-memory datapath, SR‑IOV or Inject host I/O).
 
-It is intended for review by programme, systems, software, hardware, and independent test stakeholders — including governmental or institutional technical authorities — as evidence that:
+It is intended for review by programme, systems, software, hardware, and independent test stakeholders — including governmental or institutional technical authorities, and **safety / airborne** engineering organisations evaluating transfer of this architecture — as evidence that:
 
 1. System needs are stated, constrained, and success-gated.  
 2. Design allocates functions to hardware, firmware/hypervisor, and guest software.  
 3. Software requirements are uniquely identified, verifiable, and traced.  
 4. External and internal interfaces are controlled (ICD is normative for layouts and policy).  
 5. Verification & validation (V&V) is planned with executable procedures and evidence artefacts.  
-6. Test results (when available) close the loop from need → requirement → procedure → result.
+6. Test results (when available) close the loop from need → requirement → procedure → result.  
+7. **Partitioning, failure behaviour, and performance rates** are documented in a form usable as input to a future safety case or airborne qualification plan (without claiming that case today).
 
-**Maturity statement.** This issue documents a **technology demonstrator** (spike) under nested QEMU/KVM. It is not a product certification data package. Claims are limited to the stated scope and verification methods. Where implementation is incomplete, the suite records **applicability** and **verification status** rather than silent omission.
+### 1.1 Safety-related and airborne applicability (honest boundary)
+
+| Statement | Status |
+|-----------|--------|
+| Architecture **may** be transferred into a **safety-related** product context (domain isolation between WAN/LAN-class functions; fail-loud behaviour; explicit TCB) | Design intent of this suite |
+| Architecture **may** be transferred into an **airborne / aeronautical** edge or gateway context where **packet rates**, latency predictability, and spatial partitioning matter | Design intent of this suite |
+| This Issue **claims** a DAL, SIL, ASIL, PL, or equivalent integrity level | **No — not claimed** |
+| This Issue **is** a DO‑178C / ED‑12, ARP4754A/4761, ECSS, IEC 61508, or ISO 26262 certification data item | **No — not claimed** |
+| Tool qualification, SOI reviews, PSSA/SSA, or flight-clearance evidence | **Out of scope** for the demonstrator; placeholders identify what a follow-on programme would add |
+
+**Maturity statement.** This issue documents a **technology demonstrator** (spike) under nested QEMU/KVM. It is engineered so that artefacts (requirements IDs, ICD, V&V evidence, TCB list, measured rates) can **feed** a later safety or airborne programme. Claims are limited to the stated scope and verification methods. Where implementation is incomplete, the suite records **applicability** and **verification status** rather than silent omission.
 
 ## 2. Document set
 
@@ -56,6 +68,7 @@ It is intended for review by programme, systems, software, hardware, and indepen
 | `IF-` | ICD | Interface or schema element | `IF-RING-001` |
 | `TEST-` | STD | Test procedure | `TEST-SMOKE-001` |
 | `ASM-` / `CON-` / `RSK-` | SSS/SSDD | Assumption / constraint / risk | `ASM-LAB-001` |
+| `SG-` / `HAZ-` | SSS | Safety goal / preliminary hazard | `SG-ISO-001`, `HAZ-MEM-001` |
 
 **Rules (normative for this suite):**
 
@@ -68,16 +81,17 @@ It is intended for review by programme, systems, software, hardware, and indepen
 ## 4. Traceability model
 
 ```text
-  Mission / programme need
+  Mission / programme need  (+ SG-* / HAZ-* for safety / airborne transfer)
             │
             ▼
         SYS-*  (SSS)  ──constraints/assumptions/risks──► SSDD allocation
-            │
+            │                                              (+ partitioning / FMEA-lite)
             ▼
         SWR-*  (SRS)  ◄──── IF-* (ICD) ────► implementation crates
-            │
+            │         (safety significance attribute)
             ▼
        TEST-*  (STD)  ──evidence artefacts──► STR results + authority review
+                                              (+ independence / rate evidence)
 ```
 
 ## 5. Configuration management
@@ -95,6 +109,7 @@ It is intended for review by programme, systems, software, hardware, and indepen
 |-------|------|-------------|-------------|
 | 0.1 | 2026-10-26 | Initial documentary skeletons (Task 0) | Engineering |
 | 0.2 | 2026-10-26 | Government-review quality upgrade: document control, CONOPS, shall language, HW/SW allocation, normative ICD, V&V campaign structure | Systems / SW / HW / Test eng. |
+| 0.3 | 2026-10-26 | Safety-related & airborne transfer framing: safety goals/hazards, partitioning/FMEA-lite, rate evidence, non-certification boundary | Systems / safety / test eng. |
 
 ## 7. Review and approval (template)
 
@@ -103,6 +118,7 @@ It is intended for review by programme, systems, software, hardware, and indepen
 | Systems engineering | | | | |
 | Software engineering | | | | |
 | Hardware / platform engineering | | | | |
+| Safety / airborne systems (if applicable) | | | | |
 | Independent test / V&V | | | | |
 | Programme / technical authority | | | | |
 

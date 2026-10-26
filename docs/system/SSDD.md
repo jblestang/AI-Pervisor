@@ -4,12 +4,13 @@
 |-------|-------|
 | **Document ID** | HV-EDGE-SSDD-001 |
 | **Title** | Hypervisor Edge Gateway — System / Subsystem Design Description |
-| **Issue** | 0.2 |
+| **Issue** | 0.3 |
 | **Date** | 2026-10-26 |
 | **Classification** | UNCLASSIFIED — Technology Demonstrator |
 | **Parent suite** | HV-EDGE-DOC-SUITE |
-| **Implements** | HV-EDGE-SSS-001 Issue 0.2 |
-| **As-built sync** | Partial (workspace Tasks 1–3 artefacts present); full sync at Task 11 |
+| **Implements** | HV-EDGE-SSS-001 Issue 0.3 |
+| **As-built sync** | Partial (workspace Tasks 1–4 artefacts present); full sync at Task 11 |
+| **Transfer context** | Safety-related; airborne rates & partitioning (not certified) |
 
 ---
 
@@ -24,11 +25,12 @@
 7. [Datapath design](#7-datapath-design)  
 8. [Trusted Computing Base](#8-trusted-computing-base)  
 9. [Error handling and degraded modes](#9-error-handling-and-degraded-modes)  
-10. [Security and isolation design](#10-security-and-isolation-design)  
-11. [Assurance design (proofs and coverage)](#11-assurance-design-proofs-and-coverage)  
-12. [Traceability SSS → design](#12-traceability-sss--design)  
-13. [Open design points](#13-open-design-points)  
-14. [Change record](#14-change-record)
+10. [Security, isolation, and safety partitioning](#10-security-isolation-and-safety-partitioning)  
+11. [Failure modes (FMEA-lite)](#11-failure-modes-fmea-lite)  
+12. [Assurance design (proofs and coverage)](#12-assurance-design-proofs-and-coverage)  
+13. [Traceability SSS → design](#13-traceability-sss--design)  
+14. [Open design points](#14-open-design-points)  
+15. [Change record](#15-change-record)
 
 ---
 
@@ -50,6 +52,7 @@ This SSDD describes **how** the system of interest realises SSS needs. Normative
 | Demonstrator reproducibility | All parameters from TOML + env; refuse incomplete config |
 | Assurance under schedule | Verus on safe crates; thin unsafe TCB; coverage gate ≥ 90% |
 | Operator efficiency | Single harness: `cargo xtask …` |
+| Safety / airborne transfer | Spatial partitioning via EPT; fail-loud exits; published rates; explicit TCB; no false integrity-level claim |
 
 ---
 
@@ -215,24 +218,53 @@ All other datapath and shared structures are **assurance candidates** (SYS-AS-00
 
 ---
 
-## 10. Security and isolation design
+## 10. Security, isolation, and safety partitioning
 
-**Objectives (demonstrator):** spatial isolation of WAN/LAN private memory; explicit shared pages; no silent cross-domain corruption on fault.
+**Objectives (demonstrator):** spatial isolation of WAN/LAN private memory; explicit shared pages; no silent cross-domain corruption on fault; behaviour compatible with later **safety-related** or **airborne** partitioning arguments (SG-ISO-*).
 
-**Non-objectives:** cryptographic separation, covert-channel analysis, attested boot, supply-chain hardening beyond normal repo practice.
+**Non-objectives:** cryptographic separation, covert-channel analysis, attested boot, WCET proof, DAL/SIL assignment, supply-chain hardening beyond normal repo practice.
+
+### 10.1 Partitioning model (safety-oriented view)
+
+| Partition | Contents | Trust relative to peer |
+|-----------|----------|------------------------|
+| WAN guest | Private memory, WAN-facing NIC logic | Must not access LAN private |
+| LAN guest | Private memory, LAN-facing NIC logic | Must not access WAN private |
+| Shared datapath | Ring header/slots, payload arena, stats | **Intentional** coupling — minimise and ICD-control |
+| Hypervisor | VMX/EPT/UART/boot | TCB relative to guests |
+
+The shared ring is a **deliberate common resource** (RSK-006). Safety transfer programmes must treat it as a coupling surface: capacity, drop policy, and mapping rights are safety-relevant.
 
 **Controls:**
 
-| Control | Mechanism |
-|---------|-----------|
-| Domain memory isolation | EPT permissions from `isolation` map |
-| Shared-memory minimisation | Only ring header/slots, arena, stats (ICD) |
-| Config integrity | Schema validation before launch |
-| Backend honesty | No silent Sriov→mock substitution |
+| Control | Mechanism | Safety goal |
+|---------|-----------|-------------|
+| Domain memory isolation | EPT permissions from `isolation` map | SG-ISO-001 |
+| Shared-memory minimisation | Only ring header/slots, arena, stats (ICD) | SG-ISO-002 |
+| Violation fail-loud | UART + halt faulting guest | SG-FCC-001 |
+| Config integrity | Schema validation before launch | SG-CFG-001 |
+| Backend honesty | No silent Sriov→mock substitution | SG-CFG-001 |
+| Rate honesty | Bench JSON with backend/env metadata | SG-RATE-001 |
 
 ---
 
-## 11. Assurance design (proofs and coverage)
+## 11. Failure modes (FMEA-lite)
+
+| ID | Failure mode | Local effect | System effect | Detection | Response | HAZ link |
+|----|--------------|--------------|---------------|-----------|----------|----------|
+| FM-001 | EPT mis-map shared→private | Peer memory exposed | Cross-domain corruption | Isolation unit tests; ISO-002 nested | Halt / refuse boot if detectable at map build | HAZ-MEM-001 |
+| FM-002 | Guest writes outside region | EPT violation | Faulting guest stop | Exit handler | Diagnostic + halt faulting guest | HAZ-MEM-001, SG-FCC-001 |
+| FM-003 | Ring full under load | Push fails | Frame drop, counter++ | Stats / bench loss | No block; continue | HAZ-RING-001 |
+| FM-004 | Sriov BDF missing, fallback forbidden | Open error | No silent Inject | Config/open tests | Fail fast | HAZ-IO-001 |
+| FM-005 | Incomplete config | Parse error | No launch | demo-config tests | Refuse start | HAZ-CFG-001 |
+| FM-006 | Inflated performance narrative | Misleading STR | Bad airborne decision | Report field checklist | `target_met` + backend labelled | HAZ-RATE-001 |
+| FM-007 | Unlisted unsafe growth | TCB drift | Assurance gap | TCB inspection | Block release of docs gate | HAZ-TCB-001 |
+
+*This table is not a complete FMEA; it orients design reviews for safety/airborne transfer.*
+
+---
+
+## 12. Assurance design (proofs and coverage)
 
 | Layer | Mechanism | Gate |
 |-------|-----------|------|
@@ -244,22 +276,23 @@ All other datapath and shared structures are **assurance candidates** (SYS-AS-00
 
 ---
 
-## 12. Traceability SSS → design
+## 13. Traceability SSS → design
 
-| SYS ID | Design element |
-|--------|----------------|
-| SYS-ISO-001..003 | `hv` EPT + exit path |
+| SYS / SG ID | Design element |
+|-------------|----------------|
+| SYS-ISO-001..003 / SG-ISO-* | `hv` EPT + exit path |
 | SYS-ISO-004 | `isolation` crate |
-| SYS-DP-001 | guests + `ring` |
-| SYS-DP-002..004 | `pci-vf` + config policy |
-| SYS-DP-005..006 | stats + `xtask bench` |
+| SYS-DP-001 / SG-ISO-002 | guests + `ring` |
+| SYS-DP-002..004 / SG-CFG-001 | `pci-vf` + config policy |
+| SYS-DP-005..007 / SG-RATE-001 | stats + `xtask bench` + report metadata |
 | SYS-AS-001..002 | Verus + coverage |
 | SYS-AS-003..004 | `demo-config` + `xtask` |
-| SYS-AS-005..006 | `docs/TCB.md` + `docs/system/` |
+| SYS-AS-005..007 | `docs/TCB.md` + `docs/system/` + independent V&V |
+| HAZ-* | §11 FMEA-lite |
 
 ---
 
-## 13. Open design points
+## 14. Open design points
 
 | ID | Topic | Status | Resolution target |
 |----|-------|--------|-------------------|
@@ -267,14 +300,17 @@ All other datapath and shared structures are **assurance candidates** (SYS-AS-00
 | ODP-002 | Dual-ring vs two unidirectional SPSC instances | Dual logical directions required; packing choice open | Task 5 |
 | ODP-003 | Full `verus!`/`vstd` vs stubs | Stubs present; hard-fail proofs | Task 8 |
 | ODP-004 | Automated EPT-violation stimulus | Manual acceptable until harnessed | Task 6–7 / STR |
+| ODP-005 | WCET / bounded latency for airborne scheduling | Out of spike (NGX-008); only measured rates | Follow-on safety programme |
+| ODP-006 | Integrity level (DAL/SIL) assignment | Explicitly not assigned | Follow-on safety programme |
 
-**Known as-built (Issue 0.2):** workspace, `demo-config`, `xtask` skeleton, `ring` SPSC with host tests, `isolation` model with host tests, Verus stub macros, toolchain 1.99.1 — see repository and `docs/VERUS.md`.
+**Known as-built (Issue 0.3):** workspace, `demo-config`, `xtask`, `ring`, `isolation`, `pci-vf` (Task 4), Verus stubs, toolchain 1.99.1 — see repository and `docs/VERUS.md`.
 
 ---
 
-## 14. Change record
+## 15. Change record
 
 | Issue | Date | Description |
 |-------|------|-------------|
 | 0.1 | 2026-10-26 | Skeleton |
 | 0.2 | 2026-10-26 | Full SSDD: allocation, modes, TCB, security, assurance, ODPs |
+| 0.3 | 2026-10-26 | Safety partitioning view; FMEA-lite; SG/HAZ traceability; airborne ODPs |

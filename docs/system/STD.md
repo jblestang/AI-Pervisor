@@ -4,12 +4,13 @@
 |-------|-------|
 | **Document ID** | HV-EDGE-STD-001 |
 | **Title** | Hypervisor Edge Gateway — Software Test Description |
-| **Issue** | 0.2 |
+| **Issue** | 0.3 |
 | **Date** | 2026-10-26 |
 | **Classification** | UNCLASSIFIED — Technology Demonstrator |
 | **Parent suite** | HV-EDGE-DOC-SUITE |
-| **Verifies** | HV-EDGE-SRS-001 Issue 0.2 |
+| **Verifies** | HV-EDGE-SRS-001 Issue 0.3 |
 | **Results recorded in** | HV-EDGE-STR-001 |
+| **Transfer context** | Safety-related / airborne rate & isolation evidence (not certification) |
 
 ---
 
@@ -47,7 +48,9 @@ Procedures map primarily to `cargo xtask` and `cargo test` so that evidence is r
 | Performance | Measurement @ 64 B | `cargo xtask bench` | Prefer Sriov for official figures |
 | Inspection | Docs / hardcoding / TCB | Checklist `TEST-DOC-001` | N/A |
 
-**Independence:** Where organisationally available, an independent tester executes smoke/bench/coverage/verify and completes STR signature blocks. Developers may execute unit procedures during implementation; STR campaign should re-run gates on a declared baseline SHA.
+**Independence (SYS-AS-007):** Where organisationally available — and **recommended** when evidence will be shown to governmental, safety, or airborne authorities — an independent tester executes smoke/bench/coverage/verify and completes STR signature blocks. Developers may execute unit procedures during implementation; STR campaign should re-run **Must** isolation and rate gates on a declared baseline SHA. Independence is organisational (separate person/team), not merely a second laptop.
+
+**Safety / airborne emphasis:** Procedures `TEST-ISO-*`, `TEST-UNIT-ISO`, `TEST-UNIT-RING`, `TEST-BENCH-001`, and `TEST-DOC-001` (non-cert statement + TCB) are the primary evidence feed for SG/HAZ transfer — not a substitute for a certification test programme.
 
 ---
 
@@ -259,18 +262,19 @@ Each procedure follows: Objective → Covers → Environment → Preconditions �
 | **Environment** | Prefer ENV-LAB-SRIOV; else ENV-LAB-INJECT with STR annotation |
 | **Preconditions** | Smoke-capable system; `bench.frame_size = 64` |
 | **Steps** | 1. `cargo xtask bench` 2. Archive JSON report 3. Record `target_met` |
-| **Expected** | Exit 0; report contains Gbps, pps, loss, duration, `target_met` |
+| **Expected** | Exit 0; report contains all `IF-RPT-BENCH` required fields (incl. `backend`, `target_met`) |
 | **Non-fail** | `target_met = false` is **not** a procedure failure |
-| **Evidence** | `bench-report.json` |
+| **Evidence** | `bench-report.json` suitable for airborne/safety rate review |
+| **Honesty rule** | Do not present Inject rates as Sriov; label environment class in STR |
 
 ### TEST-DOC-001 — Documentary and TCB inspection
 
 | Field | Content |
 |-------|---------|
 | **Objective** | Confirm documentary suite, example config, TCB/HARNESS presence, absence of demo hardcoding |
-| **Covers** | SWR-CFG-033, SWR-CFG-034, SWR-AS-041, SWR-HVN-056, SWR-DOC-060..062 |
+| **Covers** | SWR-CFG-033, SWR-CFG-034, SWR-AS-041, SWR-HVN-056, SWR-DOC-060..063 |
 | **Environment** | ENV-HOST (inspection) |
-| **Steps** | 1. Verify `docs/system/` English suite Issue 2. Verify `config/demo.example.toml` 3. When present, verify `docs/TCB.md`, `docs/HARNESS.md` 4. Spot-check `hv`/guest sources for lab literals 5. Confirm STD↔SRS ID consistency |
+| **Steps** | 1. Verify `docs/system/` English suite Issue (≥ 0.3) 2. Verify explicit **non-certification** / non-DAL statement present 3. Verify SG/HAZ section in SSS 4. Verify `config/demo.example.toml` 5. When present, verify `docs/TCB.md`, `docs/HARNESS.md` 6. Spot-check `hv`/guest sources for lab literals 7. Confirm STD↔SRS ID consistency |
 | **Expected** | Checklist items satisfied for artefacts required at campaign date |
 | **Evidence** | Signed checklist appendix in STR |
 
@@ -291,8 +295,8 @@ Each procedure follows: Objective → Covers → Environment → Preconditions �
 | TEST-ISO-001 | SWR-ISO-001,002,004 | `cargo test -p hv` (EPT) |
 | TEST-ISO-002 | SWR-ISO-003 | nested + stimulus |
 | TEST-SMOKE-001 | SWR-ISO-001, SWR-DP-011,014, SWR-NIC-*, SWR-HVN-051,052 | `cargo xtask smoke` |
-| TEST-BENCH-001 | SWR-HVN-053..055 | `cargo xtask bench` |
-| TEST-DOC-001 | SWR-CFG-033,034, SWR-AS-041, SWR-HVN-056, SWR-DOC-* | inspection |
+| TEST-BENCH-001 | SWR-HVN-053..055, SWR-HVN-058 | `cargo xtask bench` |
+| TEST-DOC-001 | SWR-CFG-033,034, SWR-AS-041, SWR-HVN-056, SWR-DOC-060..063 | inspection |
 
 ---
 
@@ -319,3 +323,4 @@ Each procedure follows: Objective → Covers → Environment → Preconditions �
 |-------|------|-------------|
 | 0.1 | 2026-10-26 | Skeleton |
 | 0.2 | 2026-10-26 | Full STD: environments, entry/exit, evidence, detailed procedures, result vocabulary |
+| 0.3 | 2026-10-26 | Independence for safety/airborne review; IF-RPT-BENCH checks; DOC non-cert steps |

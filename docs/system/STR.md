@@ -4,13 +4,14 @@
 |-------|-------|
 | **Document ID** | HV-EDGE-STR-001 |
 | **Title** | Hypervisor Edge Gateway — Software Test Report |
-| **Issue** | 0.2 (template) |
+| **Issue** | 0.3 (template) |
 | **Date** | 2026-10-26 |
 | **Classification** | UNCLASSIFIED — Technology Demonstrator |
 | **Parent suite** | HV-EDGE-DOC-SUITE |
-| **Procedures** | HV-EDGE-STD-001 Issue 0.2 |
-| **Requirements** | HV-EDGE-SRS-001 Issue 0.2 |
+| **Procedures** | HV-EDGE-STD-001 Issue 0.3 |
+| **Requirements** | HV-EDGE-SRS-001 Issue 0.3 |
 | **Status** | **TEMPLATE** — populate during / after verification campaign (Task 11) |
+| **Certification claim** | **None** — not DAL/SIL/ASIL/airworthiness approved |
 
 ---
 
@@ -38,8 +39,9 @@ This report records the **outcome of the STD verification campaign** against a d
 
 **Limitations (standing):**
 
-- Demonstrator under nested QEMU/KVM is not a bare-metal certification campaign.  
-- Should-priority performance (1 Gbps @ 64 B) may be unmet while Must-priority measurement still Passes.  
+- Demonstrator under nested QEMU/KVM is not a bare-metal, safety, or airborne **certification** campaign.  
+- No Design Assurance Level (DAL), Safety Integrity Level (SIL), ASIL, or airworthiness approval is claimed or implied by Pass results.  
+- Should-priority performance (1 Gbps @ 64 B) may be unmet while Must-priority measurement still Passes; rate figures are **lab evidence** for transfer discussions, not flight clearance.  
 - Procedures marked Not run indicate incomplete vertical slice on the tested baseline — not silent omission.
 
 Until campaign execution, all quantitative fields remain **None** / **N/A for spike** as placeholders without TBD narrative spam.
@@ -54,9 +56,11 @@ Until campaign execution, all quantitative fields remain **None** / **N/A for sp
 | Campaign name | None |
 | Execution start (Europe/Paris) | None |
 | Execution end (Europe/Paris) | None |
-| STD Issue | HV-EDGE-STD-001 Issue 0.2 |
-| SRS Issue | HV-EDGE-SRS-001 Issue 0.2 |
-| SSS/SSDD Issue | 0.2 |
+| STD Issue | HV-EDGE-STD-001 Issue 0.3 |
+| SRS Issue | HV-EDGE-SRS-001 Issue 0.3 |
+| SSS/SSDD Issue | 0.3 |
+| Independent tester (Y/N) | None |
+| Safety/airborne review intent (Y/N) | None |
 | Git repository | `https://github.com/jblestang/AI-Pervisor` |
 | Git branch | None |
 | Git commit SHA | None |
@@ -162,12 +166,15 @@ Result vocabulary: **Pass** | **Fail** | **Blocked** | **Not run** (per STD §8)
 | Duration (s) | N/A for spike |
 | Bidirectional | N/A for spike |
 | Backend used | N/A for spike |
+| Environment class | N/A for spike |
 | Gbps | N/A for spike |
 | pps | N/A for spike |
 | Loss | N/A for spike |
 | `target_gbps` | N/A for spike |
 | `target_met` | N/A for spike |
+| IF-RPT-BENCH complete | N/A for spike |
 | Procedure result | Not run |
+| Airborne/safety interpretation note | Rates are nested-lab unless ENV-LAB-SRIOV + Sriov stated |
 
 ---
 
@@ -212,9 +219,11 @@ Populate one row per `SWR-*` after campaign. Until then the table records struct
 | SWR-HVN-055 | Should | TEST-BENCH-001 | Not run | None |
 | SWR-HVN-056 | Must | TEST-DOC-001 | Not run | None |
 | SWR-HVN-057 | Must | TEST-VERUS-001, TEST-COV-001 | Not run | None |
+| SWR-HVN-058 | Must | TEST-BENCH-001 | Not run | None |
 | SWR-DOC-060 | Must | TEST-DOC-001 | Not run | None |
 | SWR-DOC-061 | Must | TEST-DOC-001 | Not run | None |
 | SWR-DOC-062 | Must | TEST-DOC-001 | Not run | None |
+| SWR-DOC-063 | Must | TEST-DOC-001 | Not run | None |
 
 **Crate mapping (as-built / intended)** — complete at Task 11:
 
@@ -244,9 +253,11 @@ Type ∈ {Anomaly, Deviation, Waiver, Observation}.
 | Question | Answer (pre-campaign) |
 |----------|------------------------|
 | Are all Must SSS gates evidenced Pass? | No — campaign not executed |
-| Is the suite suitable for external technical reading? | Yes — Issue 0.2 documentary baseline |
+| Is the suite suitable for external technical reading? | Yes — Issue 0.3 (safety/airborne transfer framing) |
+| Is any DAL/SIL/ASIL or airworthiness approval claimed? | **No** |
 | Is the software baseline ready for demonstrator closure? | No — pending STD execution |
-| Recommendations | Execute campaign per STD; fill §§2–10; obtain approvals in §12 |
+| Are SG/HAZ and rate report fields ready for transfer discussion? | Documentary yes; measured rates pending TEST-BENCH-001 |
+| Recommendations | Execute campaign per STD; fill §§2–10; obtain approvals in §12; never relabel Pass as certification |
 
 **Post-campaign conclusion:** None
 
@@ -258,6 +269,7 @@ Type ∈ {Anomaly, Deviation, Waiver, Observation}.
 |------|------|--------------|------|-----------|
 | Test conductor | | | | |
 | Independent V&V reviewer | | | | |
+| Safety / airborne systems (if review intended) | | | | |
 | Software engineering lead | | | | |
 | Systems engineering lead | | | | |
 | Programme / technical authority | | | | |
@@ -272,3 +284,4 @@ Type ∈ {Anomaly, Deviation, Waiver, Observation}.
 |-------|------|-------------|
 | 0.1 | 2026-10-26 | Empty results skeleton |
 | 0.2 | 2026-10-26 | Government-review STR template: campaign ID, environment, full SWR matrix, approvals |
+| 0.3 | 2026-10-26 | Explicit non-certification; airborne rate interpretation; SWR-HVN-058/DOC-063; safety signer |

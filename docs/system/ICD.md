@@ -4,11 +4,12 @@
 |-------|-------|
 | **Document ID** | HV-EDGE-ICD-001 |
 | **Title** | Hypervisor Edge Gateway — Interface Control Document |
-| **Issue** | 0.2 |
+| **Issue** | 0.3 |
 | **Date** | 2026-10-26 |
 | **Classification** | UNCLASSIFIED — Technology Demonstrator |
 | **Parent suite** | HV-EDGE-DOC-SUITE |
-| **Normative for** | Shared-memory layouts, NIC open policy, boot blob semantics, config schema, serial smoke token |
+| **Normative for** | Shared-memory layouts, NIC open policy, boot blob semantics, config schema, serial smoke token, bench report fields |
+| **Transfer note** | Shared ring/arena/stats are the **only** intentional cross-domain coupling (safety partitioning surface) |
 
 ---
 
@@ -265,10 +266,28 @@ All sections mandatory unless noted. Example: `config/demo.example.toml`.
 
 | Key | Type | Description |
 |-----|------|-------------|
-| `frame_size` | integer | Bench frame size (demonstrator: 64) |
+| `frame_size` | integer | Bench frame size (demonstrator: 64; airborne worst-case stress) |
 | `duration_secs` | integer | Measurement duration |
 | `bidirectional` | bool | Full-duplex when true |
 | `target_gbps` | float | Objective threshold for `target_met` |
+
+### IF-RPT-BENCH — Bench report JSON (normative fields)
+
+Published by `cargo xtask bench` (path default `target/bench-report.json`). Required for SYS-DP-007 / SWR-HVN-058:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `frame_size` | integer | Bytes |
+| `duration_secs` | number | Actual or configured duration |
+| `bidirectional` | bool | As run |
+| `backend` | string | `sriov` \| `inject` |
+| `gbps` | number | Measured aggregate or per-direction (document which in report/`HARNESS`) |
+| `pps` | number | Packets per second |
+| `loss` | number | Loss ratio or count (document unit in report) |
+| `target_gbps` | number | From config |
+| `target_met` | bool | Comparison result — **must not** be forced true |
+
+Optional but recommended for airborne/safety review: `environment_class`, `wan_vf_bdf`, `lan_vf_bdf`, `git_sha`, `timestamp`.
 
 ### IF-CFG-PATHS
 
@@ -357,6 +376,7 @@ Operator    demo-config
 | IF-STATS-001..002 | Counters | Semantic |
 | IF-CFG-* | TOML + env | Schema |
 | IF-SER-001..002 | Smoke token | Protocol |
+| IF-RPT-BENCH | Bench JSON fields | Schema |
 
 ---
 
@@ -366,3 +386,4 @@ Operator    demo-config
 |-------|------|-------------|
 | 0.1 | 2026-10-26 | Skeleton seed |
 | 0.2 | 2026-10-26 | Normative ring packing; open policy tables; sequences; maturity matrix |
+| 0.3 | 2026-10-26 | Partitioning coupling note; IF-RPT-BENCH for airborne/safety rate evidence |
