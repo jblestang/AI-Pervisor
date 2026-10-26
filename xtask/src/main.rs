@@ -32,7 +32,7 @@ enum Cmd {
 }
 
 const FREESTANDING: &[&str] = &["hv", "guest-wan", "guest-lan"];
-const HOST_LIBS: &[&str] = &["ring", "isolation", "pci-vf", "demo-config"];
+const HOST_LIBS: &[&str] = &["ring", "isolation", "pci-vf", "demo-config", "guest-common"];
 const FREESTANDING_TARGET: &str = "x86_64-unknown-none";
 /// Crates with Verus-oriented contracts (expand in Task 8).
 const VERIFY_CRATES: &[&str] = &["ring", "isolation"];

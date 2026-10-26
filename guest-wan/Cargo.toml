@@ -3,10 +3,11 @@ name = "guest-wan"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "WAN edge guest (placeholder)"
+description = "WAN edge guest — host NIC ↔ ring toward LAN"
 
 [[bin]]
 name = "guest-wan"
 path = "src/main.rs"
 
 [dependencies]
+guest-common = { path = "../crates/guest-common", default-features = false }
