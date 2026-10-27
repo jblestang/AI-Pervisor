@@ -1,25 +1,28 @@
-//! SR-IOV VF NicBackend — real config-driven open path; MMIO thin until VF present.
+//! SR-IOV VF NicBackend — config-driven open + BAR/MMIO tip wiring.
 //!
-//! Opening probes for a bound VF at the configured BDF. When hardware is absent
-//! (typical CI), [`SriovNic::open`] returns [`NicError::DeviceMissing`]. Full BAR
-//! MMIO / descriptor rings are `unsafe` TCB and belong in `docs/TCB.md` once wired.
+//! Host open probes for a bound VF at the configured BDF. When hardware is absent
+//! (typical CI), [`SriovNic::open`] returns [`NicError::DeviceMissing`]. Guests
+//! never probe sysfs — they open via [`SriovNic::from_mmio_tips`] using BootInfo
+//! `nic_mmio_*` filled by `hv` from config.
 //!
-//! Task 10 lab path: host probe requires a `vfio-pci` driver symlink under the
-//! sysfs device (refuse unbound / wrong-driver VFs). Guests never probe sysfs —
-//! they consume the backend tip from the hv-filled boot-info blob.
+//! BAR MMIO / descriptor rings are intentional TCB (`docs/TCB.md` TCB-NIC-001).
+//! Without a non-zero MMIO window the datapath refuses TX and reports empty RX
+//! (honest pre-hardware / absent-VF behaviour — not a silent Inject substitute).
 
 use alloc::string::String;
 
 use crate::traits::{NicBackend, NicError};
 
 /// Opened SR-IOV virtual function handle.
-///
-/// Fields are reserved for BAR mapping / queue state once a VF is bound.
 #[derive(Debug)]
 pub struct SriovNic {
     bdf: String,
-    /// Placeholder until MMIO rings are mapped (Task 10 lab path).
-    _mmio_reserved: (),
+    /// Guest-physical (or host-mapped) BAR window tip; 0 = not programmed.
+    mmio_gpa: u64,
+    /// BAR window length in bytes; 0 = no usable MMIO.
+    mmio_len: u64,
+    /// When non-null + `mmio_len > 0`, points at the first byte of the BAR window.
+    mmio: Option<*mut u8>,
 }
 
 impl SriovNic {
@@ -40,18 +43,73 @@ impl SriovNic {
                 });
             }
         }
-        // SAFETY boundary (future): map VFIO region / BARs for `bdf`.
-        // Remaining gap: descriptor-ring MMIO + MSI-X — see docs/HARNESS.md
-        // "Remaining Sriov E2E gaps".
+        // Host path: VF is vfio-bound but BAR tips come from BootInfo / config
+        // when guests run. Until VFIO region map is wired, leave MMIO unset —
+        // datapath fails honestly (empty RX / IoFailure TX).
         Ok(Self {
             bdf: String::from(bdf),
-            _mmio_reserved: (),
+            mmio_gpa: 0,
+            mmio_len: 0,
+            mmio: None,
+        })
+    }
+
+    /// Guest / hv path: open from BootInfo MMIO tips (`IF-BOOT-003`).
+    ///
+    /// - `mmio_len == 0` or null `mmio` → [`NicError::DeviceMissing`] (lab VF BAR
+    ///   absent / not programmed — no silent Inject).
+    /// - Non-zero window → handle holds the tip; descriptor rings still require
+    ///   real VF hardware (RX empty / TX `IoFailure` until rings are live).
+    pub fn from_mmio_tips(mmio_gpa: u64, mmio_len: u64, mmio: *mut u8) -> Result<Self, NicError> {
+        if mmio_len == 0 || mmio.is_null() {
+            return Err(NicError::DeviceMissing {
+                bdf: String::from("bootinfo-mmio"),
+            });
+        }
+        Ok(Self {
+            bdf: String::from("bootinfo-mmio"),
+            mmio_gpa,
+            mmio_len,
+            mmio: Some(mmio),
         })
     }
 
     #[inline]
     pub fn bdf(&self) -> &str {
         &self.bdf
+    }
+
+    #[inline]
+    pub fn mmio_gpa(&self) -> u64 {
+        self.mmio_gpa
+    }
+
+    #[inline]
+    pub fn mmio_len(&self) -> u64 {
+        self.mmio_len
+    }
+
+    /// True when a non-zero BAR window tip is attached (rings may still be absent).
+    #[inline]
+    pub fn has_mmio_window(&self) -> bool {
+        self.mmio_len > 0 && self.mmio.is_some()
+    }
+
+    /// Read a little-endian `u32` at `offset` within the BAR window (TCB).
+    ///
+    /// Returns `None` when the window is missing or the offset is out of range.
+    pub fn mmio_read_u32(&self, offset: u64) -> Option<u32> {
+        let ptr = self.mmio?;
+        if offset
+            .checked_add(4)
+            .map(|e| e > self.mmio_len)
+            .unwrap_or(true)
+        {
+            return None;
+        }
+        // SAFETY: caller opened with a valid mapped window of `mmio_len` bytes.
+        let val = unsafe { core::ptr::read_volatile(ptr.add(offset as usize) as *const u32) };
+        Some(val)
     }
 
     /// Host-only: construct a handle without sysfs probe to exercise the
@@ -61,14 +119,18 @@ impl SriovNic {
     pub fn stub_pre_mmio(bdf: &str) -> Self {
         Self {
             bdf: String::from(bdf),
-            _mmio_reserved: (),
+            mmio_gpa: 0,
+            mmio_len: 0,
+            mmio: None,
         }
     }
 }
 
 impl NicBackend for SriovNic {
     fn rx_ready(&self) -> bool {
-        // No MMIO rings yet; a successfully opened VF would poll RX descriptors here.
+        // Descriptor rings not yet programmed against a real VF BAR layout.
+        // A live window still reports empty until HW rings are wired.
+        let _ = self.has_mmio_window();
         false
     }
 
@@ -77,7 +139,7 @@ impl NicBackend for SriovNic {
     }
 
     fn try_send(&mut self, _frame: &[u8]) -> Result<(), NicError> {
-        // Without mapped TX rings, refuse rather than pretend success.
+        // Without mapped TX descriptor rings, refuse rather than pretend success.
         Err(NicError::IoFailure)
     }
 }

@@ -70,6 +70,10 @@ pub struct PathsConfig {
     pub guest_lan_image: String,
 }
 
+fn default_zero_u64() -> u64 {
+    0
+}
+
 /// Hypervisor bring-up tips consumed when building the flattened hv boot blob.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct HvConfig {
@@ -77,6 +81,18 @@ pub struct HvConfig {
     pub gpa_window_base: u64,
     /// I/O port advertised in boot info for UART exits (`IF-UART-001`).
     pub uart_io_port: u16,
+    /// WAN VF BAR/MMIO tip GPA for BootInfo (`IF-BOOT-003`); 0 = unset / absent.
+    #[serde(default = "default_zero_u64")]
+    pub wan_nic_mmio_gpa: u64,
+    /// WAN VF BAR/MMIO window length; 0 = unset (Sriov guest open fails honestly).
+    #[serde(default = "default_zero_u64")]
+    pub wan_nic_mmio_len: u64,
+    /// LAN VF BAR/MMIO tip GPA for BootInfo.
+    #[serde(default = "default_zero_u64")]
+    pub lan_nic_mmio_gpa: u64,
+    /// LAN VF BAR/MMIO window length; 0 = unset.
+    #[serde(default = "default_zero_u64")]
+    pub lan_nic_mmio_len: u64,
 }
 
 /// Complete demonstrator configuration (all sections mandatory).

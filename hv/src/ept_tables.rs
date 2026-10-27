@@ -57,6 +57,10 @@ mod tests {
             _uart_pad: 0,
             inject_queue_capacity: 4,
             nic_backend_inject: 1,
+            wan_nic_mmio_gpa: 0,
+            wan_nic_mmio_len: 0,
+            lan_nic_mmio_gpa: 0,
+            lan_nic_mmio_len: 0,
         };
         let layout = build_layout(&cfg).unwrap();
         let intent = build_ept_intent(&layout).unwrap();

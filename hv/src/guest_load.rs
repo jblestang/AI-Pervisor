@@ -11,6 +11,17 @@ pub enum LoadError {
     Truncated,
 }
 
+/// Result of loading an ELF guest for L2 enter.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ElfLoad {
+    /// Guest virtual entry (`e_entry`) — used as VMCS Guest RIP.
+    pub entry_va: u64,
+    /// Minimum PT_LOAD vaddr (linker image base).
+    pub link_base: u64,
+    /// Bytes spanned from `link_base` through the highest PT_LOAD end (page-rounded by caller).
+    pub image_span: u64,
+}
+
 /// Raw image bytes destination: host-owned buffer representing guest private RAM.
 ///
 /// Nested bring-up (Task 7) maps this buffer at `region.base` in EPT. This helper
@@ -32,10 +43,9 @@ pub fn load_raw_image(dest: &mut [u8], region: GpaRegion, image: &[u8]) -> Resul
 
 /// Minimal ELF64 little-endian PT_LOAD loader (ET_EXEC / ET_DYN).
 ///
-/// Returns the entry GPA. Segment file data is copied at `p_vaddr` relative to
-/// `region.base` when `p_vaddr` falls inside the private window; absolute
-/// `p_vaddr` equal to GPAs inside the region is also accepted.
-pub fn load_elf64(dest: &mut [u8], region: GpaRegion, image: &[u8]) -> Result<u64, LoadError> {
+/// Segments are placed at `dest[(p_vaddr - link_base)]` so a guest page table can
+/// map `VA link_base → GPA region.base`. Returns entry VA + span metadata.
+pub fn load_elf64(dest: &mut [u8], region: GpaRegion, image: &[u8]) -> Result<ElfLoad, LoadError> {
     if image.len() < 64 {
         return Err(LoadError::BadElf);
     }
@@ -54,6 +64,9 @@ pub fn load_elf64(dest: &mut [u8], region: GpaRegion, image: &[u8]) -> Result<u6
         return Err(LoadError::BadElf);
     }
 
+    // First pass: discover link_base = min PT_LOAD p_vaddr.
+    let mut link_base: Option<u64> = None;
+    let mut high: u64 = 0;
     for i in 0..phnum {
         let off = phoff
             .checked_add(i.checked_mul(phentsize).ok_or(LoadError::BadElf)?)
@@ -61,7 +74,30 @@ pub fn load_elf64(dest: &mut [u8], region: GpaRegion, image: &[u8]) -> Result<u6
         let ph = image.get(off..off + 56).ok_or(LoadError::Truncated)?;
         let p_type = u32::from_le_bytes(ph[0..4].try_into().unwrap());
         if p_type != 1 {
-            // PT_LOAD
+            continue;
+        }
+        let p_vaddr = u64::from_le_bytes(ph[16..24].try_into().unwrap());
+        let p_memsz = u64::from_le_bytes(ph[40..48].try_into().unwrap());
+        link_base = Some(match link_base {
+            Some(b) => core::cmp::min(b, p_vaddr),
+            None => p_vaddr,
+        });
+        let end = p_vaddr.checked_add(p_memsz).ok_or(LoadError::ImageTooLarge)?;
+        high = core::cmp::max(high, end);
+    }
+    let link_base = link_base.ok_or(LoadError::BadElf)?;
+    let image_span = high.checked_sub(link_base).ok_or(LoadError::BadElf)?;
+    if image_span > region.size || image_span as usize > dest.len() {
+        return Err(LoadError::ImageTooLarge);
+    }
+
+    for i in 0..phnum {
+        let off = phoff
+            .checked_add(i.checked_mul(phentsize).ok_or(LoadError::BadElf)?)
+            .ok_or(LoadError::BadElf)?;
+        let ph = image.get(off..off + 56).ok_or(LoadError::Truncated)?;
+        let p_type = u32::from_le_bytes(ph[0..4].try_into().unwrap());
+        if p_type != 1 {
             continue;
         }
         let p_offset = u64::from_le_bytes(ph[8..16].try_into().unwrap()) as usize;
@@ -69,11 +105,7 @@ pub fn load_elf64(dest: &mut [u8], region: GpaRegion, image: &[u8]) -> Result<u6
         let p_filesz = u64::from_le_bytes(ph[32..40].try_into().unwrap()) as usize;
         let p_memsz = u64::from_le_bytes(ph[40..48].try_into().unwrap()) as usize;
 
-        let dest_off = if p_vaddr >= region.base {
-            (p_vaddr - region.base) as usize
-        } else {
-            p_vaddr as usize
-        };
+        let dest_off = (p_vaddr.checked_sub(link_base).ok_or(LoadError::BadElf)?) as usize;
         let end = dest_off.checked_add(p_memsz).ok_or(LoadError::ImageTooLarge)?;
         if end > dest.len() || (end as u64) > region.size {
             return Err(LoadError::ImageTooLarge);
@@ -88,24 +120,22 @@ pub fn load_elf64(dest: &mut [u8], region: GpaRegion, image: &[u8]) -> Result<u6
         }
     }
 
-    // If entry looks like an offset within the window, relocate; else use as GPA.
-    let entry_gpa = if entry < region.size {
-        region.base.checked_add(entry).ok_or(LoadError::BadElf)?
-    } else if entry >= region.base
-        && entry < region.base.checked_add(region.size).ok_or(LoadError::BadElf)?
-    {
-        entry
-    } else {
-        // Keep ELF e_entry as-is (linker scripts may use low identity GPAs).
-        entry
-    };
-    Ok(entry_gpa)
+    Ok(ElfLoad {
+        entry_va: entry,
+        link_base,
+        image_span,
+    })
 }
 
 /// Prefer ELF when magic matches; otherwise raw flat copy.
+///
+/// Returns a GPA-style entry for raw images; for ELF returns `region.base`
+/// (entry VA is available via [`load_elf64`]).
 pub fn load_guest_image(dest: &mut [u8], region: GpaRegion, image: &[u8]) -> Result<u64, LoadError> {
     if image.len() >= 4 && &image[0..4] == b"\x7fELF" {
-        load_elf64(dest, region, image)
+        let elf = load_elf64(dest, region, image)?;
+        let _ = elf.entry_va;
+        Ok(region.base)
     } else {
         load_raw_image(dest, region, image)
     }

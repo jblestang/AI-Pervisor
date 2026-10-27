@@ -44,6 +44,13 @@ report_path = "target/bench-report.json"
 # (first 1 GiB) unless you extend boot.s page tables — e.g. 0x10000000.
 gpa_window_base = 0x10000000
 uart_io_port = 0x3F8
+# Sriov BAR/MMIO tips copied into BootInfo.nic_mmio_* (IF-BOOT-003).
+# Leave 0 until the lab programs a real VF BAR GPA into the guest window;
+# guests fail honestly when len=0 (no silent Inject).
+wan_nic_mmio_gpa = 0
+wan_nic_mmio_len = 0
+lan_nic_mmio_gpa = 0
+lan_nic_mmio_len = 0
 
 [paths]
 # xtask resolves release↔debug if the configured path is missing after `cargo xtask build`.

@@ -280,7 +280,15 @@ pub fn build_qemu_command(
     let mut args: Vec<String> = Vec::new();
     // Multiboot1 ADDR + KVM fails to enter the guest on several lab kernels
     // (empty serial / no debugcon). Default to TCG for a reliable Multiboot
-    // bring-up; L1 inject smoke does not need VMXON. Override with HV_QEMU_ACCEL.
+    // bring-up; L1 inject smoke does not need VMXON. Override with HV_QEMU_ACCEL
+    // (=kvm) when nested VT-x / VMLAUNCH is required.
+    //
+    // `intel-iommu` is a q35 sysbus device — plain `pc` rejects it. Always use
+    // q35 when IOMMU is enabled; otherwise keep the Multiboot-friendly default.
+    if cfg.lab.enable_iommu {
+        args.push("-machine".into());
+        args.push("q35".into());
+    }
     let accel = std::env::var("HV_QEMU_ACCEL")
         .unwrap_or_else(|_| "tcg".into())
         .to_ascii_lowercase();
@@ -306,6 +314,7 @@ pub fn build_qemu_command(
             args.push("-accel".into());
             args.push("tcg".into());
             args.push("-cpu".into());
+            // q35 + qemu64 works; keep host,+vmx only under KVM.
             args.push("qemu64".into());
             eprintln!(
                 "xtask: using TCG Multiboot boot (set HV_QEMU_ACCEL=kvm to force KVM; \

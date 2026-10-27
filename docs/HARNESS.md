@@ -8,7 +8,7 @@ Issue: 0.2 — Task 7 smoke, Task 9 `xtask bench` / stats ABI, **Task 10 SR‑IO
 |---------|-----------|
 | `cargo xtask build` | Host libs + freestanding `hv` / `guest-wan` / `guest-lan` |
 | `cargo xtask run-nested` | QEMU argv **only** from `DemoConfig`; Multiboot1 `-kernel` + `-initrd` modules |
-| `cargo xtask smoke` | Same boot path; wait for serial ASCII token `SMOKE_OK` (`IF-SER-001`) — **Inject only** until L2 VMLAUNCH (see below) |
+| `cargo xtask smoke` | Same boot path; wait for serial ASCII token `SMOKE_OK` (`IF-SER-001`) — **Inject** under TCG is the reliable path; Sriov-resolved still fail-fast until nested KVM Multiboot + VF rings (see below) |
 | `cargo xtask bench` | Timed E2E measure from `[bench]`; writes `IF-RPT-BENCH` JSON (`target_met` may be false; exit 0 if measured) |
 
 Config resolution: `HV_DEMO_CONFIG` → `config/demo.toml` → `config/demo.example.toml`.
@@ -25,7 +25,7 @@ Env overrides: `HV_VF_BACKEND`, `HV_WAN_VF_BDF`, `HV_LAN_VF_BDF`, `HV_BENCH_REPO
 | Guest images | Multiboot modules 1/2 = `guest-wan` / `guest-lan` |
 | L1 inject smoke | When **resolved** backend is Inject, `hv` runs the real `guest_common` WAN→LAN forward and prints `SMOKE_OK` |
 | Sriov open policy | `pci-vf` + xtask: VF must exist **and** be bound to `vfio-pci`; no silent Inject when `allow_inject_fallback=false` |
-| L2 VMLAUNCH | Scaffolded (module load + EPT pack + VMXON); full VMCS host-state / VMLAUNCH still incomplete — UART says so |
+| L2 VMLAUNCH | VMCS image + guest PT + `VMLAUNCH`/`VMRESUME` path implemented (`hv::vmx::enter`); needs nested VT‑x (KVM). TCG skips VMXON; Multiboot+KVM remains flaky on some labs |
 
 ## Nested QEMU requirements
 
@@ -142,18 +142,20 @@ Mark STR/evidence as **Inject / degraded**, never as Sriov.
 
 ## Sriov smoke / remaining gaps (honest E2E status)
 
-`backend=sriov` with both VFs **vfio-bound** selects Sriov correctly and attaches `-device vfio-pci,host=…`. Full Sriov E2E (`SMOKE_OK` from LAN guest + 1 Gbps@64B Sriov report) is **blocked** by the following concrete gaps:
+`backend=sriov` with both VFs **vfio-bound** selects Sriov correctly and attaches `-device vfio-pci,host=…`. Full Sriov E2E (`SMOKE_OK` from LAN guest + 1 Gbps@64B Sriov report) remains **blocked** where marked; several earlier gaps are now **closed in software** pending nested-KVM evidence:
 
-| # | Gap | Where | Blocks |
-|---|-----|-------|--------|
-| 1 | **VMCS host-state incomplete** — no successful `VMLAUNCH` into L2 guests | `hv` VMX path (`hv: VMLAUNCH deferred…`) | Guest entry / UART from LAN |
-| 2 | **Guest live poll loop** not yet wired to mapped rings/NIC MMIO (symbols retained only) | `guest-wan` / `guest-lan` | Frame forward under L2 |
-| 3 | **Sriov BAR / descriptor-ring MMIO** not mapped (`SriovNic` pre-MMIO stub: RX empty, TX `IoFailure`) | `pci-vf/src/sriov.rs`, TCB-NIC-001 | Real VF datapath |
-| 4 | **BootInfo `nic_mmio_gpa` / `nic_mmio_len`** still zero (hv does not program VF BARs into guests) | `hv/src/boot_blob.rs` | Guest Sriov open tips |
-| 5 | **Multiboot + KVM entry flaky** on some lab images (TCG default); nested VT‑x needed for real L2 | `xtask` / `HARNESS` Multiboot note | Hardware VMXON/VMLAUNCH under KVM |
-| 6 | **IOMMU group / ACS** lab-specific isolation of VFs into QEMU | Host platform | `-device vfio-pci` open at QEMU start |
+| # | Gap | Status | Where | Blocks |
+|---|-----|--------|-------|--------|
+| 1 | **VMCS load + VMLAUNCH/VMRESUME** | **Code landed** — host-tested launch image + freestanding enter; **runtime** needs nested VT‑x | `hv/src/vmx/{enter,controls,guest_pt}.rs`, `hv/src/l2.rs` | Nested guest UART / TEST-ISO-002 |
+| 2 | **Guest live poll loop** | **Closed** — WAN/LAN poll `NicBackend` + rings from BootInfo GPAs; Sriov open via `from_mmio_tips` | `guest-wan` / `guest-lan` | — |
+| 3 | **Sriov VF descriptor rings** | **Open** — BAR window tips + `mmio_read_u32` exist; TX still `IoFailure` / RX empty until real rings | `pci-vf/src/sriov.rs`, TCB-NIC-001 | Real VF datapath |
+| 4 | **BootInfo `nic_mmio_*`** | **Closed (config-driven)** — `FlatHvConfig` v2 + `[hv] wan/lan_nic_mmio_*`; 0 ⇒ honest `DeviceMissing` | `hv/src/boot_blob.rs`, `config/demo.example.toml` | — |
+| 5 | **Multiboot + KVM entry** | **Open / lab** — TCG Multiboot enters; KVM Multiboot yields empty serial on some hosts (incl. KVM vCPU create faults) | `xtask` / Multiboot note | Hardware VMXON under KVM |
+| 6 | **IOMMU group / ACS** | **Open / lab** | Host platform | `-device vfio-pci` open at QEMU start |
 
-Until gaps **1–4** close, `cargo xtask smoke` and `cargo xtask bench` with resolved Sriov **exit non-zero immediately** with a pointer here — they do **not** silently run Inject and relabel it as Sriov.
+`cargo xtask smoke|bench` with **resolved Sriov** still **exit non-zero immediately** until gaps **3** and **5** (plus a demonstrated L2 `SMOKE_OK`) close — they do **not** silently run Inject and relabel it as Sriov.
+
+**Accel quirks:** default `HV_QEMU_ACCEL=tcg` for Multiboot reliability (L1 Inject `SMOKE_OK`). Set `HV_QEMU_ACCEL=kvm` for nested VT‑x; if serial stays empty, stay on TCG evidence and treat L2 as code-complete / runtime-blocked. When `lab.enable_iommu=true`, xtask uses `-machine q35` (required for `intel-iommu`).
 
 ## Smoke serial protocol (`IF-SER-001`)
 
@@ -212,7 +214,7 @@ Schema sample: `docs/system/samples/bench-report.example.json`.
 
 ## Multiboot + KVM note
 
-QEMU's Multiboot1 **ADDR** loader + ELF64 is rejected; xtask therefore `objcopy`s `hv` to `hv.bin`. On this spike's lab images, **`-accel kvm` often never reaches `_start`** (empty serial / no `0xE9` debugcon), while **TCG Multiboot enters reliably**. `cargo xtask smoke` defaults to TCG so the L1 inject datapath can emit `SMOKE_OK`. `/dev/kvm` and `nested=1` are still checked as lab capability signals; force KVM with `HV_QEMU_ACCEL=kvm` when debugging nested VT‑x.
+QEMU's Multiboot1 **ADDR** loader + ELF64 is rejected; xtask therefore `objcopy`s `hv` to `hv.bin`. On several lab images (including some cloud VMs where `kvm_spurious_fault` fires on vCPU create), **`-accel kvm` never reaches `_start`** (empty serial / no `0xE9` debugcon), while **TCG Multiboot enters reliably**. `cargo xtask smoke` defaults to TCG so the L1 inject datapath can emit `SMOKE_OK`. `/dev/kvm` and `nested=1` are still checked as lab capability signals; force KVM with `HV_QEMU_ACCEL=kvm` when debugging nested VT‑x. IOMMU-enabled configs use `-machine q35`.
 
 ## Cloud / agent limitation
 

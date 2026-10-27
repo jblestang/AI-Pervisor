@@ -266,11 +266,12 @@ pub fn cmd_bench(root: &Path, mut cfg: DemoConfig) -> ExitCode {
         },
         VfBackend::Sriov => {
             eprintln!(
-                "xtask bench: datapath.backend=sriov with VFs present, but L2 VMLAUNCH \
-                 datapath is not yet complete — cannot produce an honest Sriov E2E \
-                 measurement.\n  hint: for lab/CI Inject figures use \
-                 HV_VF_BACKEND=inject or config/bench.inject.ci.toml; official \
-                 Sriov figures need VF + guest VMLAUNCH (see docs/HARNESS.md)"
+                "xtask bench: datapath.backend=sriov with VFs present, but honest Sriov \
+                 E2E still needs nested VT-x Multiboot entry + non-zero nic_mmio_* + \
+                 live VF descriptor rings (HARNESS remaining gaps).\n  \
+                 hint: L2 VMCS/VMLAUNCH + guest poll are implemented; for labelled \
+                 Inject figures use HV_VF_BACKEND=inject or config/bench.inject.ci.toml \
+                 — do not publish Inject as Sriov"
             );
             return ExitCode::FAILURE;
         }

@@ -228,6 +228,33 @@ fn sriov_open_succeeds_against_fake_sysfs_tree() {
 }
 
 #[test]
+fn sriov_from_mmio_tips_rejects_zero_window() {
+    let err = SriovNic::from_mmio_tips(0xfee0_0000, 0, core::ptr::null_mut()).expect_err("len=0");
+    assert!(matches!(err, NicError::DeviceMissing { .. }));
+    let err = SriovNic::from_mmio_tips(0, 0x1000, core::ptr::null_mut()).expect_err("null ptr");
+    assert!(matches!(err, NicError::DeviceMissing { .. }));
+}
+
+#[test]
+fn sriov_from_mmio_tips_holds_window_and_reads() {
+    let mut bar = [0u8; 64];
+    bar[0..4].copy_from_slice(&0xA5A5_5A5Au32.to_le_bytes());
+    let nic = SriovNic::from_mmio_tips(0xcafe_0000, bar.len() as u64, bar.as_mut_ptr())
+        .expect("non-zero window");
+    assert!(nic.has_mmio_window());
+    assert_eq!(nic.mmio_gpa(), 0xcafe_0000);
+    assert_eq!(nic.mmio_len(), 64);
+    assert_eq!(nic.mmio_read_u32(0), Some(0xA5A5_5A5A));
+    assert_eq!(nic.mmio_read_u32(64), None);
+    // Datapath still honest: no descriptor rings → empty / IoFailure.
+    assert!(!nic.rx_ready());
+    let mut n = nic;
+    let mut buf = [0u8; 8];
+    assert!(matches!(n.try_recv(&mut buf), Err(NicError::QueueEmpty)));
+    assert!(matches!(n.try_send(b"x"), Err(NicError::IoFailure)));
+}
+
+#[test]
 fn sriov_open_rejects_unbound_vf_sysfs_node() {
     let tmp = std::env::temp_dir().join(format!(
         "hv-vf-unbound-{}-{}",

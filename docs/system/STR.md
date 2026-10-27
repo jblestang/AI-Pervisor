@@ -93,7 +93,7 @@ This report records the **outcome of the STD verification campaign** against the
 | Should-gate (1 Gbps @ 64 B official Sriov) | **Not met as Sriov** — Inject sample `target_met=true` (~2.24 Gbps); Sriov E2E Blocked |
 | Recommendation | Spike documentary suite **closed** for Tasks 0–11; do **not** claim Sriov L2 E2E or any DAL/SIL/airworthiness |
 
-**Narrative:** Host/component gates, Inject smoke, Inject bench measurement, coverage ≥90%, and Verus on annotated crates all Pass. Full nested Sriov datapath and nested EPT-violation stimulus remain Blocked per HARNESS Task 10 gaps (VMLAUNCH, guest poll, VF MMIO, BootInfo MMIO tips, Multiboot+KVM flakiness, lab IOMMU/ACS).
+**Narrative:** Host/component gates, Inject smoke, Inject bench measurement, coverage ≥90%, and Verus on annotated crates all Pass. Full nested Sriov datapath and nested EPT-violation stimulus remain Blocked per HARNESS Task 10 gaps. **Follow-on (post Task 11):** L2 VMCS/`VMLAUNCH` path, guest live poll, and BootInfo `nic_mmio_*` wiring landed in software; Multiboot+KVM runtime entry and VF descriptor rings remain the open blockers for nested UART / Sriov E2E evidence (see HARNESS gap table).
 
 ---
 
@@ -130,7 +130,7 @@ This report records the **outcome of the STD verification campaign** against the
 | TEST-VERUS-001 | **Pass** | 2026-10-26 | Task 8; `cargo xtask verify` | Hard-fail regime: ring **4**, isolation **7** verified |
 | TEST-COV-001 | **Pass** | 2026-10-26 | Task 8; `cargo xtask coverage` | **97.23%** lines (666/685); threshold 90% |
 | TEST-ISO-001 | **Pass** | 2026-10-26 | `cargo test -p hv --features std` | EPT intent / map / fault classify host tests |
-| TEST-ISO-002 | **Blocked** | 2026-10-26 | HARNESS ODP-007 / gaps 1–2 | Nested EPT-violation stimulus needs L2 VMLAUNCH; host exit-policy unit tests exist and Pass (`hv` exit / ept tests) but do not substitute nested demo |
+| TEST-ISO-002 | **Blocked** | 2026-10-27 | HARNESS gap 5 (Multiboot+KVM) | L2 enter code + host VMCS/PT tests Pass; nested stimulus still needs working KVM Multiboot (TCG has no VMXON). Host exit-policy unit tests Pass separately |
 | TEST-SMOKE-001 | **Pass** | 2026-10-26 | Task 7; serial `SMOKE_OK` | Inject + TCG Multiboot. Sriov-resolved E2E **Blocked** (fail-fast; no silent Inject) |
 | TEST-BENCH-001 | **Pass** | 2026-10-26 | Task 9; sample JSON | Inject harness @ 64 B; report complete; `target_met=true`. Sriov E2E **Blocked** |
 | TEST-DOC-001 | **Pass** | 2026-10-26 | Task 11; `docs/system/` + TCB/HARNESS/VERUS | Suite Issue ≥0.3; non-cert statement; STR filled; SSDD as-built |
@@ -259,8 +259,8 @@ Result vocabulary: **Pass** | **Fail** | **Blocked** | **Not run** (per STD §8)
 
 | ID | Type | Description | Related TEST/SWR | Disposition | Authority |
 |----|------|-------------|------------------|-------------|-----------|
-| ANO-001 | Observation | Full Sriov L2 E2E (guest UART `SMOKE_OK` + Sriov bench) blocked by HARNESS gaps: VMCS/VMLAUNCH, guest live poll, Sriov MMIO stub, BootInfo `nic_mmio_*`=0, Multiboot+KVM flaky, lab IOMMU/ACS | TEST-SMOKE-001 (Sriov), TEST-BENCH-001 (Sriov), SWR-NIC-021, SWR-HVN-055 | Accept for spike close; fail-fast prevents false Pass; follow-on work | Programme |
-| ANO-002 | Observation | TEST-ISO-002 nested EPT-violation demo Blocked (no L2). Host unit tests cover halt-faulting-guest policy | TEST-ISO-002, SWR-ISO-003 | Accept for spike; record Blocked; re-run nested when VMLAUNCH lands | Programme |
+| ANO-001 | Observation | Full Sriov L2 E2E (guest UART `SMOKE_OK` + Sriov bench) blocked by remaining HARNESS gaps: VF descriptor rings, Multiboot+KVM entry (some labs: KVM vCPU create fault), lab IOMMU/ACS. Software: VMLAUNCH path, guest poll, BootInfo `nic_mmio_*` now present | TEST-SMOKE-001 (Sriov), TEST-BENCH-001 (Sriov), SWR-NIC-021, SWR-HVN-055 | Fail-fast prevents false Pass; close gaps 3+5 then re-run | Programme |
+| ANO-002 | Observation | TEST-ISO-002 nested EPT-violation demo Blocked (no KVM Multiboot entry here). Host unit tests cover halt-faulting-guest policy; L2 enter image is host-tested | TEST-ISO-002, SWR-ISO-003 | Re-run nested when Multiboot+KVM enters and VMXON succeeds | Programme |
 | ANO-003 | Deviation | Smoke/bench use TCG Multiboot by default rather than KVM nested entry | TEST-SMOKE-001, ASM-LAB | Documented in HARNESS; L1 Inject does not need VMXON | Engineering |
 | ANO-004 | Observation | Independent V&V tester not used (SYS-AS-007 recommended for governmental transfer) | Campaign §2 | Accept for spike; recommend independent re-run before external submission | Programme |
 

@@ -367,10 +367,13 @@ fn cmd_smoke(root: &Path) -> ExitCode {
     // waiting 30s for a SMOKE_OK that cannot appear (no silent Inject).
     if cfg.datapath.backend == demo_config::VfBackend::Sriov {
         eprintln!(
-            "xtask smoke: datapath.backend=sriov with VFs vfio-bound, but L2 VMLAUNCH \
-             + guest Sriov datapath is not yet complete — cannot emit SMOKE_OK honestly.\n  \
-             hint: for lab/CI Inject smoke use HV_VF_BACKEND=inject (or backend=inject); \
-             when VFs are ready, see docs/HARNESS.md § \"Sriov smoke / remaining gaps\""
+            "xtask smoke: datapath.backend=sriov with VFs vfio-bound, but honest Sriov \
+             SMOKE_OK still needs (a) working nested VT-x Multiboot entry \
+             (HV_QEMU_ACCEL=kvm — see HARNESS Multiboot+KVM note) and (b) non-zero \
+             BootInfo nic_mmio_* + live VF descriptor rings.\n  \
+             L2 VMLAUNCH/VMCS path and guest poll are implemented; Inject smoke \
+             (HV_VF_BACKEND=inject) remains the reliable TCG evidence path.\n  \
+             see docs/HARNESS.md § \"Sriov smoke / remaining gaps\""
         );
         return ExitCode::FAILURE;
     }

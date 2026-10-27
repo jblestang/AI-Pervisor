@@ -140,7 +140,7 @@ Toolchain: Rust **1.99.1** (`rust-toolchain.toml`), aligned with Verus `0.2026.1
 | UART | `uart.rs` | Exit / platform serial |
 
 **vCPU topology (demonstrator):** one vCPU per guest; no overcommit.  
-**L2 status:** VMLAUNCH / complete VMCS host-state still incomplete — guests are loaded and EPT-packed; live L2 poll is not yet the smoke/bench path (HARNESS Task 10 gaps).
+**L2 status:** VMCS launch image + `VMLAUNCH`/`VMRESUME` + guest live poll are implemented; nested runtime evidence still depends on Multiboot+KVM (HARNESS gap 5). TCG smoke uses L1 Inject for `SMOKE_OK`.
 
 ### 5.3 Guests and shared forward
 
@@ -331,9 +331,9 @@ Full SWR → crate → TEST → STR matrix: HV-EDGE-STR-001 §9 / §9.1.
 |----|-------|--------|--------|
 | ODP-005 | WCET / bounded latency | Out of spike (NGX-008) | Airborne scheduling claims |
 | ODP-006 | Integrity level (DAL/SIL) | Explicitly not assigned | Certification |
-| ODP-007 | Nested EPT-violation demo | Blocked — no L2 VMLAUNCH | Full TEST-ISO-002 nested |
-| ODP-008 | L2 VMLAUNCH + guest live poll | Incomplete (HARNESS gaps 1–2) | Sriov/Inject L2 smoke |
-| ODP-009 | Sriov BAR/MMIO + BootInfo tips | Stub / zero (HARNESS gaps 3–4) | Real VF datapath |
+| ODP-007 | Nested EPT-violation demo | Blocked — Multiboot+KVM entry (gap 5) | Full TEST-ISO-002 nested |
+| ODP-008 | L2 VMLAUNCH + guest live poll | Code complete; runtime pending gap 5 | Sriov/Inject L2 smoke |
+| ODP-009 | Sriov BAR window + BootInfo tips | Tips wired (gap 4 closed); descriptor rings open (gap 3) | Real VF datapath |
 | ODP-010 | Multiboot+KVM reliable entry | Flaky; TCG default (HARNESS gap 5) | Nested VT‑x under KVM |
 | ODP-011 | Lab IOMMU/ACS VF isolation | Lab-specific (HARNESS gap 6) | QEMU vfio-pci open |
 

@@ -144,6 +144,9 @@ fn boot_info_filled_from_layout_not_lab_literals() {
     // demo.example.toml selects sriov; from_demo must not silent-Inject.
     assert!(!flat.nic_is_inject());
     assert_eq!(boot.nic_backend, NicBackendKind::Sriov);
+    // nic_mmio_* come from [hv] tips (0 in the checked-in example until lab fills them).
+    assert_eq!(boot.nic_mmio_gpa, flat.wan_nic_mmio_gpa);
+    assert_eq!(boot.nic_mmio_len, flat.wan_nic_mmio_len);
 }
 
 #[test]

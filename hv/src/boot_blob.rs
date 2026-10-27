@@ -28,8 +28,14 @@ pub fn fill_boot_info(cfg: &FlatHvConfig, layout: &GuestLayout, role: GuestRole)
         } else {
             NicBackendKind::Sriov
         },
-        nic_mmio_gpa: 0,
-        nic_mmio_len: 0,
+        nic_mmio_gpa: match role {
+            GuestRole::Wan => cfg.wan_nic_mmio_gpa,
+            GuestRole::Lan => cfg.lan_nic_mmio_gpa,
+        },
+        nic_mmio_len: match role {
+            GuestRole::Wan => cfg.wan_nic_mmio_len,
+            GuestRole::Lan => cfg.lan_nic_mmio_len,
+        },
         inject_queue_capacity: cfg.inject_queue_capacity,
         _nic_pad: 0,
         uart_port: cfg.uart_io_port,

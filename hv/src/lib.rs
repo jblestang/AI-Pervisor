@@ -14,6 +14,7 @@ pub mod ept_install;
 pub mod ept_tables;
 pub mod guest_load;
 pub mod guest_mem;
+pub mod l2;
 pub mod multiboot;
 pub mod smoke_l1;
 pub mod uart;

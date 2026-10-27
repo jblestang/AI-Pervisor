@@ -2,8 +2,8 @@
 
 /// Magic for the Multiboot/initrd flat-config blob (`docs/HARNESS.md`).
 pub const FLAT_HV_MAGIC: u32 = u32::from_le_bytes(*b"FLAT");
-/// Schema version for [`FlatHvConfigBlob`].
-pub const FLAT_HV_VERSION: u32 = 1;
+/// Schema version for [`FlatHvConfigBlob`] (v2 adds nic_mmio tips).
+pub const FLAT_HV_VERSION: u32 = 2;
 
 /// Flat bring-up parameters consumed by layout / EPT / boot-info builders.
 ///
@@ -25,6 +25,12 @@ pub struct FlatHvConfig {
     pub inject_queue_capacity: u32,
     /// Non-zero when the *resolved* backend is Inject (after VF open policy).
     pub nic_backend_inject: u32,
+    /// WAN Sriov BAR/MMIO tip (0 = unset).
+    pub wan_nic_mmio_gpa: u64,
+    pub wan_nic_mmio_len: u64,
+    /// LAN Sriov BAR/MMIO tip (0 = unset).
+    pub lan_nic_mmio_gpa: u64,
+    pub lan_nic_mmio_len: u64,
 }
 
 /// Multiboot module 0 payload: magic + version + flat config.
@@ -97,6 +103,10 @@ impl FlatHvConfig {
                 cfg.datapath.backend,
                 VfBackend::Inject
             )),
+            wan_nic_mmio_gpa: cfg.hv.wan_nic_mmio_gpa,
+            wan_nic_mmio_len: cfg.hv.wan_nic_mmio_len,
+            lan_nic_mmio_gpa: cfg.hv.lan_nic_mmio_gpa,
+            lan_nic_mmio_len: cfg.hv.lan_nic_mmio_len,
         }
     }
 }
