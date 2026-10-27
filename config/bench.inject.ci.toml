@@ -1,0 +1,39 @@
+# CI-friendly Inject bench: short duration, no VF required.
+# Usage: HV_DEMO_CONFIG=config/bench.inject.ci.toml cargo xtask bench
+# Official published figures should use Sriov + real VFs (see docs/HARNESS.md).
+
+[lab]
+qemu_bin = "qemu-system-x86_64"
+memory_mb = 2048
+smp = 2
+enable_iommu = false
+
+[datapath]
+backend = "inject"
+allow_inject_fallback = true
+
+[guests]
+wan_memory_mb = 64
+lan_memory_mb = 64
+wan_vcpus = 1
+lan_vcpus = 1
+
+[ring]
+capacity_pow2 = 1024
+frame_capacity = 2048
+
+[bench]
+frame_size = 64
+duration_secs = 1
+bidirectional = true
+target_gbps = 1.0
+report_path = "target/bench-report.json"
+
+[hv]
+gpa_window_base = 0x10000000
+uart_io_port = 0x3F8
+
+[paths]
+hv_image = "target/x86_64-unknown-none/debug/hv"
+guest_wan_image = "target/x86_64-unknown-none/debug/guest-wan"
+guest_lan_image = "target/x86_64-unknown-none/debug/guest-lan"

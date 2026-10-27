@@ -1,0 +1,30 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/demo-config",
+    "crates/guest-common",
+    "xtask",
+    "hv",
+    "guest-wan",
+    "guest-lan",
+    "ring",
+    "isolation",
+    "pci-vf",
+]
+
+[workspace.package]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+version = "0.1.0"
+
+[workspace.dependencies]
+# Pinned to Verus release 0.2026.10.26 (see docs/VERUS.md).
+vstd = { version = "=0.0.0-2026-10-25-0158", default-features = false }
+
+[workspace.lints.rust]
+# Verus turns on `verus_only` during `cargo verus verify` for ghost imports.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(verus_only)'] }
+
+[profile.release]
+lto = true
+codegen-units = 1

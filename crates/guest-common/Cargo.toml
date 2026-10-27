@@ -1,0 +1,23 @@
+[package]
+name = "guest-common"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Shared WAN/LAN guest datapath (BootInfo, Stats, forward)"
+
+# Opt-in for cargo-verus once contracts are real (see docs/VERUS.md).
+[package.metadata.verus]
+verify = false
+
+[features]
+default = ["std"]
+# Host tests / tools. Guests build with `--no-default-features` for pure no_std.
+std = ["pci-vf/std"]
+
+[dependencies]
+ring = { path = "../../ring" }
+pci-vf = { path = "../../pci-vf", default-features = false }
+
+[dev-dependencies]
+# Integration tests re-resolve pci-vf with std for Inject host queues.
+pci-vf = { path = "../../pci-vf", features = ["std"] }

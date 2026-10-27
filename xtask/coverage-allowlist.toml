@@ -1,0 +1,31 @@
+# Coverage exclusions for `cargo xtask coverage`.
+# Only TCB / unsafe glue listed in docs/TCB.md may appear here.
+# Each entry needs a one-line justification — silent exclusions are forbidden.
+
+threshold_lines_percent = 90.0
+
+# Packages included in the coverage gate (safe / provable logic perimeter).
+packages = [
+    "ring",
+    "isolation",
+    "pci-vf",
+    "guest-common",
+    "demo-config",
+]
+
+[[exclude]]
+# Regex matched against source paths (llvm-cov --ignore-filename-regex).
+path_regex = "guest-common/.*/bump_alloc\\.rs"
+justification = "TCB-GUEST-002: freestanding bump GlobalAlloc unsafe glue"
+
+[[exclude]]
+path_regex = "guest-common/.*/uart\\.rs"
+justification = "TCB guest UART out dx,al (boot-info port); hardware I/O tip"
+
+[[exclude]]
+path_regex = "pci-vf/.*/sriov\\.rs"
+justification = "TCB-NIC-001: SR-IOV VF sysfs/MMIO open path; absent VF in CI"
+
+[[exclude]]
+path_regex = ".*/verus_stub\\.rs"
+justification = "Compile-time proof-intent macros only; no runtime datapath"

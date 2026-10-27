@@ -1,0 +1,15 @@
+[package]
+name = "ring"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Shared SPSC ring buffer (Verus-annotated)"
+
+[package.metadata.verus]
+verify = true
+
+[dependencies]
+vstd = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,13 @@
+[package]
+name = "guest-lan"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "LAN edge guest — host NIC ↔ ring toward WAN"
+
+[[bin]]
+name = "guest-lan"
+path = "src/main.rs"
+
+[dependencies]
+guest-common = { path = "../crates/guest-common", default-features = false }

@@ -1,0 +1,20 @@
+[package]
+name = "xtask"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Developer CLI for the hypervisor spike"
+publish = false
+
+[[bin]]
+name = "xtask"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "=4.5.23", features = ["derive"] }
+demo-config = { path = "../crates/demo-config" }
+guest-common = { path = "../crates/guest-common", features = ["std"] }
+hv = { path = "../hv", features = ["std"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "=0.8.23"
